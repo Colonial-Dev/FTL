@@ -1,61 +1,51 @@
-use crate::{error::*, *};
-use flume::{Sender};
+use crate::{error::*, dbdata::InputFile};
 use rayon::prelude::*;
-use std::{fs::Metadata, path::PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
-#[derive(Debug)]
-pub struct WalkItem {
-    pub path: PathBuf,
-    pub hash: String,
-    pub extension: String,
-    pub hapa: String,
-    pub size: u64,
-    pub contents: Vec<u8>,
-    pub inline: bool,
-}
-
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk_src(build_sinks: &BuildSinks) -> Vec<WalkItem>  {
-    let (itx, irx) = flume::unbounded();
+pub fn walk_src() -> Vec<InputFile>  {
 
     log::info!("Starting walk...");
 
+    let mut items: Vec<InputFile> = 
     WalkDir::new("src")
         .into_iter()
         .par_bridge()
-        .filter_map(|x| drain_entries(build_sinks, x))
-        .filter_map(|x| extract_metadata(build_sinks, x))
-        .map_with((build_sinks, &itx), process_entry)
-        .for_each(drop); // Force rayon iterator evalutation for its parallel side effects
+        .filter_map(drain_entries)
+        .filter_map(extract_metadata)
+        .filter_map(process_entry)
+        .collect();
 
-    let items: Vec<WalkItem> = irx.try_iter().collect();
     log::info!("Walking done, found {} items.", items.len());
 
+    // Stupid hack to ensure consistent ordering after parallel computation.
+    // This means we can generate consistent revision IDs down the line.
+    // (Sorting is done by comparing on the item's id value.)
+    items.sort_unstable();
     items
 }
 
 /// Drains all non-`Ok(...)` values from the walk output.
-fn drain_entries(sinks: &BuildSinks, entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
+fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
     match entry {
         Ok(entry) => Some(entry),
         Err(error) => {
-            sinks.sink_error(WalkError::WalkDir(error));
+            ERROR_CHANNEL.sink_error(WalkError::WalkDir(error));
             None
         }
     }
 }
 
 /// Extracts the metadata from each item in the walk output, and filters out any directories.
-/// The files that remain are returned bundled with their extracted metadata.
-fn extract_metadata(sinks: &BuildSinks, entry: DirEntry) -> Option<(DirEntry, Metadata)> {
+/// The files that remain are returned.
+fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
     match entry.metadata() {
         Ok(md) => match md.is_dir() {
             true => None,
-            false => Some((entry, md)),
+            false => Some(entry),
         },
         Err(error) => {
-            sinks.sink_error(WalkError::WalkDir(error));
+            ERROR_CHANNEL.sink_error(WalkError::WalkDir(error));
             None
         }
     }
@@ -63,13 +53,7 @@ fn extract_metadata(sinks: &BuildSinks, entry: DirEntry) -> Option<(DirEntry, Me
 
 /// Reads and hashes the entries that remain after `drain_entries` and `filter_metadata`.
 /// Results are exfiltrated through the given channels.
-fn process_entry(
-    sink_bundle: &mut (&BuildSinks, &Sender<WalkItem>),
-    entry_bundle: (DirEntry, Metadata),
-) {
-    let (build_sinks, item_sink) = sink_bundle;
-    let (entry, md) = entry_bundle;
-
+fn process_entry(entry: DirEntry) -> Option<InputFile> {
     log::trace!("Walk found item {:#?}", entry.path());
 
     let contents = std::fs::read(entry.path());
@@ -78,28 +62,33 @@ fn process_entry(
             let hash = hash(&contents);
             let inline = entry_is_inline(&entry);
             let extension = entry_extension(&entry);
-            let hapa = format!("{},{}", &hash, &entry.path().to_string_lossy());
+            let id = {
+                let joined = format!("{}{}", &hash, &entry.path().to_string_lossy());
+                self::hash(&joined.as_bytes())
+            };
+            let path = entry.into_path();
             
             // Optimization: drain data read from non-inline files.
-            if !inline { contents.drain(..);}
+            // This isn't necessary per se, but we don't want to potentially
+            // shuffle an entire MP4 around in memory for no reason.
+            if !inline { contents.drain(..); }
 
-            let item = WalkItem {
-                path: entry.into_path(),
+            let contents = String::from_utf8_lossy(&contents).to_string();
+
+            let item = InputFile {
+                id,
+                path,
                 hash,
                 extension,
-                hapa,
-                size: md.len(),
                 contents,
-                inline,
+                inline
             };
 
-            // Expect justification: these sinks should not close until after `walk_src` returns *at minimum.*
-            item_sink
-                .send(item)
-                .expect("Walking item sink has been closed!");
+            Some(item)
         }
         Err(error) => {
-            build_sinks.sink_error(WalkError::Io(error));
+            ERROR_CHANNEL.sink_error(WalkError::Io(error));
+            None
         }
     }
 }

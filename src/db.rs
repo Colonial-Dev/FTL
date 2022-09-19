@@ -1,14 +1,15 @@
-use r2d2::{Pool};
+use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, params, Transaction};
+use std::hash::{Hash, Hasher};
 use std::path::Path;
-use crate::parse::FmItem;
-use crate::walking::WalkItem;
+use crate::dbdata::*;
 use crate::error::*;
 
 pub type DbPool = Pool<SqliteConnectionManager>;
+pub type DbConn = PooledConnection<SqliteConnectionManager>;
 
-pub fn update_input_files(pool: &DbPool, items: &[WalkItem]) -> Result<(), DbError> {
+pub fn update_input_files(pool: &DbPool, items: &[InputFile]) -> Result<(), DbError> {
     let mut conn = pool.get()?;
     let txn = conn.transaction()?;
 
@@ -18,7 +19,7 @@ pub fn update_input_files(pool: &DbPool, items: &[WalkItem]) -> Result<(), DbErr
     Ok(())
 }
 
-pub fn update_revision_files(pool: &DbPool, items: &[WalkItem]) -> Result<String, DbError> {
+pub fn update_revision_files(pool: &DbPool, items: &[InputFile]) -> Result<String, DbError> {
     let mut conn = pool.get()?;
     let txn = conn.transaction()?;
     let rev_id = compute_revision_id(&items);
@@ -29,7 +30,7 @@ pub fn update_revision_files(pool: &DbPool, items: &[WalkItem]) -> Result<String
     Ok(rev_id)
 }
 
-fn into_input_files(txn: &Transaction, items: &[WalkItem]) -> Result<(), DbError> {
+fn into_input_files(txn: &Transaction, items: &[InputFile]) -> Result<(), DbError> {
     log::info!("Updating input_files table...");
 
     let conn = &*txn;
@@ -37,8 +38,8 @@ fn into_input_files(txn: &Transaction, items: &[WalkItem]) -> Result<(), DbError
     for item in items {
         conn.execute("
             INSERT OR IGNORE INTO input_files
-            VALUES(?1, ?2, ?3);
-        ", params![&item.hapa, &item.extension, &String::from_utf8_lossy(&item.contents)])?;
+            VALUES(:id, :hash, :path, :extension, :contents, :inline);
+        ", item.to_params()?.to_slice().as_slice())?;
 
         if !item.inline {
             log::trace!("Caching non-inline file {:#?}", &item.path);
@@ -51,24 +52,23 @@ fn into_input_files(txn: &Transaction, items: &[WalkItem]) -> Result<(), DbError
     Ok(())
 }
 
-fn compute_revision_id(items: &[WalkItem]) -> String {
-    let mut hapas: Vec<u8> = Vec::new();
+fn compute_revision_id(items: &[InputFile]) -> String {
+    let mut ids: Vec<&str> = Vec::new();
 
     for item in items {
-        hapas = [&hapas, item.hapa.as_bytes()].concat();
+        ids.push(&item.id)
     }
-
-    // Supremely braindead hack to ensure reproducible revision IDs,
-    // even when hapas are shuffled due to parallel execution quirks.
-    hapas.sort();
-
-    let rev_id = format!("{:016x}", seahash::hash(&hapas));
+    
+    let mut hasher = seahash::SeaHasher::default();
+    ids.hash(&mut hasher);
+    let rev_id = format!("{:016x}", hasher.finish());
+    
     log::info!("Computed revision ID {}", rev_id);
 
     rev_id
 }
 
-fn into_revision_files(txn: &Transaction, items: &[WalkItem], rev_id: &str) -> Result<(), DbError> {
+fn into_revision_files(txn: &Transaction, items: &[InputFile], rev_id: &str) -> Result<(), DbError> {
     log::info!("Updating revision_files table...");
     
     let conn = &*txn;
@@ -77,14 +77,14 @@ fn into_revision_files(txn: &Transaction, items: &[WalkItem], rev_id: &str) -> R
         conn.execute("
             INSERT INTO revision_files
             VALUES(?1, ?2);
-        ", params![&rev_id, &item.hapa])?;
+        ", params![&rev_id, &item.id])?;
     }
 
     log::info!("Done updating revision_files table.");
     Ok(())
 }
 
-pub fn update_pages(pool: &DbPool, items: &[FmItem]) -> Result<(), DbError> {
+pub fn update_pages(pool: &DbPool, items: &[Page]) -> Result<(), DbError> {
     let mut conn = pool.get()?;
     let txn = conn.transaction()?;
     
@@ -94,32 +94,26 @@ pub fn update_pages(pool: &DbPool, items: &[FmItem]) -> Result<(), DbError> {
     Ok(())
 }
 
-fn into_pages(txn: &Transaction, items: &[FmItem]) -> Result<(), DbError> {
+fn into_pages(txn: &Transaction, items: &[Page]) -> Result<(), DbError> {
     log::info!("Updating pages table...");
 
     let conn = &*txn;
 
-    // TODO clean this cringe up
     for item in items {
         conn.execute("
             INSERT OR IGNORE INTO pages
-            VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13);
-        ", params! [
-            &item.hapa,
-            &item.offset,
-            &item.fm.title,
-            &item.fm.date,
-            &item.fm.description,
-            &item.fm.summary,
-            &serde_json::to_string(&item.fm.tags).unwrap_or_else(|_| "".to_string()),
-            &serde_json::to_string(&item.fm.series).unwrap_or_else(|_| "".to_string()),
-            &serde_json::to_string(&item.fm.aliases).unwrap_or_else(|_| "".to_string()),
-            &item.fm.build_cfg.template,
-            &item.fm.build_cfg.draft,
-            &item.fm.build_cfg.publish_date,
-            &item.fm.build_cfg.expire_date,
-        ])?;
+            VALUES(:id, :offset, :title, :date, :description, :summary, :tags, 
+            :series, :aliases, :template, :draft, :publish_date, :expire_date);
+        ", item.to_params()?.to_slice().as_slice())?;
     }
+
+    /*let mut stmt = conn.prepare("
+        SELECT * FROM pages
+    ")?;
+    let mut  result = serde_rusqlite::from_rows::<Page>(stmt.query([])?);
+    let row = result.next();
+
+    println!("{:#?}", row.unwrap());*/
 
     log::info!("Done updating pages table.");
     Ok(())
@@ -131,19 +125,22 @@ pub fn make_db_pool(path: &Path) -> Result<DbPool, DbError> {
         let mut tables = db.prepare(
             "
             CREATE TABLE IF NOT EXISTS input_files (
-                hapa TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY,
+                path TEXT,
+                hash TEXT,
                 extension TEXT,
                 contents TEXT,
-                UNIQUE(hapa)
+                inline INTEGER,
+                UNIQUE(id)
             );
 
             CREATE TABLE IF NOT EXISTS revision_files (
                 revision TEXT,
-                hapa TEXT,
+                id TEXT
             );
 
             CREATE TABLE IF NOT EXISTS pages (
-                hapa TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY,
                 offset INTEGER,
                 title TEXT,
                 date TEXT,
@@ -156,26 +153,27 @@ pub fn make_db_pool(path: &Path) -> Result<DbPool, DbError> {
                 draft INTEGER,
                 publish_date TEXT,
                 expire_date TEXT,
-                UNIQUE(hapa)
+                UNIQUE(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS routes (
+                route TEXT PRIMARY KEY,
+                id TEXT,
+                UNIQUE(route)
             );
 
             CREATE TABLE IF NOT EXISTS page_aliases (
-                hapa TEXT PRIMARY KEY,
-                route TEXT,
-                UNIQUE(hapa)
+                route TEXT PRIMARY KEY,
+                id TEXT,
+                UNIQUE(route)
             );
 
             CREATE TABLE IF NOT EXISTS tags (
                 tag TEXT,
                 UNIQUE(tag)
             );
-
-            CREATE TABLE IF NOT EXISTS routes (
-                route TEXT PRIMARY KEY,
-                hapa TEXT,
-                UNIQUE(route)
-            );
             "
+            // TODO - we need a "state" table that holds data like the current revision to serve in a single row
         )?;
         tables.execute([])?;
         Ok(())
