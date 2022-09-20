@@ -3,6 +3,7 @@ mod dbdata;
 mod error;
 mod walking;
 mod parse;
+mod route;
 
 use error::*;
 use std::path::Path;
@@ -23,7 +24,8 @@ fn main() {
 
     let items = parse::parse_markdown(&db_pool, &rev_id).unwrap();
     db::update_pages(&db_pool, &items).unwrap();
-
+    route::create_static_asset_routes(&db_pool.get().unwrap(), &rev_id);
+    route::create_page_routes(&db_pool.get().unwrap(), &rev_id);
     // Parse markdown for frontmatter and content offset [DONE]
     // Update pages table with above [DONE]
     // Compute routes 

@@ -38,7 +38,7 @@ fn into_input_files(txn: &Transaction, items: &[InputFile]) -> Result<(), DbErro
     for item in items {
         conn.execute("
             INSERT OR IGNORE INTO input_files
-            VALUES(:id, :hash, :path, :extension, :contents, :inline);
+            VALUES(:id, :path, :hash, :extension, :contents, :inline);
         ", item.to_params()?.to_slice().as_slice())?;
 
         if !item.inline {
@@ -102,15 +102,16 @@ fn into_pages(txn: &Transaction, items: &[Page]) -> Result<(), DbError> {
     for item in items {
         conn.execute("
             INSERT OR IGNORE INTO pages
-            VALUES(:id, :offset, :title, :date, :description, :summary, :tags, 
+            VALUES(:id, :route, :offset, :title, :date, :description, :summary, :tags, 
             :series, :aliases, :template, :draft, :publish_date, :expire_date);
         ", item.to_params()?.to_slice().as_slice())?;
     }
 
     /*let mut stmt = conn.prepare("
-        SELECT * FROM pages
+        SELECT * FROM routes
+        WHERE kind = 3
     ")?;
-    let mut  result = serde_rusqlite::from_rows::<Page>(stmt.query([])?);
+    let mut result = serde_rusqlite::from_rows::<Route>(stmt.query([])?);
     let row = result.next();
 
     println!("{:#?}", row.unwrap());*/
@@ -137,10 +138,12 @@ pub fn make_db_pool(path: &Path) -> Result<DbPool, DbError> {
             CREATE TABLE IF NOT EXISTS revision_files (
                 revision TEXT,
                 id TEXT
+                UNIQUE(revision, id)
             );
 
             CREATE TABLE IF NOT EXISTS pages (
                 id TEXT PRIMARY KEY,
+                route TEXT,
                 offset INTEGER,
                 title TEXT,
                 date TEXT,
@@ -153,24 +156,49 @@ pub fn make_db_pool(path: &Path) -> Result<DbPool, DbError> {
                 draft INTEGER,
                 publish_date TEXT,
                 expire_date TEXT,
-                UNIQUE(id)
+                UNIQUE(
+                    id,
+                    route,
+                    offset,
+                    title,
+                    date,
+                    description,
+                    summary,
+                    tags,
+                    series,
+                    aliases,
+                    template,
+                    draft,
+                    publish_date,
+                    expire_date
+                )
             );
 
             CREATE TABLE IF NOT EXISTS routes (
-                route TEXT PRIMARY KEY,
+                revision TEXT,
                 id TEXT,
-                UNIQUE(route)
+                path TEXT,
+                parent_path TEXT,
+                kind INTEGER,
+                template TEXT
+                UNIQUE(
+                    revision,
+                    id,
+                    path,
+                    parent_path,
+                    kind,
+                    template
+                )
             );
 
             CREATE TABLE IF NOT EXISTS page_aliases (
-                route TEXT PRIMARY KEY,
+                route TEXT,
                 id TEXT,
-                UNIQUE(route)
+                UNIQUE(route, id)
             );
 
-            CREATE TABLE IF NOT EXISTS tags (
-                tag TEXT,
-                UNIQUE(tag)
+            CREATE TABLE IF NOT EXISTS page_tags (
+                tag TEXT UNIQUE,
             );
             "
             // TODO - we need a "state" table that holds data like the current revision to serve in a single row

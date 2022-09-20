@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{*, db::*, dbdata::*};
 use lazy_static::lazy_static;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
@@ -7,13 +9,16 @@ use rusqlite::params;
 
 lazy_static! {
     static ref TOML_FRONTMATTER: regex::Regex = regex::Regex::new(r#"(\+\+\+)(.|\n)*(\+\+\+)"#).unwrap();
+    static ref EXT_REGEX: regex::Regex = regex::Regex::new("[.][^.]+$").unwrap();
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TomlPage {
-    #[serde(default)]
+    #[serde(skip)]
     pub id: String,
-    #[serde(default)]
+    #[serde(skip)]
+    pub path: String,
+    #[serde(skip)]
     pub offset: i64,
     #[serde(default)]
     pub title: String,
@@ -44,6 +49,7 @@ impl Into<Page> for TomlPage {
     fn into(self) -> Page {
         Page {
             id: self.id,
+            route: self.path,
             offset: self.offset,
             title: self.title,
             date: self.date,
@@ -63,6 +69,7 @@ impl Into<Page> for TomlPage {
 #[derive(Deserialize, Debug)]
 struct Row {
     pub id: String,
+    pub path: String,
     pub contents: String,
 }
 
@@ -81,7 +88,7 @@ pub fn parse_markdown(pool: &DbPool, rev_id: &str) -> Result<Vec<Page>, DbError>
 fn query_new_pages(pool: &DbPool, rev_id: &str) -> Result<Vec<Row>, DbError> {
     let conn = pool.get()?;
     let mut stmt = conn.prepare("
-        SELECT input_files.id, input_files.contents
+        SELECT id, path, contents
         FROM input_files
         WHERE EXISTS (
                 SELECT 1
@@ -121,6 +128,7 @@ fn extract_frontmatter(item: &Row) -> Option<Page> {
             match fm {
                 Ok(mut fm) => {
                     fm.id = item.id.clone();
+                    fm.route = to_route(&item.path).to_string();
                     fm.offset = fm_terminus as i64;
                     return Some(fm);
                 }
@@ -139,4 +147,13 @@ fn parse_frontmatter(raw: &str) -> Result<Page, toml::de::Error> {
     
     log::trace!("Parsed frontmatter for page \"{}\"", fm.title);
     Ok(fm.into())
+}
+
+fn to_route(path: &str) -> Cow<str> {
+    let route_path = path
+        .trim_start_matches("content")
+        .trim_end_matches("/index.md")
+        .trim_start_matches("/");
+    
+    EXT_REGEX.replace(route_path, "")
 }

@@ -12,18 +12,19 @@ log = "0.4"
 rayon = "1.5"
 flume = "0.10.14"
 # File crawling
-memmap2 = "0.5.7"
-seahash = "4.1.0"
+seahash = "4.1"
 walkdir = "2"
 # Database
-rusqlite = { version = "0.28.0", features = ["bundled"] }
+rusqlite = { version = "0.28", features = ["bundled"] }
+r2d2_sqlite = "0.21"
+r2d2 = "0.8.10"
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
-serde_rusqlite = "0.31.0"
-r2d2_sqlite = "0.21.0"
-r2d2 = "0.8.10"
+serde_repr = "0.1"
+serde_rusqlite = "0.31"
 # Other
-regex = "1.6.0"
-lazy_static = "1.4.0"
-toml = "0.5.0"
-chrono = "0.4"
+regex = "1.6"
+lazy_static = "1.4"
+toml = "0.5"
+num_enum = "0.5"

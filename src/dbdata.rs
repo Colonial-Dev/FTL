@@ -131,6 +131,7 @@ impl RevisionFile {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Page {
     pub id: String,
+    pub route: String,
     pub offset: i64,
     pub title: String,
     pub date: String,
@@ -209,5 +210,48 @@ impl Page {
         
 
         Ok(results)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Route {
+    pub revision: String,
+    pub id: String,
+    pub path: String,
+    pub parent_path: Option<String>,
+    pub kind: crate::route::RouteKind,
+    pub template: Option<String>
+}
+
+impl Route {
+    pub fn prepare_insert(conn: &DbConn) -> Result<impl FnMut(&InputRoute) -> Result<(), DbError> + '_, DbError> {
+        let mut stmt = conn.prepare("
+            INSERT OR IGNORE INTO routes
+            VALUES(:revision, :id, :path, :parent_path, :kind, :template)
+        ")?;
+
+        let closure = move |input: &InputRoute| {
+            let _ = stmt.insert(input.to_params()?.to_slice().as_slice())?;
+            Ok(())
+        };
+
+        Ok(closure)
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct InputRoute<'a> {
+    pub revision: &'a str,
+    pub id: &'a str,
+    pub path: &'a str,
+    pub parent_path: Option<&'a str>,
+    pub kind: crate::route::RouteKind,
+    pub template: Option<&'a str>
+}
+
+impl<'a> InputRoute<'a> {
+    pub fn to_params(&self) -> Result<NamedParamSlice, DbError> {
+        let params = to_params_named(&self).unwrap();
+        Ok(params)
     }
 }
