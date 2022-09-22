@@ -33,6 +33,8 @@ impl ErrorChannel {
     }
 }
 
+pub use crate::db::error::*;
+
 #[derive(Debug)]
 pub enum BuildError {
     Walk(WalkError),
@@ -63,38 +65,6 @@ impl From<ParseError> for BuildError {
 pub enum WalkError {
     WalkDir(walkdir::Error),
     Io(std::io::Error),
-}
-
-#[derive(Debug)]
-pub enum DbError {
-    Pool(r2d2::Error),
-    Db(rusqlite::Error),
-    Io(std::io::Error),
-    Serde(serde_rusqlite::Error),
-}
-
-impl From<r2d2::Error> for DbError {
-    fn from(item: r2d2::Error) -> Self {
-        DbError::Pool(item)
-    }
-}
-
-impl From<rusqlite::Error> for DbError {
-    fn from(item: rusqlite::Error) -> Self {
-        DbError::Db(item)
-    }
-}
-
-impl From<std::io::Error> for DbError {
-    fn from(item: std::io::Error) -> Self {
-        DbError::Io(item)
-    }
-}
-
-impl From<serde_rusqlite::Error> for DbError {
-    fn from(item: serde_rusqlite::Error) -> Self {
-        DbError::Serde(item)
-    }
 }
 
 #[derive(Debug)]

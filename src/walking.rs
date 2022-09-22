@@ -1,13 +1,15 @@
-use crate::{error::*, dbdata::InputFile};
 use rayon::prelude::*;
+use crate::db::data::{RevisionFile, RevisionFileIn};
+use crate::{error::*, db::data::InputFile, db::DbConn};
 use walkdir::{DirEntry, WalkDir};
+use std::path::Path;
+use std::hash::{Hash, Hasher};
 
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk_src() -> Vec<InputFile>  {
-
+pub fn walk_src(conn: &mut DbConn) -> Result<String, DbError>  {
     log::info!("Starting walk...");
 
-    let mut items: Vec<InputFile> = 
+    let mut files: Vec<InputFile> = 
     WalkDir::new("src")
         .into_iter()
         .par_bridge()
@@ -16,13 +18,22 @@ pub fn walk_src() -> Vec<InputFile>  {
         .filter_map(process_entry)
         .collect();
 
-    log::info!("Walking done, found {} items.", items.len());
+    log::info!("Walking done, found {} items.", files.len());
 
     // Stupid hack to ensure consistent ordering after parallel computation.
     // This means we can generate consistent revision IDs down the line.
     // (Sorting is done by comparing on the item's id value.)
-    items.sort_unstable();
-    items
+    files.sort_unstable();
+
+    // We use a transaction to accelerate database write performance.
+    let txn = conn.transaction()?;
+
+    update_input_files(&*txn, &files)?;
+    let rev_id = compute_revision_id(&files);
+    update_revision_files(&*txn, &files, &rev_id)?;
+
+    txn.commit()?;
+    Ok(rev_id)
 }
 
 /// Drains all non-`Ok(...)` values from the walk output.
@@ -52,7 +63,6 @@ fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
 }
 
 /// Reads and hashes the entries that remain after `drain_entries` and `filter_metadata`.
-/// Results are exfiltrated through the given channels.
 fn process_entry(entry: DirEntry) -> Option<InputFile> {
     log::trace!("Walk found item {:#?}", entry.path());
 
@@ -73,7 +83,12 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
             // shuffle an entire MP4 around in memory for no reason.
             if !inline { contents.drain(..); }
 
-            let contents = String::from_utf8_lossy(&contents).to_string();
+            let str_repr = String::from_utf8_lossy(&contents).to_string();
+
+            let contents: Option<String> = match str_repr.len() {
+                0 => None,
+                _ => Some(str_repr)
+            };
 
             let item = InputFile {
                 id,
@@ -112,9 +127,65 @@ fn entry_is_inline(entry: &DirEntry) -> bool {
     }
 }
 
-fn entry_extension(entry: &DirEntry) -> String {
+/// Gets the extension of the entry, if any.
+fn entry_extension(entry: &DirEntry) -> Option<String> {
     match entry.path().extension() {
-        Some(ext) => ext.to_str().unwrap_or("").to_string(),
-        None => String::from("")
+        Some(ext) => {
+            let ext = ext.to_str();
+            match ext {
+                Some(ext) => Some(ext.to_string()),
+                None => None
+            }
+        }
+        None => None
     }
+}
+
+fn update_input_files(conn: &DbConn, files: &[InputFile]) -> Result<(), DbError> {
+    log::info!("Updating input_files table...");
+    let mut insert_file = InputFile::prepare_insert(conn)?;
+    
+    for file in files {
+        insert_file(&file)?;
+
+        if !file.inline {
+            log::trace!("Caching non-inline file {:#?}", &file.path);
+            let destination = format!(".ftl/cache/{}", &file.hash);
+            std::fs::copy(&file.path, Path::new(&destination))?;
+        }
+    }
+
+    log::info!("Done updating input_files table.");
+    Ok(())
+}
+
+fn update_revision_files(conn: &DbConn, files: &[InputFile], rev_id: &str) -> Result<(), DbError> {
+    log::info!("Updating revision_files table...");
+    let mut insert_file = RevisionFile::prepare_insert(conn)?;
+    
+    for file in files {
+        insert_file(&RevisionFileIn{
+            revision: rev_id,
+            id: &file.id
+        })?;
+    }
+
+    log::info!("Done updating revision_files table.");
+    Ok(())
+}
+
+fn compute_revision_id(files: &[InputFile]) -> String {
+    let mut ids: Vec<&str> = Vec::new();
+
+    for file in files {
+        ids.push(&file.id)
+    }
+    
+    let mut hasher = seahash::SeaHasher::default();
+    ids.hash(&mut hasher);
+    let rev_id = format!("{:016x}", hasher.finish());
+    
+    log::info!("Computed revision ID {}", rev_id);
+
+    rev_id
 }

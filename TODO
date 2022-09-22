@@ -1,0 +1,17 @@
+[Milestones_Generation]
+- Template parsing
+- Stylesheet compilation
+- HTML rendering and post-processing
+
+[Milestones_UI]
+- Make a proper CLI with clap
+    - Commands to build, serve etc
+    - Initialization and cleanup commands
+- Configuration via TOML file
+
+[Milestones_Serve]
+- Something something tokio/axum???
+
+[Other]
+- Rethink frontmatter extraction approach. Regex might be too heavyweight.
+- Memmap input files? Unsure just how much this will help with performance.

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use rusqlite::params;
 use serde_repr::{Serialize_repr, Deserialize_repr};
 use serde_rusqlite::{from_rows};
@@ -7,7 +5,7 @@ use num_enum::TryFromPrimitive;
 use serde::Deserialize;
 
 use crate::db::DbConn;
-use crate::dbdata::*;
+use crate::db::data::{Page, Route, RouteIn};
 use crate::error::*;
 
 #[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive)]
@@ -46,13 +44,12 @@ pub fn create_static_asset_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbE
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
         let row = row?;
-        insert_route(&InputRoute {
+        insert_route(&RouteIn {
             revision: &rev_id,
             id: &row.id,
             path: &row.path.trim_start_matches("src/static/"),
             parent_path: None,
             kind: RouteKind::StaticAsset,
-            template: None
         })?;
     }
 
@@ -67,13 +64,12 @@ pub fn create_page_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
 
     let pages = Page::for_revision(&conn, rev_id)?;
     for page in &pages {
-        insert_route(&InputRoute {
+        insert_route(&RouteIn {
             revision: &rev_id,
             id: &page.id,
             path: &page.route,
             parent_path: Some(&to_parent_path(&page.route)),
             kind: RouteKind::Page,
-            template: Some(&page.template)
         })?;
     }
 
@@ -104,13 +100,12 @@ pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
         let row = row?;
-        insert_route(&InputRoute{
+        insert_route(&RouteIn{
             revision: &rev_id,
             id: &row.id,
             path: &row.path,
             parent_path: None,
             kind: RouteKind::Redirect,
-            template: None
         })?;
     }
 
@@ -118,8 +113,8 @@ pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-fn to_parent_path(route_path: &str) -> Cow<str> {
+fn to_parent_path(route_path: &str) -> &str {
     let (prefix, _) = route_path.split_once("/").unwrap_or_else(|| ("", ""));
 
-    Cow::from(prefix)
+    prefix
 }

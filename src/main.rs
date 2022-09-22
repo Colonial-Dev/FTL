@@ -1,39 +1,28 @@
+// Masochism
+#![warn(clippy::pedantic, clippy::perf, clippy::style, clippy::cargo, warnings)]
+
 mod db;
-mod dbdata;
 mod error;
 mod walking;
 mod parse;
 mod route;
 
 use error::*;
-use std::path::Path;
 
-fn initialize() -> (db::DbPool) {
+fn initialize() -> db::DbPool {
     pretty_env_logger::init();
 
-    let db_pool = db::make_db_pool(Path::new(".ftl/content.db")).unwrap();
+    let db_pool = db::make_db_pool(std::path::Path::new(".ftl/content.db")).unwrap();
 
-    (db_pool)
+    db_pool
 }
 
 fn main() {
-    let (db_pool) = initialize();
-    let items = walking::walk_src();
-    db::update_input_files(&db_pool, &items).unwrap();
-    let rev_id = db::update_revision_files(&db_pool, &items).unwrap();
+    let db_pool = initialize();
+    let conn = &mut *db_pool.get().unwrap();
 
-    let items = parse::parse_markdown(&db_pool, &rev_id).unwrap();
-    db::update_pages(&db_pool, &items).unwrap();
-    route::create_static_asset_routes(&db_pool.get().unwrap(), &rev_id);
-    route::create_page_routes(&db_pool.get().unwrap(), &rev_id);
-    // Parse markdown for frontmatter and content offset [DONE]
-    // Update pages table with above [DONE]
-    // Compute routes 
-    // Parse templates
-    // Compile stylesheets
-    // Render markdown to HTML
-       // - Evaluate shortcodes
-       // - Render HTML and evalaute templates
-       // - Post-process HTML (cache-busting etcetera)
-    // Done?
+    let rev_id = walking::walk_src(conn).unwrap();
+    parse::parse_markdown(conn, &rev_id).unwrap();
+    route::create_static_asset_routes(conn, &rev_id).unwrap();
+    route::create_page_routes(conn, &rev_id).unwrap();
 }
