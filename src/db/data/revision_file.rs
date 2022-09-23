@@ -6,21 +6,21 @@ pub use super::dependencies::*;
 pub struct RevisionFile {
     /// The revision ID associated with the file.
     revision: String,
-    /// The file's ID value. See `id` in [InputFile][super::input_file::InputFile].
+    /// The file's ID value. See `id` in [`InputFile`][super::input_file::InputFile].
     id: String,
 }
 
 // Database write methods
 impl RevisionFile {
-    /// Serializes a [RevisionFile] instance to a [ParameterSlice] suitable for consumption by [rusqlite] queries.
-    /// Returns a [DbError::Serde] if serialization fails.
+    /// Serializes a [`RevisionFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
+    /// Returns a [`DbError::Serde`] if serialization fails.
     pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
         let params = to_params_named(&self)?;
         Ok(params)
     }
 
     /// Prepares an SQL statement to insert a new row into the `revision_files` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &DbConn) -> Result<impl FnMut(&RevisionFileIn) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RevisionFileIn) -> Result<(), DbError> + '_, DbError> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO revision_files
             VALUES(:revision, :id);
@@ -38,13 +38,13 @@ impl RevisionFile {
 // Database read methods
 impl RevisionFile {
     /// Attempts to query the `revision_files` table for all rows corresponding to the given file ID,
-    /// then tries to deserialize the results into a [Vec<RevisionFile>].
+    /// then tries to deserialize the results into a [`Vec<RevisionFile>`].
     /// 
-    /// Returns a [DbError] if:
+    /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_id(conn: &DbConn, id: &str) -> Result<Vec<RevisionFile>, DbError> {
+    pub fn for_id(conn: &Connection, id: &str) -> Result<Vec<RevisionFile>, DbError> {
         let mut stmt = conn.prepare("
             SELECT * FROM revision_files
             WHERE id = ?1;
@@ -62,13 +62,13 @@ impl RevisionFile {
     }
 
     /// Attempts to query the `revision_files` table for all rows corresponding to the given revision ID,
-    /// then tries to deserialize the results into a [Vec<RevisionFile>].
+    /// then tries to deserialize the results into a [`Vec<RevisionFile>`].
     /// 
-    /// Returns a [DbError] if:
+    /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &DbConn, rev_id: &str) -> Result<Vec<RevisionFile>, DbError> {
+    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<RevisionFile>, DbError> {
         let mut stmt = conn.prepare("
             SELECT * FROM revision_files
             WHERE revision = ?1;
@@ -93,8 +93,8 @@ pub struct RevisionFileIn<'a> {
 }
 
 impl<'a> RevisionFileIn<'a> {
-    /// Serializes a [RevisionFileIn] instance to a [ParameterSlice] suitable for consumption by [rusqlite] queries.
-    /// Returns a [DbError::Serde] if serialization fails.
+    /// Serializes a [`RevisionFileIn`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
+    /// Returns a [`DbError::Serde`] if serialization fails.
     pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
         let params = to_params_named(&self)?;
         Ok(params)

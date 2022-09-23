@@ -3,6 +3,7 @@ name = "ftl"
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0"
+description = "An almost-static site generator."
 
 [dependencies]
 # Logging
@@ -23,9 +24,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
 serde_rusqlite = "0.31"
-# Other
+# Rendering/Parsing
 regex = "1.6"
-lazy_static = "1.4"
 toml = "0.5"
+liquid = "0.26.0"
+# Other
+lazy_static = "1.4"
 num_enum = "0.5"
 time = { version = "0.3", features = ["serde", "parsing"] }

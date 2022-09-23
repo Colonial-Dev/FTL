@@ -33,7 +33,7 @@ impl ErrorChannel {
     }
 }
 
-pub use crate::db::error::*;
+pub use crate::db::DbError;
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -67,13 +67,4 @@ pub enum WalkError {
     Io(std::io::Error),
 }
 
-#[derive(Debug)]
-pub enum ParseError {
-    Toml(toml::de::Error)
-}
-
-impl From<toml::de::Error> for ParseError {
-    fn from(item: toml::de::Error) -> Self {
-        ParseError::Toml(item)
-    }
-}
+pub use crate::parse::ParseError;

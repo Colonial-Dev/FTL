@@ -7,12 +7,10 @@ mod walking;
 mod parse;
 mod route;
 
-use error::*;
-
 fn initialize() -> db::DbPool {
     pretty_env_logger::init();
-
-    let db_pool = db::make_db_pool(std::path::Path::new(".ftl/content.db")).unwrap();
+    
+    let db_pool = db::make_pool(std::path::Path::new(".ftl/content.db")).unwrap();
 
     db_pool
 }

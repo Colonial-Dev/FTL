@@ -1,6 +1,6 @@
-use crate::{*, db::*, db::data::{Page, PageIn}};
+use crate::{db::*, db::data::{Page, PageIn}};
 use lazy_static::lazy_static;
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 use regex::Captures;
 use serde::{Deserialize, Serialize};
 use serde_rusqlite::from_rows;
@@ -40,7 +40,7 @@ struct Row {
     pub contents: String,
 }
 
-pub fn parse_markdown<'a>(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
+pub fn parse_markdown(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     log::info!("Starting frontmatter parsing for revision {}...", rev_id);
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
@@ -55,9 +55,8 @@ pub fn parse_markdown<'a>(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
             let page = PageIn::from(&x);
             insert_page(&page)
         })
-        .map(|x| match x {
-            Err(e) => log::error!("Error when inserting Page: {:#?}", e),
-            _ => ()
+        .map(|x| if let Err(e) = x {
+            log::error!("Error when inserting Page: {:#?}", e);
         })
         .count();
 
@@ -65,7 +64,7 @@ pub fn parse_markdown<'a>(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-fn query_new_pages(conn: &DbConn, rev_id: &str) -> Result<Vec<Row>, DbError> {
+fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError> {
     let mut stmt = conn.prepare("
         SELECT id, path, contents
         FROM input_files
@@ -82,9 +81,9 @@ fn query_new_pages(conn: &DbConn, rev_id: &str) -> Result<Vec<Row>, DbError> {
         AND input_files.extension = 'md';
     ")?;
 
-    let mut result = from_rows::<Row>(stmt.query(params![&rev_id])?);
+    let result = from_rows::<Row>(stmt.query(params![&rev_id])?);
     let mut rows  = Vec::new();
-    while let Some(row) = result.next() {
+    for row in result {
         rows.push(row?);
     }
 
@@ -116,7 +115,7 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
     match toml::from_str::<TomlFrontmatter>(&raw) {
         Ok(fm) => {
             log::trace!("Parsed frontmatter for page \"{}\"", fm.title);
-            let page = build_page(
+            let page = to_page(
                 item.id.clone(),
                 to_route(&item.path),
                 capture.end() as i64,
@@ -136,12 +135,12 @@ fn to_route(path: &str) -> String {
         .trim_start_matches("src/")
         .trim_start_matches("content")
         .trim_end_matches("/index.md")
-        .trim_start_matches("/");
+        .trim_start_matches('/');
     
     EXT_REGEX.replace(route_path, "").to_string()
 }
 
-fn build_page(id: String, route: String, offset: i64, fm: TomlFrontmatter) -> Page {
+fn to_page(id: String, route: String, offset: i64, fm: TomlFrontmatter) -> Page {
     Page {
         id,
         route,

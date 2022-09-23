@@ -45,15 +45,15 @@ impl PartialEq for InputFile {
 
 // Database write methods
 impl InputFile {
-    /// Serializes an [InputFile] instance to a [ParameterSlice] suitable for consumption by [rusqlite] queries.
-    /// Returns a [DbError::Serde] if serialization fails.
+    /// Serializes an [`InputFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
+    /// Returns a [`DbError::Serde`] if serialization fails.
     pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
         let params = to_params_named(&self)?;
         Ok(params)
     }
 
     /// Prepares an SQL statement to insert a new row into the `input_files` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &DbConn) -> Result<impl FnMut(&InputFile) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&InputFile) -> Result<(), DbError> + '_, DbError> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO input_files
             VALUES(:id, :path, :hash, :extension, :contents, :inline);
@@ -71,12 +71,12 @@ impl InputFile {
 // Database read methods
 impl InputFile {
     /// Attempts to query the `input_files` table for a row with the given `id` value,
-    /// then tries to deserializes the result into an [InputFile] instance.
+    /// then tries to deserializes the result into an [`InputFile`] instance.
     /// 
-    /// Returns a [DbError] if:
+    /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// - Deserialization fails because the row does not exist or is malformed.
-    pub fn from_id(conn: &DbConn, id: &str) -> Result<Self, DbError> {
+    pub fn from_id(conn: &Connection, id: &str) -> Result<Self, DbError> {
         let mut stmt = conn.prepare("
             SELECT * FROM input_files
             WHERE id = ?1;
@@ -94,13 +94,13 @@ impl InputFile {
     }
 
     /// Attempts to query the `input_files` table for all rows corresponding to the given revision ID,
-    /// then tries to deserialize the results into a [Vec<InputFile>].
+    /// then tries to deserialize the results into a [`Vec<InputFile>`].
     /// 
-    /// Returns a [DbError] if:
+    /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &DbConn, rev_id: &str) -> Result<Vec<InputFile>, DbError> {
+    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<InputFile>, DbError> {
         let mut stmt = conn.prepare("
             SELECT * FROM input_files
             WHERE EXISTS (

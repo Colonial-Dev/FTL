@@ -4,7 +4,7 @@ use serde_rusqlite::{from_rows};
 use num_enum::TryFromPrimitive;
 use serde::Deserialize;
 
-use crate::db::DbConn;
+use crate::db::Connection;
 use crate::db::data::{Page, Route, RouteIn};
 use crate::error::*;
 
@@ -19,16 +19,16 @@ pub enum RouteKind {
     Redirect = 5,
 }
 
-pub fn create_static_asset_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
-    log::info!("Computing static asset routes...");
-    
+pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     #[derive(Deserialize, Debug)]
     struct Row {
         id: String,
         path: String,
     }
 
-    let mut insert_route = Route::prepare_insert(&conn)?;
+    log::info!("Computing static asset routes...");
+
+    let mut insert_route = Route::prepare_insert(conn)?;
 
     let mut stmt = conn.prepare("
         SELECT id, path FROM input_files
@@ -45,9 +45,9 @@ pub fn create_static_asset_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbE
     for row in rows {
         let row = row?;
         insert_route(&RouteIn {
-            revision: &rev_id,
+            revision: rev_id,
             id: &row.id,
-            path: &row.path.trim_start_matches("src/static/"),
+            path: row.path.trim_start_matches("src/static/"),
             parent_path: None,
             kind: RouteKind::StaticAsset,
         })?;
@@ -57,18 +57,18 @@ pub fn create_static_asset_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbE
     Ok(())
 }
 
-pub fn create_page_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
+pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     log::info!("Computing page routes...");
 
-    let mut insert_route = Route::prepare_insert(&conn)?;
+    let mut insert_route = Route::prepare_insert(conn)?;
 
-    let pages = Page::for_revision(&conn, rev_id)?;
+    let pages = Page::for_revision(conn, rev_id)?;
     for page in &pages {
         insert_route(&RouteIn {
-            revision: &rev_id,
+            revision: rev_id,
             id: &page.id,
             path: &page.route,
-            parent_path: Some(&to_parent_path(&page.route)),
+            parent_path: Some(to_parent_path(&page.route)),
             kind: RouteKind::Page,
         })?;
     }
@@ -77,7 +77,7 @@ pub fn create_page_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
+pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     #[derive(Deserialize)]
     struct Row {
         id: String,
@@ -86,7 +86,7 @@ pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     
     log::info!("Computing alias routes...");
 
-    let mut insert_route = Route::prepare_insert(&conn)?;
+    let mut insert_route = Route::prepare_insert(conn)?;
 
     let mut stmt = conn.prepare("
         SELECT * FROM page_aliases
@@ -101,7 +101,7 @@ pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
     for row in rows {
         let row = row?;
         insert_route(&RouteIn{
-            revision: &rev_id,
+            revision: rev_id,
             id: &row.id,
             path: &row.path,
             parent_path: None,
@@ -114,7 +114,7 @@ pub fn create_alias_routes(conn: &DbConn, rev_id: &str) -> Result<(), DbError> {
 }
 
 fn to_parent_path(route_path: &str) -> &str {
-    let (prefix, _) = route_path.split_once("/").unwrap_or_else(|| ("", ""));
+    let (prefix, _) = route_path.split_once('/').unwrap_or(("", ""));
 
     prefix
 }

@@ -47,7 +47,7 @@ pub struct Page {
 
 impl Page {
     /// Prepares an SQL statement to insert a new row into the `pages` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &DbConn) -> Result<impl FnMut(&PageIn) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&PageIn) -> Result<(), DbError> + '_, DbError> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO pages
             VALUES(:id, :route, :offset, :title, :date, :publish_date, 
@@ -64,13 +64,13 @@ impl Page {
     }
 
     /// Attempts to query the `pages` table for all rows corresponding to the given revision ID,
-    /// then tries to deserialize the results into a [Vec<Page>].
+    /// then tries to deserialize the results into a [`Vec<Page>`].
     /// 
-    /// Returns a [DbError] if:
+    /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &DbConn, rev_id: &str) -> Result<Vec<Page>, DbError> {
+    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<Page>, DbError> {
         let mut stmt = conn.prepare("
             SELECT * FROM pages
             WHERE EXISTS (
@@ -94,9 +94,9 @@ impl Page {
     }
 }
 
-/// Representation of [Page] for database insertion. Reference-and-[Copy] where possible.
+/// Representation of [`Page`] for database insertion. Reference-and-[`Copy`] where possible.
 /// 
-/// Certain information ([OffsetDateTime]s and [Vec<String>]s) is mutated into a database-friendly format, requiring allocations.
+/// Certain information ([`OffsetDateTime`]s and [`Vec<String>`]s) is mutated into a database-friendly format, requiring allocations.
 #[derive(Serialize, Debug)]
 pub struct PageIn<'a> {
     pub id: &'a str,
@@ -143,8 +143,8 @@ impl<'a> From<&'a Page> for PageIn<'a> {
     }
 }
 
-/// Deserialization override for [OffsetDateTime] values being retrieved from the database.
-/// Parses the in-database `TEXT` representation back into the original [OffsetDateTime].
+/// Deserialization override for [`OffsetDateTime`] values being retrieved from the database.
+/// Parses the in-database `TEXT` representation back into the original [`OffsetDateTime`].
 fn wrap_datetime<'de, D>(d: D) -> Result<Option<OffsetDateTime>, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -164,12 +164,9 @@ where
     Ok(dt)
 }
 
-/// Converts potential [OffsetDateTime] values into [String]s (for storage in the database as `TEXT`) where applicable.
+/// Converts potential [`OffsetDateTime`] values into [`String`]s (for storage in the database as `TEXT`) where applicable.
 fn unwrap_datetime(value: &Option<OffsetDateTime>) -> Option<String> {
-    match value {
-        Some(dt) => Some(dt.to_string()),
-        None => None
-    }
+    value.map(|dt| dt.to_string())
 }
 
 /// Serializes a slice into JSON for storage in the database as `TEXT`.
@@ -183,8 +180,8 @@ fn serialize_slice<T>(input: &[T]) -> String where T: Serialize {
     })
 }
 
-/// Deserialization override for [Vec]/slice values being retrieved from the database.
-/// Parses the in-database JSON `TEXT` representation back into the original [Vec].
+/// Deserialization override for [`Vec`]/slice values being retrieved from the database.
+/// Parses the in-database JSON `TEXT` representation back into the original [`Vec`].
 fn deserialize_vec<'de, T,  D>(d: D) -> Result<Vec<T>, D::Error>
 where
 	D: serde::Deserializer<'de>,

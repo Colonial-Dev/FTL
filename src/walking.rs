@@ -1,16 +1,18 @@
 use rayon::prelude::*;
 use crate::db::data::{RevisionFile, RevisionFileIn};
-use crate::{error::*, db::data::InputFile, db::DbConn};
+use crate::{error::*, db::data::InputFile, db::Connection};
 use walkdir::{DirEntry, WalkDir};
 use std::path::Path;
 use std::hash::{Hash, Hasher};
 
+const SITE_SRC_DIRECTORY: &str = "test_site/src";
+
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk_src(conn: &mut DbConn) -> Result<String, DbError>  {
+pub fn walk_src(conn: &mut Connection) -> Result<String, DbError>  {
     log::info!("Starting walk...");
 
     let mut files: Vec<InputFile> = 
-    WalkDir::new("src")
+    WalkDir::new(SITE_SRC_DIRECTORY)
         .into_iter()
         .par_bridge()
         .filter_map(drain_entries)
@@ -51,9 +53,9 @@ fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
 /// The files that remain are returned.
 fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
     match entry.metadata() {
-        Ok(md) => match md.is_dir() {
-            true => None,
-            false => Some(entry),
+        Ok(md) => {
+            if md.is_dir() { None }
+            else { Some(entry) }
         },
         Err(error) => {
             ERROR_CHANNEL.sink_error(WalkError::WalkDir(error));
@@ -74,7 +76,7 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
             let extension = entry_extension(&entry);
             let id = {
                 let joined = format!("{}{}", &hash, &entry.path().to_string_lossy());
-                self::hash(&joined.as_bytes())
+                self::hash(joined.as_bytes())
             };
             let path = entry.into_path();
             
@@ -92,8 +94,8 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
 
             let item = InputFile {
                 id,
-                path,
                 hash,
+                path,
                 extension,
                 contents,
                 inline
@@ -110,7 +112,7 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
 
 /// Hash the provided bytestream using `seahash` and `format!` it as a hexadecimal string.
 fn hash(bytes: &[u8]) -> String {
-    format!("{:016x}", seahash::hash(&bytes))
+    format!("{:016x}", seahash::hash(bytes))
 }
 
 /// Determines whether or not the given entry is considered "inline."
@@ -132,21 +134,18 @@ fn entry_extension(entry: &DirEntry) -> Option<String> {
     match entry.path().extension() {
         Some(ext) => {
             let ext = ext.to_str();
-            match ext {
-                Some(ext) => Some(ext.to_string()),
-                None => None
-            }
+            ext.map(|ext| ext.to_string())
         }
         None => None
     }
 }
 
-fn update_input_files(conn: &DbConn, files: &[InputFile]) -> Result<(), DbError> {
+fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<(), DbError> {
     log::info!("Updating input_files table...");
     let mut insert_file = InputFile::prepare_insert(conn)?;
     
     for file in files {
-        insert_file(&file)?;
+        insert_file(file)?;
 
         if !file.inline {
             log::trace!("Caching non-inline file {:#?}", &file.path);
@@ -159,7 +158,7 @@ fn update_input_files(conn: &DbConn, files: &[InputFile]) -> Result<(), DbError>
     Ok(())
 }
 
-fn update_revision_files(conn: &DbConn, files: &[InputFile], rev_id: &str) -> Result<(), DbError> {
+fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<(), DbError> {
     log::info!("Updating revision_files table...");
     let mut insert_file = RevisionFile::prepare_insert(conn)?;
     
@@ -178,7 +177,7 @@ fn compute_revision_id(files: &[InputFile]) -> String {
     let mut ids: Vec<&str> = Vec::new();
 
     for file in files {
-        ids.push(&file.id)
+        ids.push(&file.id);
     }
     
     let mut hasher = seahash::SeaHasher::default();
