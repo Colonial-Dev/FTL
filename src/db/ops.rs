@@ -1,28 +1,27 @@
 use std::path::Path;
 use std::io::ErrorKind;
 
+use anyhow::{Result, Context};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, params};
-
-use crate::error::DbError;
 
 use super::{KNOWN_TABLES, DbPool};
 
 /// Attempt to open a connection to an SQLite database at the given path.
-pub fn make_connection(path: &Path) -> Result<Connection, DbError> {
+pub fn make_connection(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
     Ok(conn)
 }
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
-pub fn make_pool(path: &Path) -> Result<DbPool, DbError> {
+pub fn make_pool(path: &Path) -> Result<DbPool> {
     let manager = SqliteConnectionManager::file(path);
     let pool = r2d2::Pool::new(manager)?;
     Ok(pool)
 }
 
 /// Try and create a new SQLite database at the given path. Fails if the database file already exists.
-pub fn try_create_db(path: &Path) -> Result<Connection, DbError> {
+pub fn try_create_db(path: &Path) -> Result<Connection> {
     if path.exists() {
         let e = std::io::Error::new(
             ErrorKind::AlreadyExists, 
@@ -39,7 +38,7 @@ pub fn try_create_db(path: &Path) -> Result<Connection, DbError> {
 }
 
 /// Try to create all FTL-specific tables in the given database. Does NOT fail if any of the tables already exist.
-pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
+pub fn try_initialize_tables(conn: &Connection) -> Result<()> {
     conn.execute("
         CREATE TABLE IF NOT EXISTS input_files (
             id TEXT PRIMARY KEY,
@@ -73,6 +72,7 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
             summary TEXT,
             template TEXT,
             draft INTEGER,
+            dynamic INTEGER,
             tags TEXT,
             collections TEXT,
             aliases TEXT,
@@ -100,11 +100,13 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
     conn.execute("
         CREATE TABLE IF NOT EXISTS hypertext (
             revision TEXT,
-            id TEXT,
+            input_id TEXT,
+            templating_id TEXT,
             content TEXT,
             UNIQUE(
                 revision,
-                id,
+                input_id,
+                templating_id,
                 content
             )
         );
@@ -128,7 +130,7 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
 }
 
 /// Try to clear all rows from all FTL tables (via `DELETE FROM table`). Leaves table schemas unchanged.
-pub fn try_clear_tables(conn: &Connection) -> Result<(), DbError> {
+pub fn try_clear_tables(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare("
         DELETE FROM ?1;
     ")?;
@@ -141,7 +143,7 @@ pub fn try_clear_tables(conn: &Connection) -> Result<(), DbError> {
 }
 
 /// Try to drop and recreate all FTL tables (using [`try_initialize_tables`]).
-pub fn try_reset_tables(conn: &Connection) -> Result<(), DbError> {
+pub fn try_reset_tables(conn: &Connection) -> Result<()> {
     let mut stmt = conn.prepare("
         DROP TABLE ?1;
     ")?;
@@ -157,11 +159,11 @@ pub fn try_reset_tables(conn: &Connection) -> Result<(), DbError> {
 
 /// Tries to drop all information from the database that is not relevant for the current active revision.
 /// Under the hood, this consists of some `SELECT` and `DELETE FROM` operations followed by a `VACUUM` call.
-pub fn try_compress_db(conn: &Connection) -> Result<(), DbError> {
+pub fn try_compress_db(conn: &Connection) -> Result<()> {
     todo!()
 }
 
 /// Tries to delete all files from the cache that are not relevant for the current active revision.
-pub fn try_compress_cache(conn: &Connection) -> Result<(), DbError> {
+pub fn try_compress_cache(conn: &Connection) -> Result<()> {
     todo!()
 }

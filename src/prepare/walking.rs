@@ -1,14 +1,19 @@
+use anyhow::{Result, anyhow, Context};
 use rayon::prelude::*;
 use crate::db::data::{RevisionFile, RevisionFileIn};
-use crate::{error::*, db::data::InputFile, db::Connection};
+use crate::share::ERROR_CHANNEL;
+use crate::{db::data::InputFile, db::Connection};
 use walkdir::{DirEntry, WalkDir};
 use std::path::Path;
 use std::hash::{Hash, Hasher};
 
-const SITE_SRC_DIRECTORY: &str = "test_site/src";
+pub const SITE_SRC_DIRECTORY: &str = "test_site/src/";
+pub const SITE_CONTENT_DIRECTORY: &str = "content/";
+pub const SITE_STATIC_DIRECTORY: &str = "static/";
+pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
 
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk_src(conn: &mut Connection) -> Result<String, DbError>  {
+pub fn walk_src(conn: &mut Connection) -> Result<String>  {
     log::info!("Starting walk...");
 
     let mut files: Vec<InputFile> = 
@@ -30,9 +35,9 @@ pub fn walk_src(conn: &mut Connection) -> Result<String, DbError>  {
     // We use a transaction to accelerate database write performance.
     let txn = conn.transaction()?;
 
-    update_input_files(&*txn, &files)?;
+    update_input_files(&*txn, &files).context("Failed to update input_files table.")?;
     let rev_id = compute_revision_id(&files);
-    update_revision_files(&*txn, &files, &rev_id)?;
+    update_revision_files(&*txn, &files, &rev_id).context("Failed to update revision_files table.")?;
 
     txn.commit()?;
     Ok(rev_id)
@@ -42,8 +47,8 @@ pub fn walk_src(conn: &mut Connection) -> Result<String, DbError>  {
 fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
     match entry {
         Ok(entry) => Some(entry),
-        Err(error) => {
-            ERROR_CHANNEL.sink_error(WalkError::WalkDir(error));
+        Err(e) => {
+            ERROR_CHANNEL.sink_error(anyhow!(e));
             None
         }
     }
@@ -57,8 +62,8 @@ fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
             if md.is_dir() { None }
             else { Some(entry) }
         },
-        Err(error) => {
-            ERROR_CHANNEL.sink_error(WalkError::WalkDir(error));
+        Err(e) => {
+            ERROR_CHANNEL.sink_error(anyhow!(e));
             None
         }
     }
@@ -103,8 +108,8 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
 
             Some(item)
         }
-        Err(error) => {
-            ERROR_CHANNEL.sink_error(WalkError::Io(error));
+        Err(e) => {
+            ERROR_CHANNEL.sink_error(anyhow!(e));
             None
         }
     }
@@ -122,7 +127,7 @@ fn hash(bytes: &[u8]) -> String {
 fn entry_is_inline(entry: &DirEntry) -> bool {
     match entry.path().extension() {
         Some(ext) => match ext.to_string_lossy().as_ref() {
-            "md" | "scss" | "html" | "json" | "liquid" => true,
+            "md" | "scss" | "html" | "json" | "tera" => true,
             _ => false,
         },
         _ => false,
@@ -140,7 +145,7 @@ fn entry_extension(entry: &DirEntry) -> Option<String> {
     }
 }
 
-fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<(), DbError> {
+fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
     log::info!("Updating input_files table...");
     let mut insert_file = InputFile::prepare_insert(conn)?;
     
@@ -158,7 +163,7 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<(), DbEr
     Ok(())
 }
 
-fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<(), DbError> {
+fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<()> {
     log::info!("Updating revision_files table...");
     let mut insert_file = RevisionFile::prepare_insert(conn)?;
     

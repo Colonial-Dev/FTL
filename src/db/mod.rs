@@ -7,10 +7,8 @@ pub const KNOWN_TABLES: &[&str] = &["input_files", "revision_files", "pages", "r
 
 pub mod data;
 mod ops;
-mod error;
 
 pub use ops::*;
-pub use error::*;
 pub use rusqlite::Connection;
 
 

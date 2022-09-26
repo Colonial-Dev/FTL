@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use anyhow::{Result, anyhow, Context};
 use serde::Deserialize;
 use rusqlite::params;
 use serde_rusqlite::from_rows;
@@ -8,40 +11,58 @@ use crate::db::*;
 mod dependency;
 
 #[derive(Deserialize, Debug)]
-struct Row {
+pub struct Row {
     pub id: String,
     pub path: String,
     pub contents: String,
 }
 
-pub fn make_engine_instance(conn: &Connection, rev_id: &str) -> Result<Tera, DbError> {
-    let tera = Tera::default();
+pub struct TemplatingEngine {
+    pub tera: Tera,
+    pub id_map: HashMap<String, String>,
+}
+
+pub fn make_engine_instance(conn: &Connection, rev_id: &str) -> Result<TemplatingEngine> {
+    let mut tera = Tera::default();
     
-    register_filters(&tera);
-    register_functions(&tera);
-    register_tests(&tera);
-    parse_templates(conn, rev_id, &tera)?;
+    register_filters(&mut tera);
+    register_functions(&mut tera);
+    register_tests(&mut tera);
 
-    Ok(tera)
+    Ok(parse_templates(conn, rev_id, tera)?)
 }
 
-fn register_filters(tera: &Tera) {
+fn register_filters(tera: &mut Tera) {
     _ = tera;
 }
 
-fn register_functions(tera: &Tera) {
+fn register_functions(tera: &mut Tera) {
     _ = tera;
 }
 
-fn register_tests(tera: &Tera) {
+fn register_tests(tera: &mut Tera) {
     _ = tera;
 }
 
-fn parse_templates(conn: &Connection, rev_id: &str, tera: &Tera) -> Result<(), DbError> {
-    Ok(())
+fn parse_templates(conn: &Connection, rev_id: &str, mut tera: Tera) -> Result<TemplatingEngine> {
+    let rows = query_templates(conn, rev_id)?;
+
+    // Collect row path/contents into a Vec of references.
+    // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
+    let templates: Vec<(&str, &str)> = rows.iter()
+        .map(|x| (x.path.as_str().trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY), x.contents.as_str()) )
+        .collect();
+    
+    println!("{:#?}", templates);
+
+    if let Err(e) = tera.add_raw_templates(templates) { return Err(anyhow!(e)); }
+
+    let id_map = dependency::compute_id_map(&rows);
+    
+    Ok(TemplatingEngine { tera, id_map })
 }
 
-fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError> {
+fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
     let mut stmt = conn.prepare("
         SELECT id, path, contents
         FROM input_files
@@ -51,7 +72,8 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError>
                 WHERE revision_files.id = input_files.id
                 AND revision_files.revision = ?1
         )
-        AND input_files.extension = 'tera';
+        AND input_files.extension = 'tera'
+        AND input_files.contents NOT NULL;
     ")?;
 
     let result = from_rows::<Row>(stmt.query(params![&rev_id])?);

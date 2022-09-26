@@ -1,3 +1,4 @@
+use anyhow::{Result, Context};
 use rusqlite::params;
 use serde_repr::{Serialize_repr, Deserialize_repr};
 use serde_rusqlite::{from_rows};
@@ -6,7 +7,6 @@ use serde::Deserialize;
 
 use crate::db::Connection;
 use crate::db::data::{Page, Route, RouteIn};
-use crate::error::*;
 
 #[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive)]
 #[derive(Debug, Clone, Copy)]
@@ -19,7 +19,7 @@ pub enum RouteKind {
     Redirect = 5,
 }
 
-pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
+pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     #[derive(Deserialize, Debug)]
     struct Row {
         id: String,
@@ -57,7 +57,7 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<(),
     Ok(())
 }
 
-pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
+pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     log::info!("Computing page routes...");
 
     let mut insert_route = Route::prepare_insert(conn)?;
@@ -77,7 +77,7 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError
     Ok(())
 }
 
-pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
+pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     #[derive(Deserialize)]
     struct Row {
         id: String,

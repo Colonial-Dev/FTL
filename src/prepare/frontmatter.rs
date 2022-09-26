@@ -1,6 +1,8 @@
 use crate::{db::*, db::data::{Page, PageIn}};
-use lazy_static::lazy_static;
+
 use rayon::prelude::*;
+use anyhow::{Result, Context};
+use lazy_static::lazy_static;
 use regex::Captures;
 use serde::{Deserialize, Serialize};
 use serde_rusqlite::from_rows;
@@ -40,7 +42,7 @@ struct Row {
     pub contents: String,
 }
 
-pub fn parse_markdown(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
+pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
     log::info!("Starting frontmatter parsing for revision {}...", rev_id);
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
@@ -70,7 +72,7 @@ pub fn parse_markdown(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError> {
+fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
     let mut stmt = conn.prepare("
         SELECT id, path, contents
         FROM input_files
@@ -98,7 +100,7 @@ fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError>
     Ok(rows)
 }
 
-fn try_extract_frontmatter<'t>(item: &Row) -> Option<(&Row, Captures)> {   
+fn try_extract_frontmatter(item: &Row) -> Option<(&Row, Captures)> {   
     log::trace!("Extracting frontmatter for file {}...", item.id);
 
     let captures = TOML_FRONTMATTER.captures(&item.contents);

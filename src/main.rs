@@ -1,12 +1,10 @@
 // Masochism
-#![warn(clippy::pedantic, clippy::perf, clippy::style, clippy::cargo, warnings)]
+#![warn(clippy::perf, clippy::style, clippy::cargo, warnings)]
 
 mod db;
-mod error;
-mod walking;
-mod parse;
-mod route;
+mod prepare;
 mod render;
+mod share;
 
 fn initialize() -> db::DbPool {
     pretty_env_logger::init();
@@ -20,9 +18,9 @@ fn main() {
     let db_pool = initialize();
     let conn = &mut *db_pool.get().unwrap();
 
-    let rev_id = walking::walk_src(conn).unwrap();
-    parse::parse_markdown(conn, &rev_id).unwrap();
-    route::create_static_asset_routes(conn, &rev_id).unwrap();
-    route::create_page_routes(conn, &rev_id).unwrap();
+    let rev_id = prepare::walk_src(conn).unwrap();
+    prepare::parse_frontmatters(conn, &rev_id).unwrap();
+    prepare::create_static_asset_routes(conn, &rev_id).unwrap();
+    prepare::create_page_routes(conn, &rev_id).unwrap();
     render::prepare(conn, &rev_id);
 }

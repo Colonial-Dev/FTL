@@ -18,13 +18,13 @@ pub struct Route {
     /// Example: the parent path of `/posts/hello_there` is `posts`.
     pub parent_route: Option<String>,
     /// What type of asset this route points to.
-    pub kind: crate::route::RouteKind,
+    pub kind: crate::prepare::RouteKind,
 }
 
 // Database write methods
 impl Route { 
     /// Prepares an SQL statement to insert a new row into the `routes` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RouteIn) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RouteIn) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO routes
             VALUES(:revision, :id, :route, :parent_route, :kind)
@@ -46,13 +46,13 @@ pub struct RouteIn<'a> {
     pub id: &'a str,
     pub route: &'a str,
     pub parent_route: Option<&'a str>,
-    pub kind: crate::route::RouteKind,
+    pub kind: crate::prepare::RouteKind,
 }
 
 impl<'a> RouteIn<'a> {
     /// Serializes a [`RouteIn`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
     /// Returns a [`DbError::Serde`] if serialization fails.
-    pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
+    pub fn to_params(&self) -> Result<ParameterSlice> {
         let params = to_params_named(&self)?;
         Ok(params)
     }

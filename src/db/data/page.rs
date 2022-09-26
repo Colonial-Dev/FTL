@@ -1,5 +1,8 @@
+use anyhow::anyhow;
 use serde::de::DeserializeOwned;
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
+
+use crate::share::ERROR_CHANNEL;
 
 use super::dependencies::*;
 
@@ -47,7 +50,7 @@ pub struct Page {
 
 impl Page {
     /// Prepares an SQL statement to insert a new row into the `pages` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&PageIn) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&PageIn) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO pages
             VALUES(:id, :route, :offset, :title, :date, :publish_date, 
@@ -70,7 +73,7 @@ impl Page {
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<Page>, DbError> {
+    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<Page>> {
         let mut stmt = conn.prepare("
             SELECT * FROM pages
             WHERE EXISTS (
@@ -116,7 +119,7 @@ pub struct PageIn<'a> {
 }
 
 impl<'a> PageIn<'a> {
-    pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
+    pub fn to_params(&self) -> Result<ParameterSlice> {
         let params = to_params_named(&self)?;
         Ok(params)
     }
@@ -173,9 +176,7 @@ fn unwrap_datetime(value: &Option<OffsetDateTime>) -> Option<String> {
 fn serialize_slice<T>(input: &[T]) -> String where T: Serialize {
     serde_json::to_string(&input).unwrap_or_else(|err| {
         let msg = format!("Error when serializing a vector: {}", err);
-        let error = serde_rusqlite::Error::Serialization(msg);
-        let error = DbError::Serde(error);
-        ERROR_CHANNEL.sink_error(error);
+        ERROR_CHANNEL.sink_error(anyhow!(msg));
         String::from("[]")
     })
 }

@@ -47,13 +47,13 @@ impl PartialEq for InputFile {
 impl InputFile {
     /// Serializes an [`InputFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
     /// Returns a [`DbError::Serde`] if serialization fails.
-    pub fn to_params(&self) -> Result<ParameterSlice, DbError> {
+    pub fn to_params(&self) -> Result<ParameterSlice> {
         let params = to_params_named(&self)?;
         Ok(params)
     }
 
     /// Prepares an SQL statement to insert a new row into the `input_files` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&InputFile) -> Result<(), DbError> + '_, DbError> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&InputFile) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO input_files
             VALUES(:id, :path, :hash, :extension, :contents, :inline);
@@ -76,7 +76,7 @@ impl InputFile {
     /// Returns a [`DbError`] if:
     /// - Something goes wrong when trying to use the database
     /// - Deserialization fails because the row does not exist or is malformed.
-    pub fn from_id(conn: &Connection, id: &str) -> Result<Self, DbError> {
+    pub fn from_id(conn: &Connection, id: &str) -> Result<Self> {
         let mut stmt = conn.prepare("
             SELECT * FROM input_files
             WHERE id = ?1;
@@ -100,7 +100,7 @@ impl InputFile {
     /// - Something goes wrong when trying to use the database
     /// 
     /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<InputFile>, DbError> {
+    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<InputFile>> {
         let mut stmt = conn.prepare("
             SELECT * FROM input_files
             WHERE EXISTS (

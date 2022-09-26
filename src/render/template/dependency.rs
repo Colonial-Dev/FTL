@@ -1,3 +1,5 @@
+//! Pickle chin ahh boi
+
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -27,26 +29,32 @@ struct DependencyId<'a>(&'a str);
 type DependencySet<'a>  = Vec<DependencyName<'a>>;
 type DependencyMap<'a> = HashMap<DependencyName<'a>, DependencySet<'a>>;
 
-// This is a fucking mess, BUT we only ever clone references!
-fn compute_templating_ids<'a>(templates: &'a [Row]) -> HashMap<&'a str, String> {
+pub fn compute_id_map<'a>(templates: &'a [Row]) -> HashMap<String, String> {
     // We need two different dependency maps to work around mutable reference exclusivity.
-    // This is low-to-zero cost, since map access is ~O(1) and they only contain references.
+    // I think this is low-to-zero cost, since map access is ~O(1) and they only contain references.
     let mut direct_deps = DependencyMap::new();
     let mut trans_deps = DependencyMap::new();
 
     // This lets us map names back to IDs for hashing once dependency sets are built.
     let mut id_map = HashMap::<DependencyName, DependencyId>::new();
-    // Return type - key borrows from `templates,` while the value is a formatted hash fn output.
-    let mut result_map = HashMap::<&str, String>::new();
+    // Return type - key is cloned from `templates,` while the value is a formatted hash fn output.
+    let mut result_map = HashMap::<String, String>::new();
 
     // For each Row in templates:
-    // 1. Find its direct dependencies using regexp 
-    // 2. Insert its name and dependencies into direct_deps
-    // 3. Insert its name and ID into id_map
+    // 1. Get its template-dir-relative path.
+    // 2. Find its direct dependencies using regexp 
+    // 3. Insert its name and dependencies into direct_deps
+    // 4. Insert its name and ID into id_map
     for row in templates {
+        let trimmed_path = row.path
+            .trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY)
+            .trim_start_matches("templates/");
+        
         let d_deps = find_direct_dependencies(&row);
-        direct_deps.insert(DependencyName(&row.path), d_deps);
-        id_map.insert(DependencyName(&row.path), DependencyId(&row.id));
+        log::trace!("Matched template {} for direct dependencies, found {} results.", trimmed_path, d_deps.len());
+
+        direct_deps.insert(DependencyName(trimmed_path), d_deps);
+        id_map.insert(DependencyName(trimmed_path), DependencyId(&row.id));
     }
 
     // For each key in id_map:
@@ -54,6 +62,7 @@ fn compute_templating_ids<'a>(templates: &'a [Row]) -> HashMap<&'a str, String> 
     // 2. Insert the result into trans_deps.
     for v in id_map.keys() {
         let t_deps = find_transitive_dependencies(v, &direct_deps);
+        log::trace!("Recursed into transitive dependencies for template {}, found {} results.", v.0, t_deps.len());
         trans_deps.insert(v.clone(), t_deps);
     }
 
@@ -80,14 +89,15 @@ fn compute_templating_ids<'a>(templates: &'a [Row]) -> HashMap<&'a str, String> 
             id.hash(&mut hasher);
         }
         let t_id = format!("{:016x}", hasher.finish());
-        result_map.insert(v.0, t_id);
+        log::trace!("Finished evaluating dependencies for template {} - {} total, ID {}", v.0, deps.len(), t_id);
+        result_map.insert(v.0.to_owned(), t_id);
     }
 
     result_map
 }
 
 /// Parse the contents of the given [`Row`] for its direct dependencies using the `TERA_INCLUDE_*` regular expressions.
-fn find_direct_dependencies(item: &Row) -> Vec<DependencyName> {
+fn find_direct_dependencies(item: &Row) -> DependencySet {
     let mut dependencies: Vec<&str> = Vec::new();
     
     let mut capture = |regexp: &Regex | {
@@ -109,8 +119,8 @@ fn find_direct_dependencies(item: &Row) -> Vec<DependencyName> {
         .collect()
 }
 
-/// Using the recursive [traverse_set] function, ascertain the deduplicated transitive dependencies of the provided dependency.
-fn find_transitive_dependencies<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> Vec<DependencyName<'a>> {
+/// Using the recursive [`traverse_set`] function, ascertain the deduplicated transitive dependencies of the provided dependency.
+fn find_transitive_dependencies<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> DependencySet<'a> {
     let direct_deps = map.get(&dep).unwrap();
 
     let mut transitives = 
@@ -128,15 +138,14 @@ fn find_transitive_dependencies<'a>(dep: &'a DependencyName, map: &'a Dependency
     transitives
 }
 
-/// Recurses into the dependencies of the given dependency, bubbling up a [`Vec`] of [`DependencyName`]s.
-fn traverse_set<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> Vec<DependencyName<'a>> {
+// Note: currently this is capable of blowing the stack if the input templates contain a dependency loop.
+// Tera does not catch stuff like include loops during parsing, so some sort of "escape counter" might be wise.
+/// Recurses into the dependencies of the given dependency, bubbling up a [`DependencySet`].
+fn traverse_set<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> DependencySet<'a> {
     let deps = map.get(&dep).unwrap();
-    println!("Root dep: {:?}", dep);
-    println!("Direct deps: {:?}", deps);
 
     let mut acc = deps.iter()
         .map(|dep| {
-            println!("Mapping {:?}", dep);
             traverse_set(dep, map)
         } )
         .fold(Vec::new(), |mut acc, set| {
@@ -147,29 +156,14 @@ fn traverse_set<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> Vec<Depe
         });
     
     acc.extend_from_slice(&deps);
-    println!("Accumulator for {:?}: {:?}", dep, acc);
     acc
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn it_works() {
-        let mut map = DependencyMap::new();
-        let dep_a = Dependency::new("a", "");
-        let dep_b = Dependency::new("b", "");
-        let dep_c = Dependency::new("c", "");
-        let dep_d = Dependency::new("d", "");
-        map.insert(dep_a.clone(), vec![dep_b.clone()]);
-        map.insert(dep_b, vec![dep_c.clone(), dep_d.clone()]);
-        map.insert(dep_c, vec![dep_d.clone()]);
-        map.insert(dep_d, vec![]);
-        let result = traverse_set(&dep_a, &map);
-        let mut result = result.concat();
-        result.sort();
-        result.dedup();
-        println!("Final result: {:?}", result);
+    fn id_computation() {
         assert!(true)
     }
-}*/
+}
