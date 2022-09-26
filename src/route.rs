@@ -47,8 +47,8 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<(),
         insert_route(&RouteIn {
             revision: rev_id,
             id: &row.id,
-            path: row.path.trim_start_matches("src/static/"),
-            parent_path: None,
+            route: row.path.trim_start_matches("src/static/"),
+            parent_route: None,
             kind: RouteKind::StaticAsset,
         })?;
     }
@@ -67,8 +67,8 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<(), DbError
         insert_route(&RouteIn {
             revision: rev_id,
             id: &page.id,
-            path: &page.route,
-            parent_path: Some(to_parent_path(&page.route)),
+            route: &page.route,
+            parent_route: Some(to_parent_path(&page.route)),
             kind: RouteKind::Page,
         })?;
     }
@@ -103,8 +103,8 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<(), DbErro
         insert_route(&RouteIn{
             revision: rev_id,
             id: &row.id,
-            path: &row.path,
-            parent_path: None,
+            route: &row.path,
+            parent_route: None,
             kind: RouteKind::Redirect,
         })?;
     }

@@ -6,6 +6,7 @@ mod error;
 mod walking;
 mod parse;
 mod route;
+mod render;
 
 fn initialize() -> db::DbPool {
     pretty_env_logger::init();
@@ -23,4 +24,5 @@ fn main() {
     parse::parse_markdown(conn, &rev_id).unwrap();
     route::create_static_asset_routes(conn, &rev_id).unwrap();
     route::create_page_routes(conn, &rev_id).unwrap();
+    render::prepare(conn, &rev_id);
 }

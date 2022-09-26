@@ -1,17 +1,32 @@
-[Milestones_Generation]
-- Template parsing
-- Stylesheet compilation
-- HTML rendering and post-processing
-
-[Milestones_UI]
-- Make a proper CLI with clap
-    - Commands to build, serve etc
-    - Initialization and cleanup commands
-- Configuration via TOML file
-
-[Milestones_Serve]
-- Something something tokio/axum???
-
-[Other]
 - Rethink frontmatter extraction approach. Regex might be too heavyweight.
 - Memmap input files? Unsure just how much this will help with performance.
+- Ascertain the best strategy for preventing unnecessary page re-renders.
+    - We prevent duplicate Page parsing already during the walk stage, but currently need a good way to do the same during the render stage.
+    - We only need to re-render a page if either of the following conditions is met:
+        - Its ID (that is, its path or contents) changes. 
+        - Any of the templates or shortcodes used in its rendering change.
+    - The former is easy to check - when selecting pages for rendering, exclude those whose ID values are already present in the hypertext table.
+    - The latter is... more complicated, but doable. We especially need to deal with:
+      - A template's dependencies changing without the template itself changing.
+      - Pages built with templated dynamic data, such as database query results.
+    - The latter can be handled using a frontmatter flag, like "dynamic" or "always-render."
+    - The former is a lot more difficult, but not impossible!
+      - Tera supports three kinds of multi-file usage: including, macros and inheritance, each with its own invocation syntax.
+      - We can figure out all the dependents of a template by parsing for this invocation syntax using regex.
+      - Enabling recursive change detection would probably look something like this:
+        - Parse every template for their dependencies.
+        - For each template, starting from its direct dependencies, recursively look up all transitive dependencies and deduplicate to build a full dependency set.
+        - For each template, using the generated dependency set, calculate a "templating ID" by hashing together its ID with the IDs of all its dependencies.
+        - When a page is rendered, insert the templating ID of the template used into its entry in the hypertext table.
+        - Upon next build, repeat the dependency calculation process. If a page has a templating ID not present in the freshly calculated set, then it is slated to be re-rendered.
+        - Extra optimization: generate a mega-ID of all template file IDs, and only do dependency calculation if that has changed.
+        - Extra optimization: make this an optional feature, especially if it turns out to be computationally intensive.
+        - Note: templates will have to be addressed by a path relative to something like "src/templates/..." to make this work.
+      - Include regex: \{% include "(.*?)"(?: ignore missing |\s)%\}
+      - Import regex: \{% import "(.*?)" as .* %\}
+      - Extends regex: \{% extends "(.*?)" %\}
+      - Block shortcodes regex: (?s)\{% sc (.*) %\}\n?(.*?)\n?\{% endsc %\} 
+      - Inline shortcodes regex: \{% sci (.*) (.*) %\}
+
+- Minimize/remove calls to collect() and returns of Vecs from functions (return impl Iterator<Item=T> instead). This can avoid a LOT of allocations.
+- Maybe write tests (lol)

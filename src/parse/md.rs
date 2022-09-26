@@ -45,6 +45,12 @@ pub fn parse_markdown(conn: &Connection, rev_id: &str) -> Result<(), DbError> {
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
 
+    // TODO: refactor to avoid collecting into a Vec.
+    // Probably just need to send the Pages into a channel,
+    // consume the parallel iterator and then iterate 
+    // serially over the channel's rx.
+    //
+    // Also, into_par_iter to avoid clones in parse_frontmatter?
     let num_pages = rows
         .par_iter()
         .filter_map(try_extract_frontmatter)
@@ -92,7 +98,7 @@ fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>, DbError>
     Ok(rows)
 }
 
-fn try_extract_frontmatter(item: &Row) -> Option<(&Row, Captures)> {   
+fn try_extract_frontmatter<'t>(item: &Row) -> Option<(&Row, Captures)> {   
     log::trace!("Extracting frontmatter for file {}...", item.id);
 
     let captures = TOML_FRONTMATTER.captures(&item.contents);

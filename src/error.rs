@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use flume::{Sender, Receiver};
 
 lazy_static!(
+    // This seems wrong, but it's convenient and rustc/clippy are both fine with it sooo...
     pub static ref ERROR_CHANNEL: ErrorChannel = ErrorChannel::default();
 );
 

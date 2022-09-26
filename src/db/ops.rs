@@ -16,12 +16,7 @@ pub fn make_connection(path: &Path) -> Result<Connection, DbError> {
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool(path: &Path) -> Result<DbPool, DbError> {
-    let on_init = |db: &mut Connection| {
-        db.pragma_update(None, "journal_mode", &"WAL".to_string())?;
-        Ok(())
-    };
-
-    let manager = SqliteConnectionManager::file(path).with_init(on_init);
+    let manager = SqliteConnectionManager::file(path);
     let pool = r2d2::Pool::new(manager)?;
     Ok(pool)
 }
@@ -43,7 +38,7 @@ pub fn try_create_db(path: &Path) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
-/// Try to create all FTL-specific tables in the given database. Does not fail if any of the tables already exist.
+/// Try to create all FTL-specific tables in the given database. Does NOT fail if any of the tables already exist.
 pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
     conn.execute("
         CREATE TABLE IF NOT EXISTS input_files (
@@ -60,7 +55,7 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
     conn.execute("
         CREATE TABLE IF NOT EXISTS revision_files (
             revision TEXT,
-            id TEXT
+            id TEXT,
             UNIQUE(revision, id)
         );
     ", [])?;
@@ -89,8 +84,8 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
         CREATE TABLE IF NOT EXISTS routes (
             revision TEXT,
             id TEXT,
-            path TEXT,
-            parent_path TEXT,
+            route TEXT,
+            parent_route TEXT,
             kind INTEGER,
             UNIQUE(
                 revision,
@@ -103,6 +98,19 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
     ", [])?;
 
     conn.execute("
+        CREATE TABLE IF NOT EXISTS hypertext (
+            revision TEXT,
+            id TEXT,
+            content TEXT,
+            UNIQUE(
+                revision,
+                id,
+                content
+            )
+        );
+    ", [])?;    
+
+    conn.execute("
         CREATE TABLE IF NOT EXISTS page_aliases (
             route TEXT,
             id TEXT,
@@ -112,7 +120,7 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<(), DbError> {
 
     conn.execute("
         CREATE TABLE IF NOT EXISTS page_tags (
-            tag TEXT UNIQUE,
+            tag TEXT UNIQUE
         );
     ", [])?;
 
@@ -145,4 +153,15 @@ pub fn try_reset_tables(conn: &Connection) -> Result<(), DbError> {
     try_initialize_tables(conn)?;
 
     Ok(())
+}
+
+/// Tries to drop all information from the database that is not relevant for the current active revision.
+/// Under the hood, this consists of some `SELECT` and `DELETE FROM` operations followed by a `VACUUM` call.
+pub fn try_compress_db(conn: &Connection) -> Result<(), DbError> {
+    todo!()
+}
+
+/// Tries to delete all files from the cache that are not relevant for the current active revision.
+pub fn try_compress_cache(conn: &Connection) -> Result<(), DbError> {
+    todo!()
 }

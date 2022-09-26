@@ -27,7 +27,7 @@ serde_rusqlite = "0.31"
 # Rendering/Parsing
 regex = "1.6"
 toml = "0.5"
-liquid = "0.26.0"
+tera = "1"
 # Other
 lazy_static = "1.4"
 num_enum = "0.5"
