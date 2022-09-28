@@ -28,6 +28,8 @@ struct TomlFrontmatter {
     #[serde(default)]
     pub draft: bool,
     #[serde(default)]
+    pub dynamic: bool,
+    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub collections: Vec<String>,
@@ -161,6 +163,7 @@ fn to_page(id: String, route: String, offset: i64, fm: TomlFrontmatter) -> Page 
         summary: fm.summary,
         template: fm.template,
         draft: fm.draft,
+        dynamic: fm.dynamic,
         tags: fm.tags,
         collections: fm.collections,
         aliases: fm.aliases

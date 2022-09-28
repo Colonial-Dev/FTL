@@ -1,10 +1,12 @@
-//! Pickle chin ahh boi
-
-use std::collections::HashMap;
+use anyhow::Result;
+use serde_rusqlite::from_rows;
 use std::hash::{Hash, Hasher};
 
 use regex::Regex;
 use lazy_static::lazy_static;
+use rusqlite::{Connection, params};
+
+use crate::db;
 
 use super::Row;
 
@@ -20,84 +22,87 @@ lazy_static! {
     static ref TERA_EXTENDS_REGEXP: Regex = Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap();
 }
 
-#[derive(Ord, PartialOrd, Debug, Clone, Eq, PartialEq, Hash)]
-struct DependencyName<'a>(&'a str);
+pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str) -> Result<()> {
+    // Attach and setup a new in-memory database for mapping dependency relations.
+    let txn = conn.transaction()?;
+    db::attach_mapping_database(&txn)?;
+    
+    // Prepare necessary statements for dependency mapping.
+    let mut insert_template = txn.prepare("INSERT OR IGNORE INTO map.templates VALUES (?1, ?2);")?;
+    let mut insert_dependency = txn.prepare("INSERT OR IGNORE INTO map.dependencies VALUES (?1, (SELECT id FROM templates WHERE name = ?2));")?;
+    let mut query_set = txn.prepare("
+        WITH RECURSIVE transitives (id) AS (
+            SELECT id FROM map.templates
+            WHERE id = ?1
+            
+            UNION
+            
+            SELECT dependency_id FROM map.dependencies
+            JOIN transitives ON transitives.id = dependencies.parent_id
+            LIMIT 255
+        )
+        
+        SELECT id FROM transitives ORDER BY id ASC;
+    ")?;
+    let mut insert_id = txn.prepare("INSERT OR IGNORE INTO template_ids VALUES (?1, ?2)")?;
 
-#[derive(Ord, PartialOrd, Debug, Clone, Eq, PartialEq, Hash)]
-struct DependencyId<'a>(&'a str); 
+    // Given a template ID, this closure will:
+    // - Query the database for every member in the ID's dependency set
+    // - Fold the results into a hasher
+    // - Write the resulting hash to the on-disk template_ids table, alongside the revision ID.
+    let mut traverse_set = |id: &str| -> Result<()> {
+        let hasher = seahash::SeaHasher::default();
+        let hasher = from_rows::<String>(query_set.query(params![id])?)
+            .filter_map(|x| x.ok() )
+            .fold(hasher, |mut acc, x | {
+                x.hash(&mut acc);
+                acc
+            });
+        
+        let hash = format!("{:016x}", hasher.finish());
+        insert_id.execute(params![rev_id, hash])?;
+        Ok(())
+    };
 
-type DependencySet<'a>  = Vec<DependencyName<'a>>;
-type DependencyMap<'a> = HashMap<DependencyName<'a>, DependencySet<'a>>;
-
-pub fn compute_id_map<'a>(templates: &'a [Row]) -> HashMap<String, String> {
-    // We need two different dependency maps to work around mutable reference exclusivity.
-    // I think this is low-to-zero cost, since map access is ~O(1) and they only contain references.
-    let mut direct_deps = DependencyMap::new();
-    let mut trans_deps = DependencyMap::new();
-
-    // This lets us map names back to IDs for hashing once dependency sets are built.
-    let mut id_map = HashMap::<DependencyName, DependencyId>::new();
-    // Return type - key is cloned from `templates,` while the value is a formatted hash fn output.
-    let mut result_map = HashMap::<String, String>::new();
-
-    // For each Row in templates:
-    // 1. Get its template-dir-relative path.
-    // 2. Find its direct dependencies using regexp 
-    // 3. Insert its name and dependencies into direct_deps
-    // 4. Insert its name and ID into id_map
+    // For each row in the templates slice:
+    // 1. Trim its path to be relative to SITE_TEMPLATE_DIRECTORY.
+    // 2. Insert the trimmed path and ID into the map.templates table.
     for row in templates {
         let trimmed_path = row.path
-            .trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY)
-            .trim_start_matches("templates/");
+            .trim_start_matches(crate::share::SITE_SRC_DIRECTORY)
+            .trim_start_matches(crate::share::SITE_TEMPLATE_DIRECTORY);
         
-        let d_deps = find_direct_dependencies(&row);
-        log::trace!("Matched template {} for direct dependencies, found {} results.", trimmed_path, d_deps.len());
-
-        direct_deps.insert(DependencyName(trimmed_path), d_deps);
-        id_map.insert(DependencyName(trimmed_path), DependencyId(&row.id));
+        insert_template.execute(params![trimmed_path, row.id])?;
     }
 
-    // For each key in id_map:
-    // 1. Recursively look up its transitive dependencies.
-    // 2. Insert the result into trans_deps.
-    for v in id_map.keys() {
-        let t_deps = find_transitive_dependencies(v, &direct_deps);
-        log::trace!("Recursed into transitive dependencies for template {}, found {} results.", v.0, t_deps.len());
-        trans_deps.insert(v.clone(), t_deps);
-    }
-
-    // For each key in id_map:
-    // 1. Fetch its corresponding value (ID).
-    // 2. Fetch its direct and transitive dependencies, and merge their slices into a single Vec of refs.
-    // 3. Spin up a SeaHash instance and feed in own_id as well as the IDs of every dependency.
-    // 4. Format hasher result as a 16-character hex string and insert it into result_map.
-    for v in id_map.keys() {
-        let own_id = id_map.get(v).unwrap();
-        let deps = {
-            let d = direct_deps.get(v).unwrap();
-            let t = trans_deps.get(v).unwrap();
-            let mut v = Vec::new();
-            v.extend_from_slice(d);
-            v.extend_from_slice(t);
-            v
-        };
-
-        let mut hasher = seahash::SeaHasher::default();
-        own_id.hash(&mut hasher);
-        for d in &deps {
-            let id = id_map.get(d);
-            id.hash(&mut hasher);
+    // For each row in the templates slice:
+    // 1. Match for the row's direct dependencies and insert them into the map.dependencies table.
+    for row in templates {
+        for dependency in find_direct_dependencies(&row) {
+            insert_dependency.execute(params![row.id, dependency])?;
         }
-        let t_id = format!("{:016x}", hasher.finish());
-        log::trace!("Finished evaluating dependencies for template {} - {} total, ID {}", v.0, deps.len(), t_id);
-        result_map.insert(v.0.to_owned(), t_id);
     }
 
-    result_map
+    // For each row in the templates slice, invoke the traverse_set closure with its ID.
+    for row in templates {
+        traverse_set(&row.id)?;
+    }
+
+    // Drop prepared statements so the borrow checker will shut
+    insert_template.finalize()?;
+    insert_dependency.finalize()?;
+    query_set.finalize()?;
+    insert_id.finalize()?;
+
+    // Commit the above changes, then detatch (i.e. destroy) the in-memory mapping table.
+    txn.commit()?;
+    db::detach_mapping_database(conn)?;
+
+    Ok(())
 }
 
 /// Parse the contents of the given [`Row`] for its direct dependencies using the `TERA_INCLUDE_*` regular expressions.
-fn find_direct_dependencies(item: &Row) -> DependencySet {
+fn find_direct_dependencies<'a>(item: &'a Row) -> impl Iterator<Item=&'a str> {
     let mut dependencies: Vec<&str> = Vec::new();
     
     let mut capture = |regexp: &Regex | {
@@ -114,56 +119,6 @@ fn find_direct_dependencies(item: &Row) -> DependencySet {
 
     dependencies.sort_unstable();
     dependencies.dedup();
+
     dependencies.into_iter()
-        .map(|x| DependencyName(x) )
-        .collect()
-}
-
-/// Using the recursive [`traverse_set`] function, ascertain the deduplicated transitive dependencies of the provided dependency.
-fn find_transitive_dependencies<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> DependencySet<'a> {
-    let direct_deps = map.get(&dep).unwrap();
-
-    let mut transitives = 
-    direct_deps.into_iter()
-        .map(|dep| traverse_set(dep, map) )
-        .fold(Vec::new(), |mut acc, set| {
-            for dep in set {
-                acc.push(dep);
-            }
-            acc
-        });
-
-    transitives.sort_unstable();
-    transitives.dedup();
-    transitives
-}
-
-// Note: currently this is capable of blowing the stack if the input templates contain a dependency loop.
-// Tera does not catch stuff like include loops during parsing, so some sort of "escape counter" might be wise.
-/// Recurses into the dependencies of the given dependency, bubbling up a [`DependencySet`].
-fn traverse_set<'a>(dep: &'a DependencyName, map: &'a DependencyMap) -> DependencySet<'a> {
-    let deps = map.get(&dep).unwrap();
-
-    let mut acc = deps.iter()
-        .map(|dep| {
-            traverse_set(dep, map)
-        } )
-        .fold(Vec::new(), |mut acc, set| {
-            for dep in set {
-                acc.push(dep);
-            }
-            acc
-        });
-    
-    acc.extend_from_slice(&deps);
-    acc
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn id_computation() {
-        assert!(true)
-    }
 }

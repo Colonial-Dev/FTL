@@ -1,7 +1,11 @@
 mod pulldown;
 mod template;
 
-use crate::db::*;
+use anyhow::{anyhow, Result};
+use rusqlite::params;
+use serde_rusqlite::from_rows;
+
+use crate::db::{*, data::Page};
 
 struct RenderEngine {
     // Page iterator
@@ -10,33 +14,39 @@ struct RenderEngine {
     // Other fun stuff
 }
 
-pub fn prepare(conn: &Connection, rev_id: &str) {
+pub fn prepare(conn: &mut Connection, rev_id: &str) -> Result<()> {
     let engine = template::make_engine_instance(conn, rev_id).unwrap();
-    let mut stmt_a = conn.prepare("
-    SELECT id, path, contents FROM input_files
-    WHERE EXISTS (
-            SELECT 1
-            FROM revision_files
-            WHERE revision_files.id = input_files.id
-            AND revision_files.revision = ?1
-    )
-    AND input_files.extension = 'md';
-    ");
-    let mut stmt_b = conn.prepare("
-        SELECT * FROM pages
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM hypertext
-            WHERE ?1 = hypertext.input_id
+
+    let mut get_pages = conn.prepare("
+        SELECT DISTINCT pages.* FROM pages, revision_files WHERE
+        revision_files.revision = ?1
+        AND pages.id = revision_files.id
+        AND (
+            NOT EXISTS (
+                SELECT 1
+                FROM hypertext WHERE
+                hypertext.input_id = pages.id
+            )
+            OR EXISTS (
+                SELECT 1 
+                FROM template_ids, hypertext
+                WHERE hypertext.input_id = pages.id
+                AND hypertext.templating_id NOT IN (
+                    SELECT id FROM template_ids WHERE
+                    template_ids.revision = ?1
+                )
+            )
         )
-        OR dynamic = 1;
-    ");
+        OR pages.dynamic = 1;
+    ")?;
+
+    from_rows::<Page>(get_pages.query(params![rev_id])?)
+        .for_each(|x| println!("{:?}", x));
+
+    Ok(())
 }
 
 pub fn render(conn: &Connection, rev_id: &str) {
-    // Build render engine
-    // Query for page ID to render (all pages whose ID is not in the hypertext table, OR whose dynamic column is true (tentative))
-    // Bridge query to parallel iterator
     // Evaluate each page ID with the render template, which:
     //   - Queries the database for the page's markup
     //   - Parses it for shortcodes and evaluates them

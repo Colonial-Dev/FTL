@@ -63,7 +63,7 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     let mut insert_route = Route::prepare_insert(conn)?;
 
     let pages = Page::for_revision(conn, rev_id)?;
-    for page in &pages {
+    for page in pages {
         insert_route(&RouteIn {
             revision: rev_id,
             id: &page.id,

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use anyhow::{Result, anyhow, Context};
 use serde::Deserialize;
 use rusqlite::params;
@@ -19,10 +17,9 @@ pub struct Row {
 
 pub struct TemplatingEngine {
     pub tera: Tera,
-    pub id_map: HashMap<String, String>,
 }
 
-pub fn make_engine_instance(conn: &Connection, rev_id: &str) -> Result<TemplatingEngine> {
+pub fn make_engine_instance(conn: &mut Connection, rev_id: &str) -> Result<TemplatingEngine> {
     let mut tera = Tera::default();
     
     register_filters(&mut tera);
@@ -44,22 +41,20 @@ fn register_tests(tera: &mut Tera) {
     _ = tera;
 }
 
-fn parse_templates(conn: &Connection, rev_id: &str, mut tera: Tera) -> Result<TemplatingEngine> {
+fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Result<TemplatingEngine> {
     let rows = query_templates(conn, rev_id)?;
-
     // Collect row path/contents into a Vec of references.
     // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
     let templates: Vec<(&str, &str)> = rows.iter()
         .map(|x| (x.path.as_str().trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY), x.contents.as_str()) )
         .collect();
     
-    println!("{:#?}", templates);
-
     if let Err(e) = tera.add_raw_templates(templates) { return Err(anyhow!(e)); }
 
-    let id_map = dependency::compute_id_map(&rows);
+    dependency::compute_ids(&rows, conn, rev_id)
+        .context("Failed to compute template dependency IDs.")?;
     
-    Ok(TemplatingEngine { tera, id_map })
+    Ok(TemplatingEngine { tera })
 }
 
 fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {

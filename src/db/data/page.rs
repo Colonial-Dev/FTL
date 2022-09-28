@@ -37,6 +37,8 @@ pub struct Page {
     pub template: Option<String>,
     /// Whether or not this Page is a draft.
     pub draft: bool,
+    /// Whether or not this Page is dynamic (should always be re-rendered).
+    pub dynamic: bool,
     /// The tags associated with this Page.
     #[serde(deserialize_with="deserialize_vec")]
     pub tags: Vec<String>,
@@ -55,7 +57,7 @@ impl Page {
             INSERT OR IGNORE INTO pages
             VALUES(:id, :route, :offset, :title, :date, :publish_date, 
                 :expire_date, :description, :summary, :template, :draft, 
-                :tags, :collections, :aliases);
+                :dynamic, :tags, :collections, :aliases);
         ")?;
 
         let closure = move |input: &PageIn| {
@@ -113,6 +115,7 @@ pub struct PageIn<'a> {
     pub summary: Option<&'a str>,
     pub template: Option<&'a str>,
     pub draft: bool,
+    pub dynamic: bool,
     pub tags: String,
     pub collections: String,   
     pub aliases: String,
@@ -139,6 +142,7 @@ impl<'a> From<&'a Page> for PageIn<'a> {
             summary: source.summary.as_deref(),
             template: source.summary.as_deref(),
             draft: source.draft,
+            dynamic: source.dynamic,
             tags: serialize_slice(&source.tags),
             collections: serialize_slice(&source.collections),
             aliases: serialize_slice(&source.aliases),

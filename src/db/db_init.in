@@ -1,0 +1,78 @@
+CREATE TABLE IF NOT EXISTS input_files (
+    id TEXT PRIMARY KEY,
+    path TEXT,
+    hash TEXT,
+    extension TEXT,
+    contents TEXT,
+    inline INTEGER,
+    UNIQUE(id)
+);
+
+CREATE TABLE IF NOT EXISTS revision_files (
+    revision TEXT,
+    id TEXT,
+    UNIQUE(revision, id)
+);
+
+CREATE TABLE IF NOT EXISTS pages (
+    id TEXT PRIMARY KEY,
+    route TEXT,
+    offset INTEGER,
+    title TEXT,
+    date TEXT,
+    publish_date TEXT,
+    expire_date TEXT,
+    description TEXT,
+    summary TEXT,
+    template TEXT,
+    draft INTEGER,
+    dynamic INTEGER,
+    tags TEXT,
+    collections TEXT,
+    aliases TEXT,
+    UNIQUE(id)
+);
+
+CREATE TABLE IF NOT EXISTS page_aliases (
+    route TEXT,
+    id TEXT,
+    UNIQUE(route, id)
+);
+
+CREATE TABLE IF NOT EXISTS page_tags (
+    tag TEXT UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS routes (
+    revision TEXT,
+    id TEXT,
+    route TEXT,
+    parent_route TEXT,
+    kind INTEGER,
+    UNIQUE(
+        revision,
+        id,
+        route,
+        parent_route,
+        kind
+    )
+);
+
+CREATE TABLE IF NOT EXISTS template_ids (
+    revision TEXT,
+    id TEXT,
+    UNIQUE(revision, id)
+);
+
+CREATE TABLE IF NOT EXISTS hypertext (
+    revision TEXT,
+    input_id TEXT,
+    templating_id TEXT,
+    content TEXT,
+    UNIQUE(
+        revision,
+        input_id,
+        templating_id,
+        content
+    )
+);
