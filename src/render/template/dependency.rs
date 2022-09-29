@@ -22,6 +22,16 @@ lazy_static! {
     static ref TERA_EXTENDS_REGEXP: Regex = Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap();
 }
 
+/// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the template_ids table.
+/// 
+/// The procedure goes roughly like this:
+/// - Attach a new in-memory database and initialize a few tables.
+/// - Insert each template's name and ID into one of the tables.
+/// - Match the contents of each template against a set of regular expressions to extract its immediate dependencies.
+/// - Insert each template's direct dependencies into another table, where one column is the dependents's ID and the other is the dependency's ID.
+/// - Using a recursive Common Table Expression, map out each template's dependency set (deduplicated using `UNION` and sorted by `id ASC`.)
+/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk template_ids table.
+/// - Detach the in-memory database, deallocating its contents.
 pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str) -> Result<()> {
     // Attach and setup a new in-memory database for mapping dependency relations.
     let txn = conn.transaction()?;
@@ -29,7 +39,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
     
     // Prepare necessary statements for dependency mapping.
     let mut insert_template = txn.prepare("INSERT OR IGNORE INTO map.templates VALUES (?1, ?2);")?;
-    let mut insert_dependency = txn.prepare("INSERT OR IGNORE INTO map.dependencies VALUES (?1, (SELECT id FROM templates WHERE name = ?2));")?;
+    let mut insert_dependency = txn.prepare("INSERT OR IGNORE INTO map.dependencies VALUES (?1, (SELECT id FROM map.templates WHERE name = ?2));")?;
     let mut query_set = txn.prepare("
         WITH RECURSIVE transitives (id) AS (
             SELECT id FROM map.templates
@@ -76,7 +86,8 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
     }
 
     // For each row in the templates slice:
-    // 1. Match for the row's direct dependencies and insert them into the map.dependencies table.
+    // 1. Match for the row's direct dependencies.
+    // 2. Insert them into the map.dependencies table.
     for row in templates {
         for dependency in find_direct_dependencies(&row) {
             insert_dependency.execute(params![row.id, dependency])?;

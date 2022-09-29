@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use flume::{Sender, Receiver};
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 
 pub use crate::prepare::{SITE_SRC_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_STATIC_DIRECTORY, SITE_TEMPLATE_DIRECTORY};
 
@@ -30,6 +30,19 @@ impl ErrorChannel {
         self.error_sink
             .send(error.into())
             .expect("Build error sink has been closed!");
+    }
+
+    pub fn filter_error<T, E>(&self, result: Result<T, E>) -> Option<T> 
+    where 
+        E: Into<anyhow::Error>, 
+    {
+        match result {
+            Ok(val) => Some(val),
+            Err(e) => {
+                self.sink_error(anyhow!(e));
+                None
+            }
+        }
     }
 
     pub fn stream_errors(&self) -> flume::TryIter<'_, Error> {

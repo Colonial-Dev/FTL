@@ -1,4 +1,3 @@
-- Rethink frontmatter extraction approach. Regex might be too heavyweight.
 - Memmap input files? Unsure just how much this will help with performance.
 - Ascertain the best strategy for preventing unnecessary page re-renders.
     - We prevent duplicate Page parsing already during the walk stage, but currently need a good way to do the same during the render stage.
@@ -29,4 +28,5 @@
       - Inline shortcodes regex: \{% sci (.*) (.*) %\}
 
 - Minimize/remove calls to collect() and returns of Vecs from functions (return impl Iterator<Item=T> instead). This can avoid a LOT of allocations.
+  - Can't be done with database query operations, since iterator evaluation is necessary to go from "Row handles" to "owned Rust structs."
 - Maybe write tests (lol)

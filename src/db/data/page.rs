@@ -8,7 +8,7 @@ use super::dependencies::*;
 
 /// Represents a Markdown page and frontmatter.
 /// Maps directly to and from rows in the `pages` table.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Page {
     /// The ID of the file associated with this Page.
     /// See [InputFile][crate::db::data::InputFile].

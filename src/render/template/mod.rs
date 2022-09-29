@@ -15,11 +15,7 @@ pub struct Row {
     pub contents: String,
 }
 
-pub struct TemplatingEngine {
-    pub tera: Tera,
-}
-
-pub fn make_engine_instance(conn: &mut Connection, rev_id: &str) -> Result<TemplatingEngine> {
+pub fn make_engine_instance(conn: &mut Connection, rev_id: &str) -> Result<Tera> {
     let mut tera = Tera::default();
     
     register_filters(&mut tera);
@@ -41,7 +37,7 @@ fn register_tests(tera: &mut Tera) {
     _ = tera;
 }
 
-fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Result<TemplatingEngine> {
+fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Result<Tera> {
     let rows = query_templates(conn, rev_id)?;
     // Collect row path/contents into a Vec of references.
     // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
@@ -54,7 +50,7 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
     dependency::compute_ids(&rows, conn, rev_id)
         .context("Failed to compute template dependency IDs.")?;
     
-    Ok(TemplatingEngine { tera })
+    Ok(tera)
 }
 
 fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
