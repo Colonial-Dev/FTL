@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow};
 use lazy_static::lazy_static;
 use regex::{Regex, Captures};
 use tera::{Tera, Context};

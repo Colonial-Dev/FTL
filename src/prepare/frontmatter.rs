@@ -1,15 +1,13 @@
-use crate::{db::*, db::data::{Page, PageIn}};
+use crate::{db::*, db::data::Page};
 
 use rayon::prelude::*;
-use anyhow::{Result, Context};
+use anyhow::{Result};
 use lazy_static::lazy_static;
 use regex::Captures;
 use serde::{Deserialize, Serialize};
 use serde_rusqlite::from_rows;
 use rusqlite::params;
 use toml::value::Datetime;
-use time::OffsetDateTime;
-use time::format_description::well_known::Iso8601;
 
 lazy_static! {
     static ref TOML_FRONTMATTER: regex::Regex = regex::Regex::new(r#"(\+\+\+)(.|\n)*(\+\+\+)"#).unwrap();
@@ -62,8 +60,8 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
         .collect::<Vec<Page>>()
         .into_iter() // Convert to serial iterator, because rusqlite is Not Thread Safe (TM)
         .map(|x| {
-            let page = PageIn::from(&x);
-            insert_page(&page)
+            //let page = PageIn::from(&x);
+            insert_page(&x)
         })
         .map(|x| if let Err(e) = x {
             log::error!("Error when inserting Page: {:#?}", e);
@@ -170,17 +168,9 @@ fn to_page(id: String, route: String, offset: i64, fm: TomlFrontmatter) -> Page 
     }
 }
 
-fn unwrap_datetime(value: Option<Datetime>) -> Option<OffsetDateTime> {
+fn unwrap_datetime(value: Option<Datetime>) -> Option<String> {
     match value {
-        Some(dt) => {
-            let dt = dt.to_string();
-            let odt = OffsetDateTime::parse(&dt, &Iso8601::DEFAULT);
-            match odt {
-                Ok(odt) => Some(odt),
-                // TODO error handling
-                Err(_) => None
-            }
-        }
+        Some(dt) => Some(dt.to_string()),
         None => None
     }
 }

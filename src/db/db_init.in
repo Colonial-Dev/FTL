@@ -60,8 +60,9 @@ CREATE TABLE IF NOT EXISTS routes (
 
 CREATE TABLE IF NOT EXISTS template_ids (
     revision TEXT,
+    name TEXT,
     id TEXT,
-    UNIQUE(revision, id)
+    UNIQUE(revision, name, id)
 );
 
 CREATE TABLE IF NOT EXISTS hypertext (

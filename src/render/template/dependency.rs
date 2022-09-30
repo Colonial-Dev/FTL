@@ -37,8 +37,14 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
     db::attach_mapping_database(&txn)?;
     
     // Prepare necessary statements for dependency mapping.
-    let mut insert_template = txn.prepare("INSERT OR IGNORE INTO map.templates VALUES (?1, ?2);")?;
-    let mut insert_dependency = txn.prepare("INSERT OR IGNORE INTO map.dependencies VALUES (?1, (SELECT id FROM map.templates WHERE name = ?2));")?;
+    let mut insert_template = txn.prepare("
+        INSERT OR IGNORE INTO map.templates 
+        VALUES (?1, ?2);
+    ")?;
+    let mut insert_dependency = txn.prepare("
+        INSERT OR IGNORE INTO map.dependencies 
+        VALUES (?1, (SELECT id FROM map.templates WHERE name = ?2));
+    ")?;
     let mut query_set = txn.prepare("
         WITH RECURSIVE transitives (id) AS (
             SELECT id FROM map.templates
@@ -53,12 +59,15 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
         
         SELECT id FROM transitives ORDER BY id ASC;
     ")?;
-    let mut insert_id = txn.prepare("INSERT OR IGNORE INTO template_ids VALUES (?1, ?2)")?;
+    let mut insert_id = txn.prepare("
+        INSERT OR IGNORE INTO template_ids 
+        VALUES (?1, (SELECT name FROM map.templates WHERE id = ?2), ?3)
+    ")?;
 
     // Given a template ID, this closure will:
     // - Query the database for every member in the ID's dependency set
     // - Fold the results into a hasher
-    // - Write the resulting hash to the on-disk template_ids table, alongside the revision ID.
+    // - Write the resulting hash to the on-disk template_ids table, alongside its name and the revision ID.
     let mut traverse_set = |id: &str| -> Result<()> {
         let hasher = seahash::SeaHasher::default();
         let hasher = from_rows::<String>(query_set.query(params![id])?)
@@ -69,7 +78,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
             });
         
         let hash = format!("{:016x}", hasher.finish());
-        insert_id.execute(params![rev_id, hash])?;
+        insert_id.execute(params![rev_id, id, hash])?;
         Ok(())
     };
 

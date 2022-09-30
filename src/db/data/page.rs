@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use serde::{de::DeserializeOwned, Serializer};
-use time::{OffsetDateTime, format_description::well_known::Iso8601};
 
 use crate::share::ERROR_CHANNEL;
 
@@ -20,15 +19,12 @@ pub struct Page {
     pub offset: i64,
     /// The title of this Page.
     pub title: String,
-    /// The date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
-    pub date: Option<OffsetDateTime>,
-    /// The publish date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
-    pub publish_date: Option<OffsetDateTime>,
-    /// The expiration date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
-    pub expire_date: Option<OffsetDateTime>,
+    /// The date associated with this Page in ISO 8601 format, if any.
+    pub date: Option<String>,
+    /// The publish date associated with this Page in ISO 8601 format, if any.
+    pub publish_date: Option<String>,
+    /// The expiration date associated with this Page in ISO 8601 format, if any.
+    pub expire_date: Option<String>,
     /// The description associated with this Page, if any.
     pub description: Option<String>,
     /// The summary associated with this Page, if any.
@@ -40,19 +36,26 @@ pub struct Page {
     /// Whether or not this Page is dynamic (should always be re-rendered).
     pub dynamic: bool,
     /// The tags associated with this Page.
-    #[serde(deserialize_with="deserialize_vec")]
+    #[serde(serialize_with = "serialize_slice", deserialize_with="deserialize_vec")]
     pub tags: Vec<String>,
     /// The collections associated with this Page.
-    #[serde(deserialize_with="deserialize_vec")]
+    #[serde(serialize_with = "serialize_slice", deserialize_with="deserialize_vec")]
     pub collections: Vec<String>,
     /// The aliases (redirects) associated with this Page.
-    #[serde(deserialize_with="deserialize_vec")]
+    #[serde(serialize_with = "serialize_slice", deserialize_with="deserialize_vec")]
     pub aliases: Vec<String>,
 }
 
 impl Page {
+    /// Serializes a [`RevisionFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
+    /// Returns a [`DbError::Serde`] if serialization fails.
+    pub fn to_params(&self) -> Result<ParameterSlice> {
+        let params = to_params_named(&self)?;
+        Ok(params)
+    }
+    
     /// Prepares an SQL statement to insert a new row into the `pages` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&PageIn) -> Result<()> + '_> {        
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&Page) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO pages
             VALUES(:id, :route, :offset, :title, :date, :publish_date, 
@@ -60,7 +63,7 @@ impl Page {
                 :dynamic, :tags, :collections, :aliases);
         ")?;
 
-        let closure = move |input: &PageIn| {
+        let closure = move |input: &Page| {
             stmt.execute(input.to_params()?.to_slice().as_slice())?;
             Ok(())
         };
@@ -99,103 +102,18 @@ impl Page {
     }
 }
 
-/// Representation of [`Page`] for database insertion. Reference-and-[`Copy`] where possible.
-/// 
-/// Certain information ([`OffsetDateTime`]s and [`Vec<String>`]s) is mutated into a database-friendly format, requiring allocations.
-#[derive(Serialize, Debug)]
-pub struct PageIn<'a> {
-    pub id: &'a str,
-    pub route: &'a str,
-    pub offset: i64,
-    pub title: &'a str,
-    pub date: Option<String>,
-    pub publish_date: Option<String>,
-    pub expire_date: Option<String>,
-    pub description: Option<&'a str>,
-    pub summary: Option<&'a str>,
-    pub template: Option<&'a str>,
-    pub draft: bool,
-    pub dynamic: bool,
-    pub tags: String,
-    pub collections: String,   
-    pub aliases: String,
-}
-
-impl<'a> PageIn<'a> {
-    pub fn to_params(&self) -> Result<ParameterSlice> {
-        let params = to_params_named(&self)?;
-        Ok(params)
-    }
-}
-
-impl<'a> From<&'a Page> for PageIn<'a> {
-    fn from(source: &'a Page) -> Self {
-        PageIn {
-            id: &source.id,
-            route: &source.route,
-            offset: source.offset,
-            title: &source.title,
-            date: unwrap_datetime(&source.date),
-            publish_date: unwrap_datetime(&source.publish_date),
-            expire_date: unwrap_datetime(&source.expire_date),
-            description: source.description.as_deref(),
-            summary: source.summary.as_deref(),
-            template: source.template.as_deref(),
-            draft: source.draft,
-            dynamic: source.dynamic,
-            tags: serialize_slice(&source.tags),
-            collections: serialize_slice(&source.collections),
-            aliases: serialize_slice(&source.aliases),
-        }
-    }
-}
-
-/// Deserialization override for [`OffsetDateTime`] values being retrieved from the database.
-/// Parses the in-database `TEXT` representation back into the original [`OffsetDateTime`].
-fn wrap_datetime<'de, D>(d: D) -> Result<Option<OffsetDateTime>, D::Error>
+/// Serializes a slice into JSON for storage in the database as `TEXT`.
+fn serialize_slice<T, S>(x: &[T], s: S) -> Result<S::Ok, S::Error>
 where
-	D: serde::Deserializer<'de>,
-{
-    let maybe_dt: Option<String> = Deserialize::deserialize(d)?;
-    let dt = match maybe_dt {
-        Some(maybe) => {
-            let parsed = OffsetDateTime::parse(&maybe, &Iso8601::DEFAULT);
-            match parsed {
-                Ok(val) => Some(val),
-                // TODO error handling
-                Err(e) => panic!("{}", e)
-            }
-        },
-        None => None
-    };
-    Ok(dt)
-}
-
-/// Converts potential [`OffsetDateTime`] values into [`String`]s (for storage in the database as `TEXT`) where applicable.
-fn unwrap_datetime(value: &Option<OffsetDateTime>) -> Option<String> {
-    match *value {
-        Some(dt) => dt.format(&Iso8601::DEFAULT).ok(),
-        None => None
-    }
-}
-
-fn serde_unwrap_datetime<S>(x: &Option<OffsetDateTime>, s: S) -> Result<S::Ok, S::Error>
-where
+    T: Serialize,
     S: Serializer,
 {
-    match unwrap_datetime(x) {
-        Some(dt) => s.serialize_str(&dt),
-        None => s.serialize_none()
-    }
-}
-
-/// Serializes a slice into JSON for storage in the database as `TEXT`.
-fn serialize_slice<T>(input: &[T]) -> String where T: Serialize {
-    serde_json::to_string(&input).unwrap_or_else(|err| {
-        let msg = format!("Error when serializing a vector: {}", err);
-        ERROR_CHANNEL.sink_error(anyhow!(msg));
+    let json = serde_json::to_string(&x).unwrap_or_else(|err| {
+        let err = anyhow!("Error when serializing a vector: {err}");
+        ERROR_CHANNEL.sink_error(err);
         String::from("[]")
-    })
+    });
+    s.serialize_str(&json)
 }
 
 /// Deserialization override for [`Vec`]/slice values being retrieved from the database.
@@ -206,6 +124,10 @@ where
     T: DeserializeOwned
 {
     let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(d)?;
-    let vec: Vec<T> = serde_json::from_str(&s).unwrap_or_else(|_| Vec::new());
+    let vec: Vec<T> = serde_json::from_str(&s).unwrap_or_else(|err| {
+        let err = anyhow!("Error when deserializing a vector: {err}");
+        ERROR_CHANNEL.sink_error(err);
+        Vec::new()
+    });
     Ok(vec)
 }

@@ -3,13 +3,11 @@ mod template;
 
 use std::borrow::Cow;
 
-use anyhow::{anyhow, Result};
-use pulldown_cmark::{Parser, Options, html};
+use anyhow::{Result};
 use rayon::prelude::*;
 use rusqlite::params;
 use serde::Serialize;
 use serde_rusqlite::from_rows;
-use tera::Tera;
 
 use crate::{db::{*, data::Page}, share::ERROR_CHANNEL};
 
@@ -29,6 +27,7 @@ impl RenderTicket {
     }
 }
 
+/// Executes the render pipeline for the provided revision, inserting the results into the database.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     let tera = template::make_engine(conn, rev_id).unwrap();
     let tickets = query_tickets(conn, rev_id)?;
