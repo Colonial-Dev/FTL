@@ -1,2 +1,0 @@
-HELLO {{ name }}
-{% include "b.tera" %}

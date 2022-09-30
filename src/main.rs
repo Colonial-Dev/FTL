@@ -21,5 +21,6 @@ fn main() {
     prepare::parse_frontmatters(conn, &rev_id).unwrap();
     prepare::create_static_asset_routes(conn, &rev_id).unwrap();
     prepare::create_page_routes(conn, &rev_id).unwrap();
+
     render::render(conn, &rev_id).unwrap();
 }

@@ -27,35 +27,25 @@ impl RenderTicket {
     pub fn offset_source(&self) -> &str {
         &self.source[(self.page.offset as usize)..]
     }
-
-    pub fn into_context(&self) -> Result<tera::Context> {
-        Ok(tera::Context::from_serialize(self)?)
-    }
 }
 
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
-    let tera = template::make_engine_instance(conn, rev_id).unwrap();
+    let tera = template::make_engine(conn, rev_id).unwrap();
     let tickets = query_tickets(conn, rev_id)?;
     let (tx, rx) = flume::unbounded();
 
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    
-
     tickets.into_par_iter()
         .for_each(|ticket| {
-            let expanded = expand_shortcodes(ticket.offset_source(), &ticket.page, &tera);
+            let source = Cow::Borrowed(ticket.offset_source());
+            let source = template::shortcodes(source, &tera);
+            let parser = pulldown::init(&source);
+            let parser = pulldown::map(parser);
 
-            let parser = init_pulldown(&expanded);
-            let parser = map_pulldown(parser);
-
-            let hypertext = write_pulldown(parser);
-            let hypertext = evaluate_templating(hypertext, &ticket.page, &tera);
+            let hypertext = pulldown::write(parser);
+            let hypertext = template::templates(hypertext, &ticket.page, &tera).unwrap();
             let hypertext = rewrite_hypertext(hypertext);
-
-            // Justification: neither end of the channel pair is dropped until after this iterator is evaluated.
-            #[allow(unused_must_use)]
-            tx.send(hypertext);
+            println!("{hypertext}");
+            drop(tx.send(hypertext));
         });
 
     drop(tx);
@@ -117,35 +107,6 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
     Ok(pages)
 }
 
-/// Parses the given Markdown input for shortcodes and attempts to evaluate them against the provided Tera instance.
-/// The resulting "expanded source" will be returned as a [`Cow<'a, str>`].
-fn expand_shortcodes<'a>(input: &'a str, page: &Page, tera: &Tera) -> Cow<'a, str> {
-    todo!()
-}
-
-/// Initializes a [`Parser`] instance with the given Markdown input and all available extensions.
-fn init_pulldown<'a>(input: &'a str) -> Parser<'a, 'a> {
-    let options = Options::all();
-    Parser::new_ext(input, options)
-}
-
-/// Maps a [`Parser`] instance over an arbitrary number of enabled parser maps. 
-fn map_pulldown<'a>(parser: Parser) -> Parser<'a, 'a> {
-    todo!()
-}
-
-/// Consume a [`Parser`] instance, buffering the HTML output into a final [`String`].
-fn write_pulldown(parser: Parser) -> String {
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    html_output
-}
-
-/// If the given [Page] instance has a [`Some`] template value, attempt to evaluate it using the provided hypertext and Tera instance.
-fn evaluate_templating(hypertext: String, page: &Page, tera: &Tera) -> String {
-    todo!()
-}
-
-fn rewrite_hypertext(hypertext: String) -> String {
-    todo!()
+fn rewrite_hypertext<'a>(hypertext: Cow<'a, str>) -> Cow<'a, str> {
+    hypertext
 }

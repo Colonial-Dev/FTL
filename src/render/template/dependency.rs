@@ -7,7 +7,6 @@ use lazy_static::lazy_static;
 use rusqlite::{Connection, params};
 
 use crate::db;
-
 use super::Row;
 
 lazy_static! {
@@ -80,7 +79,8 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str
     for row in templates {
         let trimmed_path = row.path
             .trim_start_matches(crate::share::SITE_SRC_DIRECTORY)
-            .trim_start_matches(crate::share::SITE_TEMPLATE_DIRECTORY);
+            .trim_start_matches(crate::share::SITE_TEMPLATE_DIRECTORY)
+            .trim_end_matches(".tera");
         
         insert_template.execute(params![trimmed_path, row.id])?;
     }

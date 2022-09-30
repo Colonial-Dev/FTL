@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serializer};
 use time::{OffsetDateTime, format_description::well_known::Iso8601};
 
 use crate::share::ERROR_CHANNEL;
@@ -8,7 +8,7 @@ use super::dependencies::*;
 
 /// Represents a Markdown page and frontmatter.
 /// Maps directly to and from rows in the `pages` table.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Page {
     /// The ID of the file associated with this Page.
     /// See [InputFile][crate::db::data::InputFile].
@@ -21,13 +21,13 @@ pub struct Page {
     /// The title of this Page.
     pub title: String,
     /// The date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime")]
+    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
     pub date: Option<OffsetDateTime>,
     /// The publish date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime")]
+    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
     pub publish_date: Option<OffsetDateTime>,
     /// The expiration date associated with this Page, if any.
-    #[serde(deserialize_with="wrap_datetime")]
+    #[serde(deserialize_with="wrap_datetime", serialize_with="serde_unwrap_datetime")]
     pub expire_date: Option<OffsetDateTime>,
     /// The description associated with this Page, if any.
     pub description: Option<String>,
@@ -140,7 +140,7 @@ impl<'a> From<&'a Page> for PageIn<'a> {
             expire_date: unwrap_datetime(&source.expire_date),
             description: source.description.as_deref(),
             summary: source.summary.as_deref(),
-            template: source.summary.as_deref(),
+            template: source.template.as_deref(),
             draft: source.draft,
             dynamic: source.dynamic,
             tags: serialize_slice(&source.tags),
@@ -163,7 +163,7 @@ where
             match parsed {
                 Ok(val) => Some(val),
                 // TODO error handling
-                Err(_) => None
+                Err(e) => panic!("{}", e)
             }
         },
         None => None
@@ -173,7 +173,20 @@ where
 
 /// Converts potential [`OffsetDateTime`] values into [`String`]s (for storage in the database as `TEXT`) where applicable.
 fn unwrap_datetime(value: &Option<OffsetDateTime>) -> Option<String> {
-    value.map(|dt| dt.to_string())
+    match *value {
+        Some(dt) => dt.format(&Iso8601::DEFAULT).ok(),
+        None => None
+    }
+}
+
+fn serde_unwrap_datetime<S>(x: &Option<OffsetDateTime>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match unwrap_datetime(x) {
+        Some(dt) => s.serialize_str(&dt),
+        None => s.serialize_none()
+    }
 }
 
 /// Serializes a slice into JSON for storage in the database as `TEXT`.

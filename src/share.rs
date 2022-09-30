@@ -25,7 +25,7 @@ impl ErrorChannel {
     }
 
     pub fn sink_error(&self, error: Error) {
-        log::error!("Error sunk: {:#?}", error);
+        log::error!("Error sunk: {}", error);
         // Expect justification: channel should never close while this method is callable
         self.error_sink
             .send(error.into())
