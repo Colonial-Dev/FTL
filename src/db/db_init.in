@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS template_ids (
     UNIQUE(revision, name, id)
 );
 
+CREATE TABLE IF NOT EXISTS stylesheets (
+    revision TEXT,
+    content TEXT,
+    UNIQUE (revision, content)
+);
+
 CREATE TABLE IF NOT EXISTS hypertext (
     revision TEXT,
     input_id TEXT,

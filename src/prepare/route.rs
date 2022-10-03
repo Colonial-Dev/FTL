@@ -39,6 +39,8 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
             AND revision_files.revision = ?1
         )
         AND input_files.extension != 'md'
+        AND input_files.extension != 'sass'
+        AND input_files.extension != 'scss'
     ")?;
 
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);

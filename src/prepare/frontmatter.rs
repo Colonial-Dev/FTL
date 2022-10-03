@@ -1,4 +1,4 @@
-use crate::{db::*, db::data::Page};
+use crate::{db::*, db::data::Page, share};
 
 use rayon::prelude::*;
 use anyhow::{Result};
@@ -60,7 +60,6 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
         .collect::<Vec<Page>>()
         .into_iter() // Convert to serial iterator, because rusqlite is Not Thread Safe (TM)
         .map(|x| {
-            //let page = PageIn::from(&x);
             insert_page(&x)
         })
         .map(|x| if let Err(e) = x {
@@ -140,8 +139,8 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
 
 fn to_route(path: &str) -> String {
     let route_path = path
-        .trim_start_matches("src/")
-        .trim_start_matches("content")
+        .trim_start_matches(share::SITE_SRC_DIRECTORY)
+        .trim_start_matches(share::SITE_CONTENT_DIRECTORY)
         .trim_end_matches("/index.md")
         .trim_start_matches('/');
     

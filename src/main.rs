@@ -17,10 +17,12 @@ fn main() {
     let db_pool = initialize();
     let conn = &mut *db_pool.get().unwrap();
 
+
     let rev_id = prepare::walk_src(conn).unwrap();
     prepare::parse_frontmatters(conn, &rev_id).unwrap();
     prepare::create_static_asset_routes(conn, &rev_id).unwrap();
     prepare::create_page_routes(conn, &rev_id).unwrap();
+    prepare::create_alias_routes(conn, &rev_id).unwrap();
 
     render::render(conn, &rev_id).unwrap();
 }

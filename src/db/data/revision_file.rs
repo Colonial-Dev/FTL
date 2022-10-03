@@ -12,13 +12,6 @@ pub struct RevisionFile {
 
 // Database write methods
 impl RevisionFile {
-    /// Serializes a [`RevisionFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
-    /// Returns a [`DbError::Serde`] if serialization fails.
-    pub fn to_params(&self) -> Result<ParameterSlice> {
-        let params = to_params_named(&self)?;
-        Ok(params)
-    }
-
     /// Prepares an SQL statement to insert a new row into the `revision_files` table and returns a closure that wraps it.
     pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RevisionFileIn) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("

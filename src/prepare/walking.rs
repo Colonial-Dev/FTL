@@ -4,7 +4,7 @@ use crate::db::data::{RevisionFile, RevisionFileIn};
 use crate::share::ERROR_CHANNEL;
 use crate::{db::data::InputFile, db::Connection};
 use walkdir::{DirEntry, WalkDir};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::hash::{Hash, Hasher};
 
 pub const SITE_SRC_DIRECTORY: &str = "test_site/src/";

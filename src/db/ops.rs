@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::io::ErrorKind;
 
-use anyhow::{Result, Context};
+use anyhow::{Result, anyhow};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, params};
 
@@ -34,18 +34,13 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
 
 /// Try and create a new SQLite database at the given path. Fails if the database file already exists.
 pub fn try_create_db(path: &Path) -> Result<Connection> {
-    if path.exists() {
-        let e = std::io::Error::new(
-            ErrorKind::AlreadyExists, 
-            "Database file already exists."
-        );
-        return Err(e.into());
-    }
+    if path.exists() { return Err(anyhow!("Database file already exists.")); }
 
     // Calling open() implicitly creates the database if it does not exist.
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "journal_mode", &"WAL".to_string())?;
     try_initialize_tables(&conn)?;
+    
     Ok(conn)
 }
 

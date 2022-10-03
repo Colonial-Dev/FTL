@@ -1,4 +1,5 @@
 mod pulldown;
+mod stylesheet;
 mod template;
 
 use std::borrow::Cow;
@@ -43,12 +44,29 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
             let hypertext = pulldown::write(parser);
             let hypertext = template::templates(hypertext, &ticket.page, &tera).unwrap();
             let hypertext = rewrite_hypertext(hypertext);
-            println!("{hypertext}");
-            drop(tx.send(hypertext));
+
+            drop(
+                tx.send((hypertext, ticket.page.id, ticket.page.template))
+            );
         });
 
     drop(tx);
 
+    let mut stmt = conn.prepare("
+        INSERT OR IGNORE INTO hypertext 
+        VALUES (?1, ?2, 
+            (SELECT id FROM template_ids WHERE revision = ?1 AND name = ?3),
+            ?4
+        )
+    ")?;
+    
+    for bundle in rx.into_iter() {
+        let (hypertext, id, template) = bundle;
+        stmt.execute(params![rev_id, id, template, hypertext])?;
+    }
+
+    stylesheet::compile_stylesheet(conn, rev_id)?;
+    
     Ok(())
 }
 
