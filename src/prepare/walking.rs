@@ -4,10 +4,11 @@ use crate::db::data::{RevisionFile, RevisionFileIn};
 use crate::share::ERROR_CHANNEL;
 use crate::{db::data::InputFile, db::Connection};
 use walkdir::{DirEntry, WalkDir};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::hash::{Hash, Hasher};
 
 pub const SITE_SRC_DIRECTORY: &str = "test_site/src/";
+pub const SITE_ASSET_DIRECTORY: &str = "assets/";
 pub const SITE_CONTENT_DIRECTORY: &str = "content/";
 pub const SITE_STATIC_DIRECTORY: &str = "static/";
 pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
@@ -146,7 +147,6 @@ fn entry_extension(entry: &DirEntry) -> Option<String> {
 }
 
 fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
-    log::info!("Updating input_files table...");
     let mut insert_file = InputFile::prepare_insert(conn)?;
     
     for file in files {
@@ -155,16 +155,17 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
         if !file.inline {
             log::trace!("Caching non-inline file {:#?}", &file.path);
             let destination = format!(".ftl/cache/{}", &file.hash);
+            // TODO check for file already existing - recopies
+            // can still potentially be quite expensive
             std::fs::copy(&file.path, Path::new(&destination))?;
         }
     }
 
-    log::info!("Done updating input_files table.");
+    log::info!("Updated input_files table.");
     Ok(())
 }
 
 fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<()> {
-    log::info!("Updating revision_files table...");
     let mut insert_file = RevisionFile::prepare_insert(conn)?;
     
     for file in files {
@@ -174,7 +175,7 @@ fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -
         })?;
     }
 
-    log::info!("Done updating revision_files table.");
+    log::info!("Updated revision_files table.");
     Ok(())
 }
 

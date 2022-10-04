@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use flume::{Sender, Receiver};
 use anyhow::{anyhow, Error};
 
-pub use crate::prepare::{SITE_SRC_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_STATIC_DIRECTORY, SITE_TEMPLATE_DIRECTORY};
+pub use crate::prepare::{SITE_SRC_DIRECTORY, SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_STATIC_DIRECTORY, SITE_TEMPLATE_DIRECTORY};
 
 lazy_static!(
     // This seems wrong, but it's convenient and rustc/clippy are both fine with it sooo...

@@ -124,7 +124,7 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
             log::trace!("Parsed frontmatter for page \"{}\"", fm.title);
             let page = to_page(
                 item.id.clone(),
-                to_route(&item.path),
+                item.path.clone(),
                 capture.end() as i64,
                 fm
             );
@@ -147,10 +147,11 @@ fn to_route(path: &str) -> String {
     EXT_REGEX.replace(route_path, "").to_string()
 }
 
-fn to_page(id: String, route: String, offset: i64, fm: TomlFrontmatter) -> Page {
+fn to_page(id: String, path: String, offset: i64, fm: TomlFrontmatter) -> Page {
     Page {
         id,
-        route,
+        route: to_route(&path),
+        path,
         offset,
         title: fm.title,
         date: unwrap_datetime(fm.date),

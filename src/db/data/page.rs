@@ -10,8 +10,10 @@ use super::dependencies::*;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Page {
     /// The ID of the file associated with this Page.
-    /// See [InputFile][crate::db::data::InputFile].
+    /// See [`InputFile`][crate::db::data::InputFile].
     pub id: String,
+    /// The path to the page's source file.
+    pub path: String,
     /// The URL route associated with this Page.
     pub route: String,
     /// The byte offset in the `content` column of this Page's corresponding 
@@ -58,7 +60,7 @@ impl Page {
     pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&Page) -> Result<()> + '_> {        
         let mut stmt = conn.prepare("
             INSERT OR IGNORE INTO pages
-            VALUES(:id, :route, :offset, :title, :date, :publish_date, 
+            VALUES(:id, :path, :route, :offset, :title, :date, :publish_date, 
                 :expire_date, :description, :summary, :template, :draft, 
                 :dynamic, :tags, :collections, :aliases);
         ")?;

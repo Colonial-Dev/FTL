@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::io::ErrorKind;
 
 use anyhow::{Result, anyhow};
 use r2d2_sqlite::SqliteConnectionManager;
@@ -7,18 +6,19 @@ use rusqlite::{Connection, params};
 
 use super::{KNOWN_TABLES, DbPool};
 
+const DB_PATH: &str = ".ftl/content.db";
 static DB_INIT_QUERY: &str = include_str!("db_init.in");
 static MAP_INIT_QUERY: &str = include_str!("map_init.in");
 
 /// Attempt to open a connection to an SQLite database at the given path.
-pub fn make_connection(path: &Path) -> Result<Connection> {
-    let conn = Connection::open(path)?;
+pub fn make_connection() -> Result<Connection> {
+    let conn = Connection::open(DB_PATH)?;
     Ok(conn)
 }
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
-pub fn make_pool(path: &Path) -> Result<DbPool> {
-    let manager = SqliteConnectionManager::file(path);
+pub fn make_pool() -> Result<DbPool> {
+    let manager = SqliteConnectionManager::file(DB_PATH);
     let pool = r2d2::Pool::new(manager)?;
     Ok(pool)
 }

@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::{Result};
 use rusqlite::params;
 use serde_repr::{Serialize_repr, Deserialize_repr};
 use serde_rusqlite::{from_rows};
@@ -25,8 +25,6 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         id: String,
         path: String,
     }
-
-    log::info!("Computing static asset routes...");
 
     let mut insert_route = Route::prepare_insert(conn)?;
 
@@ -55,13 +53,11 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         })?;
     }
 
-    log::info!("Done computing static asset routes.");
+    log::info!("Computed static asset routes.");
     Ok(())
 }
 
 pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
-    log::info!("Computing page routes...");
-
     let mut insert_route = Route::prepare_insert(conn)?;
 
     let pages = Page::for_revision(conn, rev_id)?;
@@ -75,7 +71,7 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         })?;
     }
 
-    log::info!("Done computing page routes.");
+    log::info!("Computed page routes.");
     Ok(())
 }
 
@@ -86,8 +82,6 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         path: String,
     }
     
-    log::info!("Computing alias routes...");
-
     let mut insert_route = Route::prepare_insert(conn)?;
 
     let mut stmt = conn.prepare("
@@ -111,7 +105,7 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         })?;
     }
 
-    log::info!("Done computing alias routes.");
+    log::info!("Computed alias routes.");
     Ok(())
 }
 

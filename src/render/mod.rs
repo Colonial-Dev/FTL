@@ -1,4 +1,5 @@
 mod pulldown;
+mod rewrite;
 mod stylesheet;
 mod template;
 
@@ -11,6 +12,8 @@ use serde::Serialize;
 use serde_rusqlite::from_rows;
 
 use crate::{db::{*, data::Page}, share::ERROR_CHANNEL};
+
+use self::rewrite::rewrite;
 
 #[derive(Serialize, Debug)]
 struct RenderTicket {
@@ -30,7 +33,8 @@ impl RenderTicket {
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
-    let tera = template::make_engine(conn, rev_id).unwrap();
+    log::info!("Starting render step...");
+    let tera = template::make_engine(conn, rev_id)?;
     let tickets = query_tickets(conn, rev_id)?;
     let (tx, rx) = flume::unbounded();
 
@@ -43,7 +47,10 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
             let hypertext = pulldown::write(parser);
             let hypertext = template::templates(hypertext, &ticket.page, &tera).unwrap();
-            let hypertext = rewrite_hypertext(hypertext);
+            let hypertext = rewrite::rewrite(hypertext);
+
+            let lmfao = rewrite::cachebust_img(hypertext.to_string(), &ticket.page, &crate::db::make_connection().unwrap());
+            println!("{}", lmfao.unwrap());
 
             drop(
                 tx.send((hypertext, ticket.page.id, ticket.page.template))
@@ -122,8 +129,4 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
         .collect();
 
     Ok(pages)
-}
-
-fn rewrite_hypertext<'a>(hypertext: Cow<'a, str>) -> Cow<'a, str> {
-    hypertext
 }

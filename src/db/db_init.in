@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS revision_files (
 
 CREATE TABLE IF NOT EXISTS pages (
     id TEXT PRIMARY KEY,
+    path TEXT,
     route TEXT,
     offset INTEGER,
     title TEXT,
@@ -34,13 +35,15 @@ CREATE TABLE IF NOT EXISTS pages (
 );
 
 CREATE TABLE IF NOT EXISTS page_aliases (
-    route TEXT,
     id TEXT,
-    UNIQUE(route, id)
+    route TEXT,
+    UNIQUE(id, route)
 );
 
 CREATE TABLE IF NOT EXISTS page_tags (
-    tag TEXT UNIQUE
+    id TEXT,
+    tag TEXT,
+    UNIQUE(id, tag)
 );
 
 CREATE TABLE IF NOT EXISTS routes (

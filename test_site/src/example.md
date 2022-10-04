@@ -17,3 +17,9 @@ Some text put inside a codeblock by a block shortcode.
 
 Unlike the inline flavor, block shortcodes can capture an arbitrary block of text!
 {% endsc %}
+
+Here's an image:
+![Ya boi](image.png)
+
+Here's one located elsewhere:
+![Java](java.png)
