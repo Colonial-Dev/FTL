@@ -1,5 +1,19 @@
 use super::dependencies::*;
 
+use serde_repr::{Serialize_repr, Deserialize_repr};
+use num_enum::TryFromPrimitive;
+
+#[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum RouteKind {
+    Unknown = 0,
+    StaticAsset = 1,
+    Page = 3,
+    Stylesheet = 4,
+    Redirect = 5,
+}
+
 /// Represents a URL route to a file.
 /// Maps directly to and from rows in the `routes` table.
 #[derive(Serialize, Deserialize, Debug)]
@@ -10,7 +24,7 @@ pub struct Route {
     pub id: String,
     /// The URL this route qualifies.
     /// 
-    /// Example: `/img/banner.png`, which points to `src/static/img/banner.png`.
+    /// Example: `/img/banner.png`, which points to `src/assets/img/banner.png`.
     pub route: String,
     /// The "parent" path of the route. 
     /// Corresponds to the first subdirectory in the URL.
@@ -18,7 +32,7 @@ pub struct Route {
     /// Example: the parent path of `/posts/hello_there` is `posts`.
     pub parent_route: Option<String>,
     /// What type of asset this route points to.
-    pub kind: crate::prepare::RouteKind,
+    pub kind: RouteKind,
 }
 
 // Database write methods
@@ -46,7 +60,7 @@ pub struct RouteIn<'a> {
     pub id: &'a str,
     pub route: &'a str,
     pub parent_route: Option<&'a str>,
-    pub kind: crate::prepare::RouteKind,
+    pub kind: RouteKind,
 }
 
 impl<'a> RouteIn<'a> {

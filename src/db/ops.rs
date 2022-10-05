@@ -7,8 +7,8 @@ use rusqlite::{Connection, params};
 use super::{KNOWN_TABLES, DbPool};
 
 const DB_PATH: &str = ".ftl/content.db";
-static DB_INIT_QUERY: &str = include_str!("db_init.in");
-static MAP_INIT_QUERY: &str = include_str!("map_init.in");
+const DB_INIT_QUERY: &str = include_str!("db_init.sql");
+const MAP_INIT_QUERY: &str = include_str!("map_init.sql");
 
 /// Attempt to open a connection to an SQLite database at the given path.
 pub fn make_connection() -> Result<Connection> {
@@ -18,8 +18,13 @@ pub fn make_connection() -> Result<Connection> {
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool() -> Result<DbPool> {
+    let num_threads = std::thread::available_parallelism()?;
     let manager = SqliteConnectionManager::file(DB_PATH);
-    let pool = r2d2::Pool::new(manager)?;
+
+    let pool = r2d2::Pool::builder()
+        .max_size(num_threads.get() as u32)
+        .build(manager)?;
+    
     Ok(pool)
 }
 

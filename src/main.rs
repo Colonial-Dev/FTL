@@ -1,6 +1,5 @@
 #![warn(clippy::perf, clippy::style, clippy::cargo, warnings)]
 
-mod clap;
 mod config;
 mod db;
 mod prepare;

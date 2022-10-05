@@ -1,23 +1,12 @@
 use anyhow::{Result};
 use rusqlite::params;
-use serde_repr::{Serialize_repr, Deserialize_repr};
 use serde_rusqlite::{from_rows};
-use num_enum::TryFromPrimitive;
 use serde::Deserialize;
 
 use crate::db::Connection;
-use crate::db::data::{Page, Route, RouteIn};
+use crate::db::data::{Page, Route, RouteIn, RouteKind};
 
-#[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive)]
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum RouteKind {
-    Unknown = 0,
-    StaticAsset = 1,
-    Page = 3,
-    Stylesheet = 4,
-    Redirect = 5,
-}
+
 
 pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     #[derive(Deserialize, Debug)]
@@ -47,7 +36,7 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         insert_route(&RouteIn {
             revision: rev_id,
             id: &row.id,
-            route: row.path.trim_start_matches("src/static/"),
+            route: row.path.trim_start_matches("src/assets/"),
             parent_route: None,
             kind: RouteKind::StaticAsset,
         })?;
@@ -85,11 +74,11 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     let mut insert_route = Route::prepare_insert(conn)?;
 
     let mut stmt = conn.prepare("
-        SELECT * FROM page_aliases
+        SELECT page_id, alias FROM page_attributes
         WHERE EXISTS (
             SELECT 1 FROM revision_files
             WHERE revision_files.revision = ?1
-            AND revision_files.id = page_aliases.id
+            AND revision_files.id = page_attributes.page_id
         )
     ")?;
 

@@ -10,7 +10,6 @@ use std::hash::{Hash, Hasher};
 pub const SITE_SRC_DIRECTORY: &str = "test_site/src/";
 pub const SITE_ASSET_DIRECTORY: &str = "assets/";
 pub const SITE_CONTENT_DIRECTORY: &str = "content/";
-pub const SITE_STATIC_DIRECTORY: &str = "static/";
 pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
 
 /// Walks the site's `/src` directory for all valid content files.

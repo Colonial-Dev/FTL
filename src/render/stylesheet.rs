@@ -6,8 +6,7 @@ use serde_rusqlite::from_rows;
 use rusqlite::params;
 
 use crate::db::Connection;
-use crate::db::data::{Route, RouteIn, Stylesheet, StylesheetIn};
-use crate::prepare::RouteKind;
+use crate::db::data::{Route, RouteIn, RouteKind, Stylesheet, StylesheetIn};
 
 /// Compile the stylesheet for this revision from `src/sass/style.scss`.
 /// Dumps all Sass files to a temporary directory so partials can be resolved.
@@ -57,7 +56,7 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &PathBuf) -> Result<()> {
         log::trace!("Wrote temporary SASS file {:?} to disk (full path: {:?}).", target.file_name(), target)
     }
 
-    let style_file = temp_dir.join("test_site/src/sass/style.scss");
+    let style_file = temp_dir.join("test_site/src/assets/sass/style.scss");
     let style_file = style_file.to_str().unwrap();
 
     let output = grass::from_path(

@@ -427,6 +427,7 @@ dependencies = [
  "log",
  "lol_html",
  "num_enum",
+ "once_cell",
  "pretty_env_logger",
  "pulldown-cmark",
  "r2d2",

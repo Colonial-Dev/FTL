@@ -28,57 +28,6 @@ impl RevisionFile {
     }
 }
 
-// Database read methods
-impl RevisionFile {
-    /// Attempts to query the `revision_files` table for all rows corresponding to the given file ID,
-    /// then tries to deserialize the results into a [`Vec<RevisionFile>`].
-    /// 
-    /// Returns a [`DbError`] if:
-    /// - Something goes wrong when trying to use the database
-    /// 
-    /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_id(conn: &Connection, id: &str) -> Result<Vec<RevisionFile>> {
-        let mut stmt = conn.prepare("
-            SELECT * FROM revision_files
-            WHERE id = ?1;
-        ")?;
-        let results = from_rows::<Self>(stmt.query(params![id])?)
-            .filter_map(|x| {
-                match x {
-                    Ok(x) => Some(x),
-                    Err(_) => None,
-                }
-            })
-            .collect();
-        
-        Ok(results)
-    }
-
-    /// Attempts to query the `revision_files` table for all rows corresponding to the given revision ID,
-    /// then tries to deserialize the results into a [`Vec<RevisionFile>`].
-    /// 
-    /// Returns a [`DbError`] if:
-    /// - Something goes wrong when trying to use the database
-    /// 
-    /// An error value is NOT returned if no rows are found or if deserialization fails.
-    pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<RevisionFile>> {
-        let mut stmt = conn.prepare("
-            SELECT * FROM revision_files
-            WHERE revision = ?1;
-        ")?;
-        let results = from_rows::<Self>(stmt.query(params![rev_id])?)
-            .filter_map(|x| {
-                match x {
-                    Ok(x) => Some(x),
-                    Err(_) => None,
-                }
-            })
-            .collect();
-        
-        Ok(results)
-    }
-}
-
 #[derive(Serialize, Debug)]
 pub struct RevisionFileIn<'a> {
     pub revision: &'a str,

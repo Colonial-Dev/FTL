@@ -10,41 +10,26 @@ use crate::db::Connection;
 use crate::db::data::Page;
 use crate::share::*;
 
-pub fn rewrite<'a>(hypertext: Cow<'a, str>) -> Cow<'a, str> {
-    hypertext
+pub fn rewrite<'a>(conn: &Connection, page: &Page, hypertext: Cow<'a, str>, rev_id: &str) -> Result<Cow<'a, str>> {
+    let hypertext = cachebust_img(hypertext, page, conn, rev_id)?;
+    let hypertext = lazy_load(hypertext)?;
+    Ok(hypertext)
 }
 
 /// Cachebusts `<img>` tags with a relative `src` attribute.
 /// This turns, say, `bar.png` into `content/pages/foo/bar.ffde185cab76e0a6.png`.
 /// 
-/// FTL will try to query for the image's ID at a few locations:
+/// This function will query for the image's ID in two places:
 /// - The directory of the page itself.
 ///   - Example: A page is located at `src/content/articles/article-01/index.md`.
 ///   - If the image path is `cover.png`, we query by `src/content/articles/article-01/cover.png`.
-///   - If the image path is `../cover.png`, we query by `src/content/articles/cover.png`.
-/// - The assets and static directories.
-///   - If the image path is `background.png`, we query by `src/[assets][static]/background.png`.
+/// - The assets directory.
+///   - If the image path is `background.png`, we query by `src/assets/background.png`.
 /// 
-/// A match relative to the page takes priority over a match in the assets or static directory.
+/// A match relative to the page takes priority over a match in the assets directory.
 /// If no match is found, we leave the tag untouched.
-pub fn cachebust_img<'a>(hypertext: String, page: &Page, conn: &Connection) -> Result<String> {
-    let mut stmt = conn.prepare("
-        SELECT id FROM input_files
-        WHERE path = ?1
-    ")?;
-
-    let mut check_relative = |path: &Path, el: &mut Element, src: &Path| {
-        let id: Option<String> =
-        stmt.query_row(params![path.to_string_lossy()], |row| row.get(0))
-            .unwrap_or(None);
-
-        if let Some(id) = id {
-            let file_name = src.file_name().unwrap_or_default().to_str().unwrap_or_default();
-            let busted = file_name.replace(".", &format!(".{}.", id));
-            el.set_attribute("src", &busted).unwrap();
-        }
-    };
-    
+fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, rev_id: &str) -> Result<Cow<'a, str>> {
+    let mut cachebust = prepare_cachebust(conn, page, rev_id)?;
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -62,26 +47,13 @@ pub fn cachebust_img<'a>(hypertext: String, page: &Page, conn: &Connection) -> R
                             return Ok(());
                         }
 
-                        // This does work, but could be cleaned up a little, especially check_relative (see above.)
-                        // Should also skip over any remaining check_relative calls if one evaluates successfully.
                         let asset = PathBuf::from(&src);
-                        let page_relative = PathBuf::from(&page.path);
-                        let asset_relative = PathBuf::from(SITE_SRC_DIRECTORY).join(SITE_ASSET_DIRECTORY).join(&asset);
-                        let static_relative = PathBuf::from(SITE_SRC_DIRECTORY).join(SITE_STATIC_DIRECTORY).join(&asset);
+                        let page_relative = PathBuf::from(&page.path).parent().unwrap().join(&asset);
+                        let assets_relative = PathBuf::from(SITE_SRC_DIRECTORY).join(SITE_ASSET_DIRECTORY).join(&asset);
 
-                        let page_relative = match page_relative.parent() {
-                            Some(path) => path.join(&asset),
-                            None => page_relative,
-                        };
-
-                        check_relative(&page_relative, el, &asset);
-                        check_relative(&asset_relative, el, &asset);
-                        check_relative(&static_relative, el, &asset);
-
-                        // TODO - store page ID / cachebusted image ID pairs in the database somehow
-                        // so we can re-render pages based on changes to its assets.
-
-                        Ok(())
+                        if cachebust(&page_relative, el) { return Ok(()) }
+                        if cachebust(&assets_relative, el) { return Ok(()) }
+                        else { return Ok(()) }
                     })
                 ],
                 ..Settings::default()
@@ -91,11 +63,63 @@ pub fn cachebust_img<'a>(hypertext: String, page: &Page, conn: &Connection) -> R
         rewriter.write(hypertext.as_bytes())?;
     }
     let hypertext = String::from_utf8(output)?;
-    Ok(hypertext)
+    Ok(Cow::Owned(hypertext))
+}
+
+/// Prepares and returns a closure that wraps cachebusting and ID caching logic.
+/// Returns `true` if the element was cachebusted successfully; false otherwise.
+fn prepare_cachebust<'a>(conn: &'a Connection, page: &'a Page, rev_id: &'a str) -> Result<impl FnMut(&Path, &mut Element) -> bool + 'a> {
+    conn.execute(
+        "DELETE FROM dependencies WHERE kind = 2 AND page_id = ?1", 
+        params![&page.id]
+    )?;
+    
+    let mut try_query_id = conn.prepare("
+        SELECT id FROM input_files
+        WHERE path = ?1
+        AND EXISTS (
+            SELECT 1 FROM revision_files
+            WHERE input_files.id = revision_files.id
+            AND revision = ?2
+        )
+    ")?;
+
+    let mut insert_dep = conn.prepare("
+        INSERT OR REPLACE INTO dependencies (kind, page_id, asset_id) 
+        VALUES (2, ?1, ?2);
+    ")?;
+
+    let closure = move |path: &Path, el: &mut Element| -> bool {
+        let maybe_id: Option<String> = try_query_id
+            .query_row(params![path.to_string_lossy(), rev_id], |row| row.get(0))
+            .unwrap_or(None);
+
+        if let Some(id) = maybe_id {
+            match path.file_name() {
+                Some(name) => {
+                    let name = name.to_string_lossy();
+                    let busted = name.replace(".", &format!(".{}.", id));
+                    
+                    let busted = path
+                        .to_string_lossy()
+                        .replace(&*name, &busted);
+
+                    insert_dep.execute(params![&page.id, &id]).unwrap();
+                    el.set_attribute("src", &busted).unwrap();
+
+                    true
+                }
+                None => false,
+            }
+        }
+        else { false }
+    };
+
+    Ok(closure)
 }
 
 /// Rewrites the `loading` attribute of all `<img>` and `<video>` tags to be `lazy`.
-fn lazy_load<'a>(hypertext: String) -> Result<String> {
+fn lazy_load<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -118,6 +142,6 @@ fn lazy_load<'a>(hypertext: String) -> Result<String> {
         rewriter.write(hypertext.as_bytes())?;
     }
     let hypertext = String::from_utf8(output)?;
-    Ok(hypertext)
+    Ok(Cow::Owned(hypertext))
 }
 

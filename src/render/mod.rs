@@ -11,9 +11,7 @@ use rusqlite::params;
 use serde::Serialize;
 use serde_rusqlite::from_rows;
 
-use crate::{db::{*, data::Page}, share::ERROR_CHANNEL};
-
-use self::rewrite::rewrite;
+use crate::{db::{*, data::Page, self}, share::ERROR_CHANNEL};
 
 #[derive(Serialize, Debug)]
 struct RenderTicket {
@@ -34,12 +32,16 @@ impl RenderTicket {
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     log::info!("Starting render step...");
+
+    let pool = db::make_pool()?;
     let tera = template::make_engine(conn, rev_id)?;
     let tickets = query_tickets(conn, rev_id)?;
     let (tx, rx) = flume::unbounded();
 
     tickets.into_par_iter()
         .for_each(|ticket| {
+            let conn = pool.get().unwrap();
+
             let source = Cow::Borrowed(ticket.offset_source());
             let source = template::shortcodes(source, &tera);
             let parser = pulldown::init(&source);
@@ -47,10 +49,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
             let hypertext = pulldown::write(parser);
             let hypertext = template::templates(hypertext, &ticket.page, &tera).unwrap();
-            let hypertext = rewrite::rewrite(hypertext);
-
-            let lmfao = rewrite::cachebust_img(hypertext.to_string(), &ticket.page, &crate::db::make_connection().unwrap());
-            println!("{}", lmfao.unwrap());
+            let hypertext = rewrite::rewrite(&conn, &ticket.page, hypertext, rev_id).unwrap();
 
             drop(
                 tx.send((hypertext, ticket.page.id, ticket.page.template))
@@ -62,7 +61,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     let mut stmt = conn.prepare("
         INSERT OR IGNORE INTO hypertext 
         VALUES (?1, ?2, 
-            (SELECT id FROM template_ids WHERE revision = ?1 AND name = ?3),
+            (SELECT template_id FROM dependencies WHERE kind = 1 AND template_name = ?3),
             ?4
         )
     ")?;
@@ -70,6 +69,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     for bundle in rx.into_iter() {
         let (hypertext, id, template) = bundle;
         stmt.execute(params![rev_id, id, template, hypertext])?;
+        println!("{hypertext}");
     }
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
@@ -96,11 +96,21 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
             )
             OR EXISTS (
                 SELECT 1 
-                FROM template_ids, hypertext
+                FROM dependencies, hypertext
                 WHERE hypertext.input_id = pages.id
                 AND hypertext.templating_id NOT IN (
-                    SELECT id FROM template_ids WHERE
-                    template_ids.revision = ?1
+                    SELECT template_id FROM dependencies
+                )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM dependencies, hypertext
+                WHERE hypertext.input_id = pages.id
+                AND dependencies.kind = 2
+                AND dependencies.page_id = pages.id
+                AND dependencies.asset_id NOT IN (
+                    SELECT id FROM revision_files
+                    WHERE revision = ?1
                 )
             )
         )
