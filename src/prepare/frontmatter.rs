@@ -1,13 +1,13 @@
-use crate::{db::*, db::data::Page, share};
-
 use rayon::prelude::*;
-use anyhow::{Result};
 use lazy_static::lazy_static;
 use regex::Captures;
 use serde::{Deserialize, Serialize};
 use serde_rusqlite::from_rows;
 use rusqlite::params;
 use toml::value::Datetime;
+
+use crate::{db::*, db::data::Page, share};
+use crate::prelude::*;
 
 lazy_static! {
     static ref TOML_FRONTMATTER: regex::Regex = regex::Regex::new(r#"(\+\+\+)(.|\n)*(\+\+\+)"#).unwrap();
@@ -43,7 +43,7 @@ struct Row {
 }
 
 pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
-    log::info!("Starting frontmatter parsing for revision {}...", rev_id);
+    info!("Starting frontmatter parsing for revision {}...", rev_id);
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
 
@@ -63,11 +63,11 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
             insert_page(&x)
         })
         .map(|x| if let Err(e) = x {
-            log::error!("Error when inserting Page: {:#?}", e);
+            error!("Error when inserting Page: {:#?}", e);
         })
         .count();
 
-    log::info!("Done parsing frontmatters for revision {}, processed {} pages.", rev_id, num_pages);
+    info!("Done parsing frontmatters for revision {}, processed {} pages.", rev_id, num_pages);
     Ok(())
 }
 
@@ -94,19 +94,19 @@ fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
         rows.push(row?);
     }
 
-    log::trace!("Query for new pages complete, found {} entries.", rows.len());
+    debug!("Query for new pages complete, found {} entries.", rows.len());
 
     Ok(rows)
 }
 
 fn try_extract_frontmatter(item: &Row) -> Option<(&Row, Captures)> {   
-    log::trace!("Extracting frontmatter for file {}...", item.id);
+    debug!("Extracting frontmatter for file {}...", item.id);
 
     let captures = TOML_FRONTMATTER.captures(&item.contents);
     match captures {
         Some(cap) => Some((item, cap)),
         None => {
-            log::error!("Could not locate frontmatter for file {}.", item.id);
+            error!("Could not locate frontmatter for file {}.", item.id);
             None
         }
     }
@@ -121,7 +121,7 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
 
     match toml::from_str::<TomlFrontmatter>(&raw) {
         Ok(fm) => {
-            log::trace!("Parsed frontmatter for page \"{}\"", fm.title);
+            debug!("Parsed frontmatter for page \"{}\"", fm.title);
             let page = to_page(
                 item.id.clone(),
                 item.path.clone(),
@@ -131,7 +131,7 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
             Some(page)
         }
         Err(e) => {
-            log::error!("Error when parsing frontmatter for file {}: {}", item.id, e);
+            error!("Error when parsing frontmatter for file {}: {}", item.id, e);
             None
         }
     }

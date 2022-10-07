@@ -1,14 +1,13 @@
 use std::borrow::Cow;
 use std::path::{PathBuf, Path};
 
-use anyhow::Result;
 use lol_html::html_content::Element;
 use lol_html::{element, HtmlRewriter, Settings};
 use rusqlite::params;
 
 use crate::db::Connection;
 use crate::db::data::Page;
-use crate::share::*;
+use crate::prelude::*;
 
 pub fn rewrite<'a>(conn: &Connection, page: &Page, hypertext: Cow<'a, str>, rev_id: &str) -> Result<Cow<'a, str>> {
     let hypertext = cachebust_img(hypertext, page, conn, rev_id)?;

@@ -1,7 +1,4 @@
-use anyhow::anyhow;
 use serde::{de::DeserializeOwned, Serializer};
-
-use crate::share::ERROR_CHANNEL;
 
 use super::dependencies::*;
 
@@ -111,7 +108,7 @@ where
     S: Serializer,
 {
     let json = serde_json::to_string(&x).unwrap_or_else(|err| {
-        let err = anyhow!("Error when serializing a vector: {err}");
+        let err = eyre!("Error when serializing a vector: {err}");
         ERROR_CHANNEL.sink_error(err);
         String::from("[]")
     });
@@ -127,7 +124,7 @@ where
 {
     let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(d)?;
     let vec: Vec<T> = serde_json::from_str(&s).unwrap_or_else(|err| {
-        let err = anyhow!("Error when deserializing a vector: {err}");
+        let err = eyre!("Error when deserializing a vector: {err}");
         ERROR_CHANNEL.sink_error(err);
         Vec::new()
     });

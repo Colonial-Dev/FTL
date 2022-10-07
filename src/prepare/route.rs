@@ -1,12 +1,10 @@
-use anyhow::{Result};
 use rusqlite::params;
 use serde_rusqlite::{from_rows};
 use serde::Deserialize;
 
 use crate::db::Connection;
 use crate::db::data::{Page, Route, RouteIn, RouteKind};
-
-
+use crate::prelude::*;
 
 pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     #[derive(Deserialize, Debug)]
@@ -42,7 +40,7 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         })?;
     }
 
-    log::info!("Computed static asset routes.");
+    info!("Computed static asset routes.");
     Ok(())
 }
 
@@ -60,7 +58,7 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         })?;
     }
 
-    log::info!("Computed page routes.");
+    info!("Computed page routes.");
     Ok(())
 }
 
@@ -94,7 +92,7 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         })?;
     }
 
-    log::info!("Computed alias routes.");
+    info!("Computed alias routes.");
     Ok(())
 }
 

@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use anyhow::{Result, anyhow, Context};
 use rusqlite::params;
 use serde_rusqlite::from_rows;
 use tera::{Tera};
@@ -12,6 +11,7 @@ mod shortcode;
 pub use shortcode::evaluate_shortcodes as shortcodes;
 
 use crate::db::{*, data::Page};
+use crate::prelude::*;
 
 #[derive(Deserialize, Debug)]
 pub struct Row {
@@ -54,10 +54,10 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
         .map(|x| (x.path.as_str().trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY).trim_end_matches(".tera"), x.contents.as_str()) )
         .collect();
     
-    if let Err(e) = tera.add_raw_templates(templates) { return Err(anyhow!(e)); }
+    if let Err(e) = tera.add_raw_templates(templates) { return Err(eyre!(e)); }
 
     dependency::compute_ids(&rows, conn, rev_id)
-        .context("Failed to compute template dependency IDs.")?;
+        .wrap_err("Failed to compute template dependency IDs.")?;
     
     Ok(tera)
 }
@@ -82,7 +82,7 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
         .filter_map(|x| x.ok() )
         .collect();
 
-    log::trace!("Query for templates complete, found {} entries.", rows.len());
+    debug!("Query for templates complete, found {} entries.", rows.len());
 
     Ok(rows)
 }

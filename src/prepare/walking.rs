@@ -1,20 +1,20 @@
-use anyhow::{Result, anyhow, Context};
 use rayon::prelude::*;
-use crate::db::data::{RevisionFile, RevisionFileIn};
-use crate::share::ERROR_CHANNEL;
-use crate::{db::data::InputFile, db::Connection};
 use walkdir::{DirEntry, WalkDir};
 use std::path::{Path};
 use std::hash::{Hash, Hasher};
 
-pub const SITE_SRC_DIRECTORY: &str = "test_site/src/";
+use crate::db::data::{RevisionFile, RevisionFileIn};
+use crate::{db::data::InputFile, db::Connection};
+use crate::prelude::*;
+
+pub const SITE_SRC_DIRECTORY: &str = "src/";
 pub const SITE_ASSET_DIRECTORY: &str = "assets/";
 pub const SITE_CONTENT_DIRECTORY: &str = "content/";
 pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
 
 /// Walks the site's `/src` directory for all valid content files.
 pub fn walk_src(conn: &mut Connection) -> Result<String>  {
-    log::info!("Starting walk...");
+    info!("Starting walk...");
 
     let mut files: Vec<InputFile> = 
     WalkDir::new(SITE_SRC_DIRECTORY)
@@ -25,7 +25,7 @@ pub fn walk_src(conn: &mut Connection) -> Result<String>  {
         .filter_map(process_entry)
         .collect();
 
-    log::info!("Walking done, found {} items.", files.len());
+    info!("Walking done, found {} items.", files.len());
 
     // Stupid hack to ensure consistent ordering after parallel computation.
     // This means we can generate consistent revision IDs down the line.
@@ -48,7 +48,7 @@ fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
     match entry {
         Ok(entry) => Some(entry),
         Err(e) => {
-            ERROR_CHANNEL.sink_error(anyhow!(e));
+            ERROR_CHANNEL.sink_error(eyre!(e));
             None
         }
     }
@@ -63,7 +63,7 @@ fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
             else { Some(entry) }
         },
         Err(e) => {
-            ERROR_CHANNEL.sink_error(anyhow!(e));
+            ERROR_CHANNEL.sink_error(eyre!(e));
             None
         }
     }
@@ -71,7 +71,7 @@ fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
 
 /// Reads and hashes the entries that remain after `drain_entries` and `filter_metadata`.
 fn process_entry(entry: DirEntry) -> Option<InputFile> {
-    log::trace!("Walk found item {:#?}", entry.path());
+    debug!("Walk found item {:#?}", entry.path());
 
     let contents = std::fs::read(entry.path());
     match contents {
@@ -109,7 +109,7 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
             Some(item)
         }
         Err(e) => {
-            ERROR_CHANNEL.sink_error(anyhow!(e));
+            ERROR_CHANNEL.sink_error(eyre!(e));
             None
         }
     }
@@ -152,7 +152,7 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
         insert_file(file)?;
 
         if !file.inline {
-            log::trace!("Caching non-inline file {:#?}", &file.path);
+            debug!("Caching non-inline file {:#?}", &file.path);
             let destination = format!(".ftl/cache/{}", &file.hash);
             // TODO check for file already existing - recopies
             // can still potentially be quite expensive
@@ -160,7 +160,7 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
         }
     }
 
-    log::info!("Updated input_files table.");
+    info!("Updated input_files table.");
     Ok(())
 }
 
@@ -174,7 +174,7 @@ fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -
         })?;
     }
 
-    log::info!("Updated revision_files table.");
+    info!("Updated revision_files table.");
     Ok(())
 }
 
@@ -189,7 +189,7 @@ fn compute_revision_id(files: &[InputFile]) -> String {
     ids.hash(&mut hasher);
     let rev_id = format!("{:016x}", hasher.finish());
     
-    log::info!("Computed revision ID {}", rev_id);
+    info!("Computed revision ID {}", rev_id);
 
     rev_id
 }

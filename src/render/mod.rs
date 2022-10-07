@@ -5,13 +5,13 @@ mod template;
 
 use std::borrow::Cow;
 
-use anyhow::{Result};
 use rayon::prelude::*;
 use rusqlite::params;
 use serde::Serialize;
 use serde_rusqlite::from_rows;
 
 use crate::{db::{*, data::Page, self}, share::ERROR_CHANNEL};
+use crate::prelude::*;
 
 #[derive(Serialize, Debug)]
 struct RenderTicket {
@@ -31,7 +31,7 @@ impl RenderTicket {
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
-    log::info!("Starting render step...");
+    info!("Starting render step...");
 
     let pool = db::make_pool()?;
     let tera = template::make_engine(conn, rev_id)?;
@@ -83,6 +83,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 /// - The page is marked as dynamic in its frontmatter.
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
 /// - The page itself is unchanged, but one of the templates/shortcodes it relies upon has changed (expressed via a templating ID, see [`template::dependency::compute_ids`].)
+/// - The page itself is unchanged, but one of the cachebusted assets it relies upon has changed (captured during cachebusting, see [`rewrite::prepare_cachebust`].)
 fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
     let mut get_pages = conn.prepare("
         SELECT DISTINCT pages.* FROM pages, revision_files WHERE
@@ -130,7 +131,7 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
                 .filter_map(|x| x)
                 .collect();
             
-            log::trace!("Generated render ticket for page \"{}\" ({}).", x.title, x.id);
+            debug!("Generated render ticket for page \"{}\" ({}).", x.title, x.id);
             let ticket = RenderTicket::new(x, source);
 
             Ok(ticket)

@@ -1,12 +1,12 @@
 use std::path::{PathBuf};
 
-use anyhow::Result;
 use serde::Deserialize;
 use serde_rusqlite::from_rows;
 use rusqlite::params;
 
 use crate::db::Connection;
 use crate::db::data::{Route, RouteIn, RouteKind, Stylesheet, StylesheetIn};
+use crate::prelude::*;
 
 /// Compile the stylesheet for this revision from `src/sass/style.scss`.
 /// Dumps all Sass files to a temporary directory so partials can be resolved.
@@ -17,9 +17,9 @@ pub fn compile_stylesheet(conn: &Connection, rev_id: &str) -> Result<()> {
     let result = compile(conn, rev_id, &temp_dir);
 
     if let Err(e) = std::fs::remove_dir_all(temp_dir) {
-        log::warn!("Failed to drop SASS temporary directory: {e}");
+        warn!("Failed to drop SASS temporary directory: {e}");
     }
-    else { log::trace!("SASS temporary directory dropped.") }
+    else { debug!("SASS temporary directory dropped.") }
 
     result
 }
@@ -53,10 +53,10 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &PathBuf) -> Result<()> {
 
         std::fs::create_dir_all(target.parent().unwrap())?;
         std::fs::write(&target, &row.contents)?;
-        log::trace!("Wrote temporary SASS file {:?} to disk (full path: {:?}).", target.file_name(), target)
+        debug!("Wrote temporary SASS file {:?} to disk (full path: {:?}).", target.file_name(), target)
     }
 
-    let style_file = temp_dir.join("test_site/src/assets/sass/style.scss");
+    let style_file = temp_dir.join("src/assets/sass/style.scss");
     let style_file = style_file.to_str().unwrap();
 
     let output = grass::from_path(

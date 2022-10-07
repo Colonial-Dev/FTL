@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
-use anyhow::{anyhow};
 use lazy_static::lazy_static;
 use regex::{Regex, Captures};
 use tera::{Tera, Context};
 
 use crate::{share::ERROR_CHANNEL};
+use crate::prelude::*;
 
 lazy_static! {
     static ref INLINE_SC_REGEX: Regex = Regex::new(r#"\{% sci (.*?) (.*)?%\}"#).unwrap();
@@ -36,7 +36,7 @@ fn expand_inline<'a>(input: &'a str, tera: &Tera) -> Cow<'a, str> {
             }
         }
         else {
-            let err = anyhow!(
+            let err = eyre!(
                 "Invalid inline shortcode detected, skipping. Captures were:\n{:#?}", caps
             );
             ERROR_CHANNEL.sink_error(err);
@@ -63,7 +63,7 @@ fn expand_block<'a>(input: &'a str, tera: &Tera) -> Cow<'a, str> {
             }
         }
         else {
-            let err = anyhow!(
+            let err = eyre!(
                 "Invalid block shortcode detected, skipping. Captures were:\n{:#?}", caps
             );
             ERROR_CHANNEL.sink_error(err);
@@ -92,7 +92,7 @@ fn split_args<'a>(args: &'a str) -> Context {
             let val = kv.get(1);
 
             if key.is_none() || val.is_none() {
-                let err = anyhow!(
+                let err = eyre!(
                     "Inline shortcode key/value pair malformed, skipping.
                     \nOriginal pair: {arg}, K: {:?}, V:{:?}", key, val
                 );

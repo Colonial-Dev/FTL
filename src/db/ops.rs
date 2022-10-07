@@ -1,10 +1,11 @@
 use std::path::Path;
 
-use anyhow::{Result, anyhow};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, params};
 
 use super::{KNOWN_TABLES, DbPool};
+
+use crate::prelude::*;
 
 const DB_PATH: &str = ".ftl/content.db";
 const DB_INIT_QUERY: &str = include_str!("db_init.sql");
@@ -39,7 +40,7 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
 
 /// Try and create a new SQLite database at the given path. Fails if the database file already exists.
 pub fn try_create_db(path: &Path) -> Result<Connection> {
-    if path.exists() { return Err(anyhow!("Database file already exists.")); }
+    if path.exists() { return Err(eyre!("Database file already exists.")); }
 
     // Calling open() implicitly creates the database if it does not exist.
     let conn = Connection::open(path)?;

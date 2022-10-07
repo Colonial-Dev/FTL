@@ -6,9 +6,11 @@ license = "AGPL-3.0"
 description = "An almost-static site generator."
 
 [dependencies]
-# Logging
-pretty_env_logger = "0.4.0"
-log = "0.4"
+# Logging / Errors
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing-error = "0.2.0"
+tracing = "0.1.37"
+color-eyre = "0.6.2"
 # Parallelism
 rayon = "1.5"
 flume = "0.10.14"
@@ -35,6 +37,9 @@ lol_html = "0.3.1"
 lazy_static = "1.4"
 num_enum = "0.5"
 time = { version = "0.3", features = ["serde", "parsing", "formatting"] }
-anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 once_cell = "1.15.0"
+console = "0.15.2"
+dialoguer = "0.10.2"
+indicatif = "0.17.1"
+

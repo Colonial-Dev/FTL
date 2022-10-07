@@ -1,0 +1,31 @@
+root_url = "https://ftl.rs"
+title = ""
+description = ""
+language = "en-US"
+on_non_fatal = "WARN"
+
+[build]
+incremental = "FULL"
+cachebust = true
+compile_sass = true
+external_links_new_tab = false
+external_links_no_follow = false
+external_links_no_referrer = false
+target_disk = false
+target_dir = ""
+
+[render]
+highlight_code = true
+highlight_theme = ""
+expand_emoji = true
+smart_punctuation = true
+minify_html = false
+minify_css = false
+
+[serve]
+address = "127.0.0.1"
+port = 8080
+
+[syndicate]
+
+[extra]

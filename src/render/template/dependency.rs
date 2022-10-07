@@ -1,4 +1,3 @@
-use anyhow::Result;
 use serde_rusqlite::from_rows;
 use std::hash::{Hash, Hasher};
 
@@ -8,6 +7,7 @@ use rusqlite::{Connection, params};
 
 use crate::db;
 use super::Row;
+use crate::prelude::*;
 
 lazy_static! {
     // Example input: {% include "included.html" %}

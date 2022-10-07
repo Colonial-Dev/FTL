@@ -1,11 +1,18 @@
 use lazy_static::lazy_static;
 use flume::{Sender, Receiver};
-use anyhow::{anyhow, Error};
 
 pub use crate::prepare::{SITE_SRC_DIRECTORY, SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_TEMPLATE_DIRECTORY};
+use crate::prelude::*;
 
 lazy_static!(
     pub static ref ERROR_CHANNEL: ErrorChannel = ErrorChannel::default();
+    pub static ref THREADS: u32 = {
+        let threads = std::thread::available_parallelism();
+        match threads {
+            Ok(num) => num.get() as u32,
+            Err(_) => 4
+        }
+    };
 );
 
 #[derive(Clone)]
@@ -24,7 +31,7 @@ impl ErrorChannel {
     }
 
     pub fn sink_error(&self, error: Error) {
-        log::error!("Error sunk: {}", error);
+        error!("Error sunk: {}", error);
         // Expect justification: channel should never close while this method is callable
         self.error_sink
             .send(error.into())
@@ -33,12 +40,12 @@ impl ErrorChannel {
 
     pub fn filter_error<T, E>(&self, result: Result<T, E>) -> Option<T> 
     where 
-        E: Into<anyhow::Error>, 
+        E: Into<Error>, 
     {
         match result {
             Ok(val) => Some(val),
             Err(e) => {
-                self.sink_error(anyhow!(e));
+                self.sink_error(eyre!(e));
                 None
             }
         }
