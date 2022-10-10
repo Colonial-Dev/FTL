@@ -9,10 +9,15 @@ use crate::db::Connection;
 use crate::db::data::Page;
 use crate::prelude::*;
 
-pub fn rewrite<'a>(conn: &Connection, page: &Page, hypertext: Cow<'a, str>, rev_id: &str) -> Result<Cow<'a, str>> {
-    let hypertext = cachebust_img(hypertext, page, conn, rev_id)?;
-    let hypertext = lazy_load(hypertext)?;
-    Ok(hypertext)
+use super::{RenderTicket, Engine};
+
+pub fn rewrite<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    let conn = engine.pool.get()?;
+
+    ticket.content = cachebust_img(ticket.content.clone(), &ticket.page, &conn, engine.rev_id)?;
+    ticket.content = lazy_load(ticket.content.clone())?;
+
+    Ok(())
 }
 
 /// Cachebusts `<img>` tags with a relative `src` attribute.
@@ -45,7 +50,6 @@ fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, re
                         if let Some('/') = src.chars().nth(0) {
                             return Ok(());
                         }
-
                         let asset = PathBuf::from(&src);
                         let page_relative = PathBuf::from(&page.path).parent().unwrap().join(&asset);
                         let assets_relative = PathBuf::from(SITE_SRC_DIRECTORY).join(SITE_ASSET_DIRECTORY).join(&asset);

@@ -4,7 +4,7 @@ use std::path::{PathBuf, Path};
 
 use clap::{Args, Parser, Subcommand};
 use once_cell::sync::OnceCell;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 
 use crate::prelude::*;
 
@@ -16,7 +16,7 @@ const CONFIG_FILENAME: &str = "ftl.toml";
 
 /// Represents the contents of (and a safe interface to) FTL's global configuration, 
 /// which includes command line arguments and the contents of `ftl.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub root_url: String,
     pub title: Option<String>,
@@ -99,7 +99,7 @@ fn try_locate_config(start: &Path) -> Option<PathBuf> {
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands
+    pub command: Option<Commands>
 }
 
 #[derive(Debug, Subcommand)]
@@ -113,8 +113,7 @@ pub enum Commands {
 
 #[derive(Debug, Args)]
 pub struct Build {
-    #[arg(short, long, default_value_t = false)]
-    watch: bool,
+
 }
 
 #[derive(Debug, Args)]

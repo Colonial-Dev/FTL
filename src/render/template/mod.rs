@@ -2,16 +2,19 @@ use std::borrow::Cow;
 
 use rusqlite::params;
 use serde_rusqlite::from_rows;
-use tera::{Tera};
-use serde::{Serialize, Deserialize};
+use tera::Tera;
+use serde::Deserialize;
 
 mod dependency;
+mod parser;
 mod shortcode;
 
 pub use shortcode::evaluate_shortcodes as shortcodes;
 
-use crate::db::{*, data::Page};
+use crate::db::*;
 use crate::prelude::*;
+
+use super::{RenderTicket, Engine};
 
 #[derive(Deserialize, Debug)]
 pub struct Row {
@@ -88,20 +91,22 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
 }
 
 /// Uses the provided [`Tera`] instance to evaluate a page's template, if one was specified.
-pub fn templates<'a>(input: Cow<'a, str>, page: &Page, tera: &Tera) -> Result<Cow<'a, str>> {
-    #[derive(Serialize, Debug)]
-    struct IntoContext<'a> {
-        page: &'a Page
-    }
-    if let Some(template) = &page.template {
-        if tera.get_template_names().any(|name| name == template) {
-            let wrap = IntoContext { page };
-            let mut ctx = tera::Context::from_serialize(wrap)?;
-            ctx.insert("markup", &input);
-            let out = tera.render(template, &ctx)?;
-            Ok(Cow::Owned(out))
+pub fn templates(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    if let Some(template) = &ticket.page.template {
+        if engine.tera.get_template_names().any(|name| name == template) {
+            ticket.context.insert("markup", &ticket.content);
+            ticket.content = Cow::Owned(engine.tera.render(template, &ticket.context)?);
         }
-        else { Ok(input) }
+        else {
+            let error = eyre!(
+                "Page {} has a template specified ({}), but it can't be resolved.",
+                ticket.page.title,
+                template
+            )
+            .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
+            .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
+            bail!(error)
+        }
     }
-    else { Ok(input) }
+    Ok(())
 }

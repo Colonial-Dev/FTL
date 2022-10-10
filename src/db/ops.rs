@@ -19,11 +19,10 @@ pub fn make_connection() -> Result<Connection> {
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool() -> Result<DbPool> {
-    let num_threads = std::thread::available_parallelism()?;
     let manager = SqliteConnectionManager::file(DB_PATH);
 
     let pool = r2d2::Pool::builder()
-        .max_size(num_threads.get() as u32)
+        .max_size(*THREADS)
         .build(manager)?;
     
     Ok(pool)

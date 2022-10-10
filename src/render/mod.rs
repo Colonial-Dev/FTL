@@ -7,56 +7,82 @@ use std::borrow::Cow;
 
 use rayon::prelude::*;
 use rusqlite::params;
-use serde::Serialize;
 use serde_rusqlite::from_rows;
+use tera::{Context, Tera};
 
 use crate::{db::{*, data::Page, self}, share::ERROR_CHANNEL};
 use crate::prelude::*;
 
-#[derive(Serialize, Debug)]
-struct RenderTicket {
+#[derive(Debug)]
+pub struct RenderTicket<'a> {
     pub page: Page,
-    pub source: String,
+    pub content: Cow<'a, str>,
+    pub context: Context
 }
 
-impl RenderTicket {
-    pub fn new(page: Page, source: String) -> Self {
-        RenderTicket { page, source }
-    }
+impl<'a> RenderTicket<'a> {
+    pub fn new(page: Page, mut source: String) -> Self {
+        source
+            .drain((page.offset as usize)..)
+            .for_each(drop);
 
-    pub fn offset_source(&self) -> &str {
-        &self.source[(self.page.offset as usize)..]
+        let mut context = Context::new();
+        context.insert("page", &page);
+        context.insert("config", Config::global());
+
+        RenderTicket {
+            content: Cow::Owned(source),
+            page,
+            context
+        }
+    }
+}
+
+pub struct Engine<'a> {
+    pub rev_id: &'a str,
+    pub pool: DbPool,
+    pub tera: Tera,
+    pub sink: flume::Sender<Result<RenderTicket<'a>>>,
+}
+
+impl<'a> Engine<'a> {
+    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket<'a>>>)> {
+        let pool = db::make_pool()?;
+        let tera = template::make_engine(conn, rev_id)?;
+        let (sink, stream) = flume::unbounded();
+
+        let engine = Engine {
+            rev_id,
+            pool,
+            tera,
+            sink,
+        };
+
+        Ok((engine, stream))
     }
 }
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
-    info!("Starting render step...");
+    info!("Starting render stage...");
 
-    let pool = db::make_pool()?;
-    let tera = template::make_engine(conn, rev_id)?;
+    let (engine, stream) = Engine::build(conn, rev_id)?;
     let tickets = query_tickets(conn, rev_id)?;
-    let (tx, rx) = flume::unbounded();
 
-    tickets.into_par_iter()
-        .for_each(|ticket| {
-            let conn = pool.get().unwrap();
-
-            let source = Cow::Borrowed(ticket.offset_source());
-            let source = template::shortcodes(source, &tera);
-            let parser = pulldown::init(&source);
-            let parser = pulldown::map(parser);
-
-            let hypertext = pulldown::write(parser);
-            let hypertext = template::templates(hypertext, &ticket.page, &tera).unwrap();
-            let hypertext = rewrite::rewrite(&conn, &ticket.page, hypertext, rev_id).unwrap();
-
-            drop(
-                tx.send((hypertext, ticket.page.id, ticket.page.template))
-            );
+    tickets
+        .into_par_iter()
+        .map(|mut ticket| -> Result<RenderTicket<'a>> {
+            template::shortcodes(&mut ticket, &engine)?;
+            pulldown::process(&mut ticket, &engine);
+            template::templates(&mut ticket, &engine)?;
+            rewrite::rewrite(&mut ticket, &engine)?;
+            Ok(ticket)
+        })
+        .for_each(|x| {
+            engine.sink.send(x).expect("Rendering output sink closed unexpectedly!");
         });
 
-    drop(tx);
+    drop(engine);
 
     let mut stmt = conn.prepare("
         INSERT OR IGNORE INTO hypertext 
@@ -66,10 +92,9 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
         )
     ")?;
     
-    for bundle in rx.into_iter() {
-        let (hypertext, id, template) = bundle;
-        stmt.execute(params![rev_id, id, template, hypertext])?;
-        println!("{hypertext}");
+    for ticket in stream.into_iter() {
+        let ticket = ticket?;
+        stmt.execute(params![rev_id, ticket.page.id, ticket.page.template, ticket.content])?;
     }
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
@@ -84,7 +109,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
 /// - The page itself is unchanged, but one of the templates/shortcodes it relies upon has changed (expressed via a templating ID, see [`template::dependency::compute_ids`].)
 /// - The page itself is unchanged, but one of the cachebusted assets it relies upon has changed (captured during cachebusting, see [`rewrite::prepare_cachebust`].)
-fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
+fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket<'a>>> {
     let mut get_pages = conn.prepare("
         SELECT DISTINCT pages.* FROM pages, revision_files WHERE
         revision_files.revision = ?1

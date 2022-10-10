@@ -21,7 +21,7 @@ lazy_static! {
     static ref TERA_EXTENDS_REGEXP: Regex = Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap();
 }
 
-/// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the template_deps table.
+/// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the dependencies table.
 /// 
 /// The procedure goes roughly like this:
 /// - Attach a new in-memory database and initialize a few tables.
@@ -29,9 +29,9 @@ lazy_static! {
 /// - Match the contents of each template against a set of regular expressions to extract its immediate dependencies.
 /// - Insert each template's direct dependencies into another table, where one column is the dependents's ID and the other is the dependency's ID.
 /// - Using a recursive Common Table Expression, map out each template's dependency set (deduplicated using `UNION` and sorted by `id ASC`.)
-/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk template_deps table.
+/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk dependencies table.
 /// - Detach the in-memory database, deallocating its contents.
-pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, rev_id: &str) -> Result<()> {
+pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -> Result<()> {
     // Attach and setup a new in-memory database for mapping dependency relations.
     let txn = conn.transaction()?;
     db::attach_mapping_database(&txn)?;
