@@ -1,9 +1,11 @@
+mod dependency;
 mod input_file;
 mod revision_file;
 mod page;
 mod route;
 mod stylesheet;
 
+pub use dependency::*;
 pub use input_file::*;
 pub use revision_file::*;
 pub use page::*;

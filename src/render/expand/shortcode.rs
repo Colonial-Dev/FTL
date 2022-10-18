@@ -3,10 +3,12 @@ use std::borrow::Cow;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::db::data::Dependency;
 use crate::render::{RenderTicket, Engine};
+use crate::parse::shortcode::{Block, Inline};
 use crate::prelude::*;
 
-use super::parser::{Inline, Block};
+use super::regexp_expand;
 
 static INLINE_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{%\s?sci.*?%\}"#).unwrap() );
 static BLOCK_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?s)\{%\s?sc.*%\}.*\{%\s?endsc\s?%\}"#).unwrap() );
@@ -21,7 +23,7 @@ pub fn evaluate_shortcodes<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Re
 fn expand_inline<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     ticket.content = regexp_expand(ticket.content.clone(), &INLINE_REGEX, |shortcode: &str| {
         let shortcode = Inline::parse(shortcode)?;
-        ticket.context.insert("shortcode", &shortcode);
+        ticket.context.insert("code", &shortcode);
         expand_shortcode(shortcode.name, ticket, engine)
     })?;
     
@@ -31,14 +33,15 @@ fn expand_inline<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
 fn expand_block<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     ticket.content = regexp_expand(ticket.content.clone(), &BLOCK_REGEX, |shortcode: &str| {
         let shortcode = Block::parse(shortcode)?;
-        ticket.context.insert("shortcode", &shortcode);
+        ticket.context.insert("code", &shortcode);
         expand_shortcode(shortcode.name, ticket, engine)
     })?;
     
     Ok(())
 }
 
-fn expand_shortcode(name: &str, ticket: &RenderTicket, engine: &Engine) -> Result<String> {
+/// Checks that a shortcode of the given name exists, and evaluates it if it does.
+fn expand_shortcode(name: &str, ticket: &mut RenderTicket, engine: &Engine) -> Result<String> {
     if !engine.tera.get_template_names().any(|t| t == name) {
         let err = eyre!(
             "Page {} contains a shortcode invoking template {}, which does not exist.",
@@ -51,24 +54,9 @@ fn expand_shortcode(name: &str, ticket: &RenderTicket, engine: &Engine) -> Resul
         bail!(err)
     }
 
+    ticket.dependencies.push(
+        Dependency::Template(name.to_owned())
+    );
+    
     Ok(engine.tera.render(name, &ticket.context)?)
-}
-
-fn regexp_expand<'a>(source: Cow<'a, str>, expression: &Lazy<Regex>, mut replacer: impl FnMut(&str) -> Result<String>) -> Result<Cow<'a, str>> {
-    let mut matches = expression.find_iter(&source).peekable();
-    if matches.peek().is_none() {
-        return Ok(source);
-    }
-
-    let mut buffer = String::with_capacity(source.len());
-    let mut last_match = 0;
-    for m in matches {
-        let replacement = replacer(m.as_str())?;
-        buffer.push_str(&source[last_match..m.start()]);
-        buffer.push_str(&replacement);
-        last_match = m.end();
-    }
-    buffer.push_str(&source[last_match..]);
-
-    Ok(Cow::Owned(buffer))
 }

@@ -26,6 +26,7 @@
       - Extends regex: \{% extends "(.*?)" %\}
       - Block shortcodes regex: (?s)\{% sc (.*) %\}\n?(.*?)\n?\{% endsc %\} 
       - Inline shortcodes regex: \{% sci (.*) (.*) %\}
+      - Codeblock regex: (?s)```.*?```
 
 - Minimize/remove calls to collect() and returns of Vecs from functions (return impl Iterator<Item=T> instead). This can avoid a LOT of allocations.
   - Can't be done with database query operations, since iterator evaluation is necessary to go from "Row handles" to "owned Rust structs."

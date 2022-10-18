@@ -25,7 +25,6 @@ fn write<'a>(parser: Parser) -> Cow<'a, str> {
 
 fn map<'a>(parser: Parser<'a, 'a>) -> Parser<'a, 'a> {
     parser
-    // Syntax highlighting
     // Anchors/deep linking
     // ...internal linking?
 }

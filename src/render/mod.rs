@@ -1,3 +1,4 @@
+mod expand;
 mod pulldown;
 mod rewrite;
 mod stylesheet;
@@ -8,32 +9,39 @@ use std::borrow::Cow;
 use rayon::prelude::*;
 use rusqlite::params;
 use serde_rusqlite::from_rows;
+use syntect::highlighting;
 use tera::{Context, Tera};
 
-use crate::{db::{*, data::Page, self}, share::ERROR_CHANNEL};
+use expand::Highlighter;
+
+use crate::db::*;
+use crate::db::data::{Dependency, Page};
+use crate::share::ERROR_CHANNEL;
 use crate::prelude::*;
 
-#[derive(Debug)]
 pub struct RenderTicket<'a> {
     pub page: Page,
     pub content: Cow<'a, str>,
-    pub context: Context
+    pub context: Context,
+    pub dependencies: Vec<Dependency>
 }
 
 impl<'a> RenderTicket<'a> {
     pub fn new(page: Page, mut source: String) -> Self {
         source
-            .drain((page.offset as usize)..)
+            .drain(..(page.offset as usize))
             .for_each(drop);
-
+        debug!("Source: {source}");
         let mut context = Context::new();
         context.insert("page", &page);
         context.insert("config", Config::global());
 
+
         RenderTicket {
             content: Cow::Owned(source),
             page,
-            context
+            context,
+            dependencies: Vec::new()
         }
     }
 }
@@ -42,19 +50,22 @@ pub struct Engine<'a> {
     pub rev_id: &'a str,
     pub pool: DbPool,
     pub tera: Tera,
+    pub highlighter: Highlighter,
     pub sink: flume::Sender<Result<RenderTicket<'a>>>,
 }
 
 impl<'a> Engine<'a> {
     pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket<'a>>>)> {
-        let pool = db::make_pool()?;
+        let pool = make_pool()?;
         let tera = template::make_engine(conn, rev_id)?;
+        let highlighter = Highlighter::build("Solarized (dark)")?;
         let (sink, stream) = flume::unbounded();
 
         let engine = Engine {
             rev_id,
             pool,
             tera,
+            highlighter,
             sink,
         };
 
@@ -63,6 +74,22 @@ impl<'a> Engine<'a> {
 }
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
+/// Rendering is composed of three distinct stages:
+/// 1. Source expansion.
+/// 2. Hypertext generation.
+/// 3. Hypertext rewriting.
+/// 
+/// During *source expansion*, each page's Markdown source is parsed for certain structures like
+/// code blocks, shortcodes and emoji tags. These are then evaluated accordingly, with the
+/// result replacing the original structure in the text.
+/// 
+/// *Hypertext generation* is actually broken down into two sub-steps. 
+/// - First, the page's expanded Markdown source is rendered into full HTML. 
+/// (A few other syntax expansions, such as `@`-preceded internal links, are also handled here.) 
+/// - Second, the generated hypertext is evaluated against the page's specified template, if any.
+/// 
+/// Finally, *hypertext rewriting* consists of applying various transformations to a page's HTML, such as
+/// cachebusting images or setting external links to open in a new tab.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     info!("Starting render stage...");
 
@@ -72,10 +99,11 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     tickets
         .into_par_iter()
         .map(|mut ticket| -> Result<RenderTicket<'a>> {
-            template::shortcodes(&mut ticket, &engine)?;
+            expand::shortcodes(&mut ticket, &engine)?;
+            expand::highlight_code(&mut ticket, &engine)?;
             pulldown::process(&mut ticket, &engine);
             template::templates(&mut ticket, &engine)?;
-            rewrite::rewrite(&mut ticket, &engine)?;
+            //rewrite::rewrite(&mut ticket, &engine)?;
             Ok(ticket)
         })
         .for_each(|x| {
@@ -84,17 +112,29 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     drop(engine);
 
-    let mut stmt = conn.prepare("
+    let mut insert_hypertext = conn.prepare("
         INSERT OR IGNORE INTO hypertext 
-        VALUES (?1, ?2, 
-            (SELECT template_id FROM dependencies WHERE kind = 1 AND template_name = ?3),
-            ?4
-        )
+        VALUES (?1, ?2, ?3)
     ")?;
+
+    let mut sanitize = Dependency::prepare_sanitize(conn)?;
+    let mut insert_dep = Dependency::prepare_insert(conn)?;
     
     for ticket in stream.into_iter() {
-        let ticket = ticket?;
-        stmt.execute(params![rev_id, ticket.page.id, ticket.page.template, ticket.content])?;
+        let mut ticket = ticket?;
+
+        if let Some(template) = ticket.page.template {
+            ticket.dependencies.push(
+                Dependency::Template(template)
+            )
+        }
+
+        sanitize(&ticket.page.id)?;
+        for dependency in &ticket.dependencies {
+            insert_dep(&ticket.page.id, dependency)?;
+        }
+        debug!("Hypertext: {}", ticket.content);
+        insert_hypertext.execute(params![rev_id, ticket.page.id, ticket.content])?;
     }
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
@@ -116,24 +156,12 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
         AND pages.id = revision_files.id
         AND (
             NOT EXISTS (
-                SELECT 1
-                FROM hypertext WHERE
-                hypertext.input_id = pages.id
+                SELECT 1 FROM hypertext
+                WHERE hypertext.id = pages.id
             )
             OR EXISTS (
-                SELECT 1 
-                FROM dependencies, hypertext
-                WHERE hypertext.input_id = pages.id
-                AND hypertext.templating_id NOT IN (
-                    SELECT template_id FROM dependencies
-                )
-            )
-            OR EXISTS (
-                SELECT 1
-                FROM dependencies, hypertext
-                WHERE hypertext.input_id = pages.id
-                AND dependencies.kind = 2
-                AND dependencies.page_id = pages.id
+                SELECT 1 FROM dependencies
+                WHERE dependencies.page_id = pages.id
                 AND dependencies.asset_id NOT IN (
                     SELECT id FROM revision_files
                     WHERE revision = ?1

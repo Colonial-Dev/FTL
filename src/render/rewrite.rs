@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::path::{PathBuf, Path};
 
-use lol_html::html_content::Element;
 use lol_html::{element, HtmlRewriter, Settings};
 use rusqlite::params;
 
@@ -50,13 +49,14 @@ fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, re
                         if let Some('/') = src.chars().nth(0) {
                             return Ok(());
                         }
+                        
                         let asset = PathBuf::from(&src);
                         let page_relative = PathBuf::from(&page.path).parent().unwrap().join(&asset);
                         let assets_relative = PathBuf::from(SITE_SRC_DIRECTORY).join(SITE_ASSET_DIRECTORY).join(&asset);
 
-                        if cachebust(&page_relative, el) { return Ok(()) }
-                        if cachebust(&assets_relative, el) { return Ok(()) }
-                        else { return Ok(()) }
+                        //if cachebust(&page_relative, el) { return Ok(()) }
+                        //if cachebust(&assets_relative, el) { return Ok(()) }
+                        return Ok(())
                     })
                 ],
                 ..Settings::default()
@@ -71,12 +71,7 @@ fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, re
 
 /// Prepares and returns a closure that wraps cachebusting and ID caching logic.
 /// Returns `true` if the element was cachebusted successfully; false otherwise.
-fn prepare_cachebust<'a>(conn: &'a Connection, page: &'a Page, rev_id: &'a str) -> Result<impl FnMut(&Path, &mut Element) -> bool + 'a> {
-    conn.execute(
-        "DELETE FROM dependencies WHERE kind = 2 AND page_id = ?1", 
-        params![&page.id]
-    )?;
-    
+fn prepare_cachebust<'a>(conn: &'a Connection, page: &'a Page, rev_id: &'a str) -> Result<impl FnMut(&Path) -> Result<Option<(String, String)>> + 'a> {
     let mut try_query_id = conn.prepare("
         SELECT id FROM input_files
         WHERE path = ?1
@@ -87,35 +82,33 @@ fn prepare_cachebust<'a>(conn: &'a Connection, page: &'a Page, rev_id: &'a str) 
         )
     ")?;
 
-    let mut insert_dep = conn.prepare("
-        INSERT OR REPLACE INTO dependencies (kind, page_id, asset_id) 
-        VALUES (2, ?1, ?2);
-    ")?;
-
-    let closure = move |path: &Path, el: &mut Element| -> bool {
+    let closure = move |path: &Path| -> Result<Option<(String, String)>> {
         let maybe_id: Option<String> = try_query_id
-            .query_row(params![path.to_string_lossy(), rev_id], |row| row.get(0))
-            .unwrap_or(None);
+            .query_row(params![path.to_string_lossy(), rev_id], |row| row.get(0))?;
 
-        if let Some(id) = maybe_id {
-            match path.file_name() {
-                Some(name) => {
-                    let name = name.to_string_lossy();
-                    let busted = name.replace(".", &format!(".{}.", id));
-                    
-                    let busted = path
-                        .to_string_lossy()
-                        .replace(&*name, &busted);
-
-                    insert_dep.execute(params![&page.id, &id]).unwrap();
-                    el.set_attribute("src", &busted).unwrap();
-
-                    true
-                }
-                None => false,
-            }
+        if let None = maybe_id {
+            return Ok(None)
         }
-        else { false }
+
+        let id = maybe_id.unwrap();
+
+        if let Some(name) = path.file_name() {
+            let name = name.to_string_lossy();
+            let busted = name.replace(".", &format!(".{}.", id));
+            
+            let busted = path
+                .to_string_lossy()
+                .replace(&*name, &busted);
+
+            Ok(Some((busted, id)))
+        }
+        else {
+            let err = eyre!(
+                ""
+            );
+
+            bail!(err)
+        }
     };
 
     Ok(closure)
@@ -148,3 +141,27 @@ fn lazy_load<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
     Ok(Cow::Owned(hypertext))
 }
 
+/// Based on user configuration, rewrites the `rel` and `target` attributes of `<a>` tags.
+/// - If `external_links_new_tab` is true, then `rel="noopener"` and `target="_blank"`.
+/// - If `external_links_no_follow` is true, then `rel="nofollow"`.
+/// - If `external_links_no_referrer` is true, then `rel="noreferrer"`.
+fn link_targets<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
+    let config = Config::global();
+    let mut output = vec![];
+    {
+        let mut rewriter = HtmlRewriter::new(
+            Settings {
+                element_content_handlers: vec![
+                    element!("a", |el| {
+                        Ok(())
+                    }),
+                ],
+                ..Settings::default()
+            },
+            |c: &[u8]| output.extend_from_slice(c)
+        );
+        rewriter.write(hypertext.as_bytes())?;
+    }
+    let hypertext = String::from_utf8(output)?;
+    Ok(Cow::Owned(hypertext))
+}

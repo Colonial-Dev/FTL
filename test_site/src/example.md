@@ -19,7 +19,16 @@ Unlike the inline flavor, block shortcodes can capture an arbitrary block of tex
 {% endsc %}
 
 Here's an image:
+
 ![Ya boi](image.png)
 
 Here's one located elsewhere:
+
 ![Java](java.png)
+
+Here's some highlighted Rust code:
+```rs
+fn main() {
+    println!("Hello, world!");
+}
+```

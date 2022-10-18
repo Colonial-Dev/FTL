@@ -6,10 +6,6 @@ use tera::Tera;
 use serde::Deserialize;
 
 mod dependency;
-mod parser;
-mod shortcode;
-
-pub use shortcode::evaluate_shortcodes as shortcodes;
 
 use crate::db::*;
 use crate::prelude::*;

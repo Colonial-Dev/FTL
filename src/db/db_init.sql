@@ -41,9 +41,6 @@ CREATE TABLE IF NOT EXISTS page_attributes (
     alias TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_attributes_tag
-ON page_attributes(page_id, tag);
-
 CREATE TABLE IF NOT EXISTS routes (
     revision TEXT,
     id TEXT,
@@ -59,12 +56,16 @@ CREATE TABLE IF NOT EXISTS routes (
     )
 );
 
+CREATE TABLE IF NOT EXISTS templates (
+    name TEXT,
+    id TEXT,
+    UNIQUE(name, id)
+);
+
 CREATE TABLE IF NOT EXISTS dependencies (
-    kind INTEGER,
-    template_name TEXT,
-    template_id TEXT,
     page_id TEXT,
-    asset_id TEXT
+    asset_id TEXT,
+    UNIQUE(page_id, asset_id)
 );
 
 CREATE TABLE IF NOT EXISTS stylesheets (
@@ -75,13 +76,11 @@ CREATE TABLE IF NOT EXISTS stylesheets (
 
 CREATE TABLE IF NOT EXISTS hypertext (
     revision TEXT,
-    input_id TEXT,
-    templating_id TEXT,
+    id TEXT,
     content TEXT,
     UNIQUE(
         revision,
-        input_id,
-        templating_id,
+        id,
         content
     )
 );

@@ -8,6 +8,8 @@ use nom::combinator::rest;
 use nom::sequence::{preceded, terminated};
 use serde::Serialize;
 
+use super::{trim_whitespace, trim_quotes};
+
 use crate::prelude::*;
 
 #[derive(Serialize, Debug)]
@@ -149,23 +151,11 @@ fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
     Ok((i, map))
 }
 
-fn trim_whitespace(i: &str) -> (&str, &str) {
-    (i, i.trim())
-}
-
-fn trim_quotes(i: &str) -> (&str, &str) {
-    let trimmed = i
-        .trim_start_matches('"')
-        .trim_end_matches('"');
-    
-    (i, trimmed)
-}
-
 #[cfg(test)]
-mod tests {
+mod inline {
     use super::*;
     #[test]
-    fn inline_with_args() {
+    fn with_args() {
         let input = "{% sci youtube id=\"foo\", x=500, y=250 %}";
         let (_, result) = parse_inline(input).unwrap();
 
@@ -176,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn inline_no_args() {
+    fn no_args() {
         let input = "{% sci noargs %}";
         let (_, result) = parse_inline(input).unwrap();
 
@@ -185,28 +175,32 @@ mod tests {
     }
 
     #[test]
-    fn inline_malformed_arg() {
+    fn malformed_args() {
         let input = "{% sci malformed id+foo %}";
         let result = parse_inline(input);
         assert!(result.is_err())
     }
 
     #[test]
-    fn inline_malspaced_with_args() {
+    fn malspaced_with_args() {
         let input = "{%scimalformed arg=1%}";
         let result = parse_inline(input);
         assert!(result.is_ok())
     }
 
     #[test]
-    fn inline_malspaced_no_args() {
+    fn malspaced_no_args() {
         let input = "{%scimalformed%}";
         let result = parse_inline(input);
         assert!(result.is_ok())
     }
+}
 
+#[cfg(test)]
+mod block {
+    use super::*;
     #[test]
-    fn block_with_args() {
+    fn with_args() {
         let input = "{% sc code lang=\"rs\", dark=1 %}\npanic!()\n{% endsc %}";
         let (_, result) = parse_block(input).unwrap();
 
@@ -217,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn block_no_args() {
+    fn no_args() {
         let input = "{% sc code %}\npanic!()\n{% endsc %}";
         let (_, result) = parse_block(input).unwrap();
 
@@ -227,21 +221,21 @@ mod tests {
     }
 
     #[test]
-    fn block_malformed_arg() {
+    fn malformed_args() {
         let input = "{% sc code lang+\"rs\" %}\npanic!()\n{% endsc %}";
         let result = parse_block(input);
         assert!(result.is_err())
     }
 
     #[test]
-    fn block_malspaced_with_args() {
+    fn malspaced_with_args() {
         let input = "{%sccode lang=\"rs\"%}panic!(){%endsc%}";
         let result = parse_block(input);
         assert!(result.is_ok())
     }
 
     #[test]
-    fn block_malspaced_no_args() {
+    fn malspaced_no_args() {
         let input = "{%sccode%}panic!(){%endsc%}";
         let result = parse_block(input);
         assert!(result.is_ok())

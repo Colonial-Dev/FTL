@@ -15,10 +15,12 @@ target_disk = false
 target_dir = ""
 
 [render]
-highlight_code = true
+smart_punctuation = false
+highlight_code = false
 highlight_theme = ""
-expand_emoji = true
-smart_punctuation = true
+render_emoji = false
+render_katex = false
+file_inclusion = false
 minify_html = false
 minify_css = false
 

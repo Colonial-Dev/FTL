@@ -1,6 +1,3 @@
-use serde_rusqlite::from_rows;
-use std::hash::{Hash, Hasher};
-
 use regex::Regex;
 use lazy_static::lazy_static;
 use rusqlite::{Connection, params};
@@ -21,7 +18,8 @@ lazy_static! {
     static ref TERA_EXTENDS_REGEXP: Regex = Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap();
 }
 
-/// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the dependencies table.
+// TODO: Could this be parallelized, at least in part?
+/// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.
 /// 
 /// The procedure goes roughly like this:
 /// - Attach a new in-memory database and initialize a few tables.
@@ -29,7 +27,7 @@ lazy_static! {
 /// - Match the contents of each template against a set of regular expressions to extract its immediate dependencies.
 /// - Insert each template's direct dependencies into another table, where one column is the dependents's ID and the other is the dependency's ID.
 /// - Using a recursive Common Table Expression, map out each template's dependency set (deduplicated using `UNION` and sorted by `id ASC`.)
-/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk dependencies table.
+/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk templates table.
 /// - Detach the in-memory database, deallocating its contents.
 pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -> Result<()> {
     // Attach and setup a new in-memory database for mapping dependency relations.
@@ -47,50 +45,33 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
         VALUES (?1, (SELECT id FROM map.templates WHERE name = ?2));
     ")?;
 
-    let mut insert_id = txn.prepare("
-        INSERT OR REPLACE INTO dependencies (kind, template_name, template_id) 
-        VALUES (1, (SELECT name FROM map.templates WHERE id = ?1), ?2)
-    ")?;
-
     let mut query_set = txn.prepare("
-        WITH RECURSIVE transitives (id) AS (
-            SELECT id FROM map.templates
-            WHERE id = ?1
-            
-            UNION
-            
-            SELECT dependency_id FROM map.dependencies
-            JOIN transitives ON transitives.id = dependencies.parent_id
-            LIMIT 255
-        )
+        WITH RECURSIVE 
+            transitives (id) AS (
+                SELECT id FROM map.templates
+                WHERE id = ?1
+                
+                UNION
+                
+                SELECT dependency_id FROM map.dependencies
+                JOIN transitives ON transitives.id = dependencies.parent_id
+                LIMIT 255
+            ),
+            template_name (name) AS (
+                SELECT name FROM map.templates
+                WHERE id = ?1
+            )
         
-        SELECT id FROM transitives ORDER BY id ASC;
+        INSERT OR REPLACE INTO templates
+        SELECT template_name.name, transitives.id
+        FROM template_name, transitives;
     ")?;
-
-    // Given a template ID, this closure will:
-    // - Query the database for every member in the ID's dependency set
-    // - Fold the results into a hasher
-    // - Write the resulting hash to the on-disk template_deps table, alongside its name and the revision ID.
-    let mut traverse_set = |id: &str| -> Result<()> {
-        let hasher = seahash::SeaHasher::default();
-        let hasher = from_rows::<String>(query_set.query(params![id])?)
-            .filter_map(|x| x.ok() )
-            .fold(hasher, |mut acc, x | {
-                x.hash(&mut acc);
-                acc
-            });
-        
-        let hash = format!("{:016x}", hasher.finish());
-        insert_id.execute(params![id, hash])?;
-        Ok(())
-    };
-
 
     // Purge old template dependencies.
     // We *could* differentiate them based on revision,
     // but that would be pointless since we only care about the IDs for the current one.
     txn.execute(
-        "DELETE FROM dependencies WHERE kind = 1;"
+        "DELETE FROM templates;"
     ,[])?;
 
     // For each row in the templates slice:
@@ -114,16 +95,15 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
         }
     }
 
-    // For each row in the templates slice, invoke the traverse_set closure with its ID.
+    // For each row in the templates slice,
     for row in templates {
-        traverse_set(&row.id)?;
+        query_set.execute(params![&row.id])?;
     }
 
     // Drop prepared statements so the borrow checker will shut
     insert_template.finalize()?;
     insert_dependency.finalize()?;
     query_set.finalize()?;
-    insert_id.finalize()?;
 
     // Commit the above changes, then detatch (i.e. destroy) the in-memory mapping table.
     txn.commit()?;
