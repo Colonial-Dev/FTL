@@ -45,5 +45,3 @@ indicatif = "0.17.1"
 nom = "7.1.1"
 gh-emoji = "1.0.7"
 syntect = "5.0.0"
-nom_locate = "4.0.0"
-

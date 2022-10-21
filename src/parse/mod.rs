@@ -1,11 +1,9 @@
-mod codeblock;
 pub mod shortcode;
+pub mod delimit;
 
 use std::ops::Range;
 
-pub use codeblock::Codeblock;
-
-pub type Span<'a> = nom_locate::LocatedSpan<&'a str>;
+use crate::prelude::*;
 
 pub trait Ranged {
     fn range(&self) -> Range<usize>;

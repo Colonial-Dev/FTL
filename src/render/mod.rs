@@ -9,10 +9,10 @@ use std::borrow::Cow;
 use rayon::prelude::*;
 use rusqlite::params;
 use serde_rusqlite::from_rows;
-use syntect::highlighting;
+use syntect::parsing::SyntaxSet;
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::html::highlighted_html_for_string as highlight_html;
 use tera::{Context, Tera};
-
-use expand::Highlighter;
 
 use crate::db::*;
 use crate::db::data::{Dependency, Page};
@@ -50,7 +50,7 @@ pub struct Engine<'a> {
     pub rev_id: &'a str,
     pub pool: DbPool,
     pub tera: Tera,
-    pub highlighter: Highlighter,
+    //pub highlighter: Option<(SyntaxSet, Theme)>,
     pub sink: flume::Sender<Result<RenderTicket<'a>>>,
 }
 
@@ -58,14 +58,14 @@ impl<'a> Engine<'a> {
     pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket<'a>>>)> {
         let pool = make_pool()?;
         let tera = template::make_engine(conn, rev_id)?;
-        let highlighter = Highlighter::build("Solarized (dark)")?;
+        //let highlighter = Highlighter::build("Solarized (dark)")?;
         let (sink, stream) = flume::unbounded();
 
         let engine = Engine {
             rev_id,
             pool,
             tera,
-            highlighter,
+            //highlighter,
             sink,
         };
 
@@ -99,7 +99,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     tickets
         .into_par_iter()
         .map(|mut ticket| -> Result<RenderTicket<'a>> {
-            expand::shortcodes(&mut ticket, &engine)?;
+            expand::expand_shortcodes(&mut ticket, &engine)?;
             expand::highlight_code(&mut ticket, &engine)?;
             pulldown::process(&mut ticket, &engine);
             template::templates(&mut ticket, &engine)?;

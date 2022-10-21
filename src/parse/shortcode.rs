@@ -1,134 +1,85 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use nom::IResult;
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_until};
+use nom::bytes::complete::take_until;
 use nom::character::complete::char;
-use nom::combinator::rest;
-use nom::sequence::{preceded, terminated};
+use nom::sequence::terminated;
 use serde::Serialize;
 
-use super::{trim_whitespace, trim_quotes};
+use super::delimit::{Delimited, DelimiterKind};
+use super::{trim_quotes, Ranged};
 
 use crate::prelude::*;
 
 #[derive(Serialize, Debug)]
-pub struct Inline<'a> {
+pub struct Shortcode<'a> {
     pub name: &'a str,
     pub args: HashMap<&'a str, &'a str>,
+    pub content: Option<&'a str>,
+    pub range: Range<usize>
 }
 
-impl<'a> Inline<'a> {
-    pub fn parse(source: &'a str) -> Result<Inline> {
-        let (_, inline) = parse_inline(source)
-            .map_err(|ierr| {
-                eyre!("Inline shortcode parsing error.")
-                    .section(ierr.to_owned())
-            })?;
+impl<'a> TryFrom<Delimited<'a>> for Shortcode<'a> {
+    type Error = Report;
 
-        Ok(inline)
+    fn try_from(value: Delimited<'a>) -> Result<Self, Self::Error> {
+        match value.kind {
+            DelimiterKind::Inline => parse_inline(value),
+            DelimiterKind::Multiline => parse_multiline(value),
+            DelimiterKind::Raw => unimplemented!()
+        }
     }
 }
 
-#[derive(Serialize, Debug)]
-pub struct Block<'a> {
-    pub name: &'a str,
-    pub args: HashMap<&'a str, &'a str>,
-    pub block: &'a str
-}
-
-impl<'a> Block<'a> {
-    pub fn parse(source: &'a str) -> Result<Block> {
-        let (_, inline) = parse_block(source)
-            .map_err(|ierr| {
-                eyre!("Block shortcode parsing error.")
-                    .section(ierr.to_owned())
-            })?;
-
-        Ok(inline)
+impl<'a> Ranged for Shortcode<'a> {
+    fn range(&self) -> Range<usize> {
+        self.range.clone()
     }
 }
 
-fn parse_inline(i: &str) -> IResult<&str, Inline> {
-    let mut extract_name = alt((
-        take_until(" "),
-        rest
-    ));
-
-    let (_, i) = strip_inline_delimiters(i)?;
-    let (i, name) = extract_name(i)?;
-    let (i, args) = parse_kwargs(i)?;
-
-    let inline = Inline {
-        name,
-        args
-    };
-
-    Ok((i, inline))
-}
-
-fn strip_inline_delimiters(i: &str) -> IResult<&str, &str> {
-    let start_delimiter = alt((
-        tag("{% sci"),
-        tag("{%sci")
-    ));
-    let mut strip_delimiters = preceded(start_delimiter, take_until("%}"));
-
-    let (_, o) = strip_delimiters(i)?;
-    Ok(trim_whitespace(o))
-}
-
-fn parse_block(i: &str) -> IResult<&str, Block> {
-    let (i, (name, args)) = parse_block_header(i)?;
-    let (_, args) = parse_kwargs(args)?;
-    let (i, block) = parse_block_contents(i)?;
+fn parse_inline<'a>(source: Delimited<'a>) -> Result<Shortcode> {
+    let (name, args) = source.contents.split_once(' ')
+        .unwrap_or((source.contents, ""));
     
-    let block = Block {
+    let (_, args) = parse_kwargs(args)
+        .map_err(|ierr| {
+            eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
+            .note("This error occurred because FTL found a shortcode invocation with improperly formatted arguments.")
+            .suggestion("Make sure your shortcode invocation is well-formed.")
+            .section(ierr.to_owned())
+        })?;
+
+    Ok(Shortcode {
         name,
         args,
-        block
-    };
-
-    Ok((i, block))
+        content: None,
+        range: source.range
+    })
 }
 
-fn parse_block_header(i: &str) -> IResult<&str, (&str, &str)> {
-    let mut trim_start_delimiter = alt((
-        tag("{% sc"),
-        tag("{%sc")
-    ));
-    let mut extract_name = alt((
-        take_until(" "),
-        take_until("%}"),
-        rest
-    ));
-    let extract_args = take_until("%}");
-
-    let (i, _) = trim_start_delimiter(i)?;
-    let (_, i) = trim_whitespace(i);
-
-    let (i, name) = extract_name(i)?; 
-    let (_, i) = trim_whitespace(i);
-    let (i, args) = extract_args(i)?;
-
-    let (i, _) = tag("%}")(i)?;
-    let (_, i) = trim_whitespace(i);
+fn parse_multiline<'a>(source: Delimited<'a>) -> Result<Shortcode<'a>> {
+    let token = source.token.expect("Multiline token was None!")
+        .trim_end_matches(" %}")
+        .trim();
     
-    Ok((i, (name, args)))
-}
+    let (name, args) = token.split_once(' ')
+        .unwrap_or((token, ""));
+    
+    let (_, args) = parse_kwargs(args)
+        .map_err(|ierr| {
+            eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
+            .note("This error occurred because FTL found a shortcode invocation with improperly formatted arguments.")
+            .suggestion("Make sure your shortcode invocation is well-formed.")
+            .section(ierr.to_owned())
+        })?;
 
-fn parse_block_contents(i: &str) -> IResult<&str, &str> {
-    let mut extract_content = alt((
-        take_until("{% endsc %}"),
-        take_until("{%endsc %}"),
-        take_until("{% endsc%}"),
-        take_until("{%endsc%}")
-    ));
-
-    let (i, block) = extract_content(i)?;
-    let (_, block) = trim_whitespace(block);
-
-    Ok((i, block))
+    Ok(Shortcode {
+        name,
+        args,
+        content: Some(source.contents),
+        range: source.range
+    })
 }
 
 fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
@@ -154,90 +105,76 @@ fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
 #[cfg(test)]
 mod inline {
     use super::*;
+
+    use crate::parse::delimit::Delimiters;
+    use once_cell::sync::Lazy;
+
+    static DELIMS: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline) );
+
     #[test]
     fn with_args() {
-        let input = "{% sci youtube id=\"foo\", x=500, y=250 %}";
-        let (_, result) = parse_inline(input).unwrap();
+        let source = "{% sci youtube id=\"foo\", x=500, y=250 %}";
+        let code = &DELIMS.parse_into::<Shortcode>(source).unwrap()[0];
 
-        assert_eq!(result.name, "youtube");
-        assert_eq!(result.args.get("id").unwrap(), &"foo");
-        assert_eq!(result.args.get("x").unwrap(), &"500");
-        assert_eq!(result.args.get("y").unwrap(), &"250");
+        assert_eq!(code.name, "youtube");
+        assert_eq!(code.args.get("id").unwrap(), &"foo");
+        assert_eq!(code.args.get("x").unwrap(), &"500");
+        assert_eq!(code.args.get("y").unwrap(), &"250");
     }
 
     #[test]
     fn no_args() {
-        let input = "{% sci noargs %}";
-        let (_, result) = parse_inline(input).unwrap();
+        let source = "{% sci noargs %}";
+        let code = &DELIMS.parse_into::<Shortcode>(source).unwrap()[0];
 
-        assert_eq!(result.name, "noargs");
-        assert_eq!(result.args.keys().count(), 0);
+        assert_eq!(code.name, "noargs");
+        assert_eq!(code.args.keys().count(), 0);
     }
 
     #[test]
     fn malformed_args() {
-        let input = "{% sci malformed id+foo %}";
-        let result = parse_inline(input);
+        let source = "{% sci malformed id+foo %}";
+        let result = DELIMS.parse_into::<Shortcode>(source);
+
         assert!(result.is_err())
-    }
-
-    #[test]
-    fn malspaced_with_args() {
-        let input = "{%scimalformed arg=1%}";
-        let result = parse_inline(input);
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn malspaced_no_args() {
-        let input = "{%scimalformed%}";
-        let result = parse_inline(input);
-        assert!(result.is_ok())
     }
 }
 
 #[cfg(test)]
 mod block {
     use super::*;
+
+    use crate::parse::delimit::Delimiters;
+    use once_cell::sync::Lazy;
+
+    static DELIMS: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline) );
+
     #[test]
     fn with_args() {
-        let input = "{% sc code lang=\"rs\", dark=1 %}\npanic!()\n{% endsc %}";
-        let (_, result) = parse_block(input).unwrap();
+        let source = "{% sc code lang=\"rs\", dark=1 %}\npanic!()\n{% endsc %}";
+        let code = &DELIMS.parse_into::<Shortcode>(source).unwrap()[0];
 
-        assert_eq!(result.name, "code");
-        assert_eq!(result.args.get("lang").unwrap(), &"rs");
-        assert_eq!(result.args.get("dark").unwrap(), &"1");
-        assert_eq!(result.block, "panic!()");
+        assert_eq!(code.name, "code");
+        assert_eq!(code.args.get("lang").unwrap(), &"rs");
+        assert_eq!(code.args.get("dark").unwrap(), &"1");
+        assert_eq!(code.content, Some("panic!()"));
     }
 
     #[test]
     fn no_args() {
-        let input = "{% sc code %}\npanic!()\n{% endsc %}";
-        let (_, result) = parse_block(input).unwrap();
+        let source = "{% sc code %}\npanic!()\n{% endsc %}";
+        let code = &DELIMS.parse_into::<Shortcode>(source).unwrap()[0];
 
-        assert_eq!(result.name, "code");
-        assert_eq!(result.args.keys().count(), 0);
-        assert_eq!(result.block, "panic!()");
+        assert_eq!(code.name, "code");
+        assert_eq!(code.args.keys().count(), 0);
+        assert_eq!(code.content, Some("panic!()"));
     }
 
     #[test]
     fn malformed_args() {
-        let input = "{% sc code lang+\"rs\" %}\npanic!()\n{% endsc %}";
-        let result = parse_block(input);
+        let source = "{% sc code lang+\"rs\" %}\npanic!()\n{% endsc %}";
+        let result = DELIMS.parse_into::<Shortcode>(source);
+
         assert!(result.is_err())
-    }
-
-    #[test]
-    fn malspaced_with_args() {
-        let input = "{%sccode lang=\"rs\"%}panic!(){%endsc%}";
-        let result = parse_block(input);
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn malspaced_no_args() {
-        let input = "{%sccode%}panic!(){%endsc%}";
-        let result = parse_block(input);
-        assert!(result.is_ok())
     }
 }
