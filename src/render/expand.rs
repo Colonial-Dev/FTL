@@ -1,12 +1,9 @@
 
-use std::borrow::Cow;
-
 use gh_emoji as emoji;
 use once_cell::sync::Lazy;
-use regex::Regex;
 
 use crate::db::data::Dependency;
-use crate::parse::{Ranged, delimit::*, shortcode::*};
+use crate::parse::{delimit::*, shortcode::*};
 use crate::prelude::*;
 
 use super::{RenderTicket, Engine};
@@ -17,9 +14,7 @@ static INLINE_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sci ", 
 static BLOCK_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline) );
 
 pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
-    let emoji = EMOJI_DELIM.parse_from(&ticket.content);
-
-    ticket.content = ranged_expand(ticket.content.clone(), emoji, |tag: Delimited| {
+    EMOJI_DELIM.expand(&mut ticket.content, |tag: Delimited| {
         let name = tag.contents;
 
         match emoji::get(name) {
@@ -32,9 +27,7 @@ pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
 }
 
 pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
-    let codeblocks = CODE_DELIM.parse_from(&ticket.content);
-
-    ticket.content = ranged_expand(ticket.content.clone(), codeblocks, |block: Delimited| {
+    CODE_DELIM.expand(&mut ticket.content, |block: Delimited| {
         //Ok(engine.highlight(block)?)
         Ok("a".to_string())
     })?;
@@ -43,22 +36,29 @@ pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()>
 }
 
 pub fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
-    // Workaround to avoid conflicting references.
-    let source = ticket.content.clone();
-    let inline_codes = INLINE_DELIM.parse_into::<Shortcode>(&source)?;
-    
-    ticket.content = ranged_expand(ticket.content.clone(), inline_codes, |code: Shortcode| {
+    // Note: the borrow checker can't distinguish between multiple mutable
+    // borrows to disjoint fields within the same struct. 
+    // 
+    // Unfortunately, we need to mutate both the content and context fields
+    // of ticket, which violates this limitation. To get around this, we
+    // take the content field from the ticket, operate on it, then
+    // swap it back into the ticket when we're done.
+    //
+    // Technically this could be avoided via unsafe, but... no
+
+    let mut content = std::mem::take(&mut ticket.content);
+    INLINE_DELIM.expand(&mut content, |code: Delimited| {
+        let code = Shortcode::try_from(code)?;
         ticket.context.insert("code", &code);
         render_shortcode(code.name, ticket, engine)
     })?;
 
-    let source = ticket.content.clone();
-    let block_codes = BLOCK_DELIM.parse_into::<Shortcode>(&source)?;
-
-    ticket.content = ranged_expand(ticket.content.clone(), block_codes, |code: Shortcode| {
+    BLOCK_DELIM.expand(&mut content, |code: Delimited| {
+        let code = Shortcode::try_from(code)?;
         ticket.context.insert("code", &code);
         render_shortcode(code.name, ticket, engine)
     })?;
+    let _ = std::mem::replace(&mut ticket.content, content);
 
     Ok(())
 }
@@ -82,26 +82,4 @@ fn render_shortcode(name: &str, ticket: &mut RenderTicket, engine: &Engine) -> R
     );
     
     Ok(engine.tera.render(name, &ticket.context)?)
-}
-
-fn ranged_expand<'a, T: Ranged>(source: Cow<'a, str>, targets: Vec<T>, mut replacer: impl FnMut(T) -> Result<String>) -> Result<Cow<'a, str>> {
-    if targets.is_empty() {
-        return Ok(source);
-    }
-
-    let mut buffer = String::with_capacity(source.len());
-    let mut last_match = 0;
-    for target in targets {
-        let range = target.range();
-        let replacement = replacer(target)?;
-
-        buffer.push_str(&source[last_match..range.start]);
-        buffer.push_str(&replacement);
-
-        last_match = range.end;
-    }
-    buffer.push_str(&source[last_match..]);
-    buffer.shrink_to_fit();
-
-    Ok(Cow::Owned(buffer))
 }

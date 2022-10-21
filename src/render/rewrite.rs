@@ -13,8 +13,8 @@ use super::{RenderTicket, Engine};
 pub fn rewrite<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     let conn = engine.pool.get()?;
 
-    ticket.content = cachebust_img(ticket.content.clone(), &ticket.page, &conn, engine.rev_id)?;
-    ticket.content = lazy_load(ticket.content.clone())?;
+    ticket.content = cachebust_img(&ticket.content, &ticket.page, &conn, engine.rev_id)?;
+    ticket.content = lazy_load(&ticket.content)?;
 
     Ok(())
 }
@@ -31,7 +31,7 @@ pub fn rewrite<'a>(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
 /// 
 /// A match relative to the page takes priority over a match in the assets directory.
 /// If no match is found, we leave the tag untouched.
-fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, rev_id: &str) -> Result<Cow<'a, str>> {
+fn cachebust_img<'a>(hypertext: &'a str, page: &Page, conn: &Connection, rev_id: &str) -> Result<String> {
     let mut cachebust = prepare_cachebust(conn, page, rev_id)?;
     let mut output = vec![];
     {
@@ -66,7 +66,7 @@ fn cachebust_img<'a>(hypertext: Cow<'a, str>, page: &Page, conn: &Connection, re
         rewriter.write(hypertext.as_bytes())?;
     }
     let hypertext = String::from_utf8(output)?;
-    Ok(Cow::Owned(hypertext))
+    Ok(hypertext)
 }
 
 /// Prepares and returns a closure that wraps cachebusting and ID caching logic.
@@ -115,7 +115,7 @@ fn prepare_cachebust<'a>(conn: &'a Connection, page: &'a Page, rev_id: &'a str) 
 }
 
 /// Rewrites the `loading` attribute of all `<img>` and `<video>` tags to be `lazy`.
-fn lazy_load<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
+fn lazy_load<'a>(hypertext: &'a str) -> Result<String> {
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -138,7 +138,7 @@ fn lazy_load<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
         rewriter.write(hypertext.as_bytes())?;
     }
     let hypertext = String::from_utf8(output)?;
-    Ok(Cow::Owned(hypertext))
+    Ok(hypertext)
 }
 
 /// Based on user configuration, rewrites the `rel` and `target` attributes of `<a>` tags.

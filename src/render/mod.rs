@@ -4,14 +4,9 @@ mod rewrite;
 mod stylesheet;
 mod template;
 
-use std::borrow::Cow;
-
 use rayon::prelude::*;
 use rusqlite::params;
 use serde_rusqlite::from_rows;
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{Theme, ThemeSet};
-use syntect::html::highlighted_html_for_string as highlight_html;
 use tera::{Context, Tera};
 
 use crate::db::*;
@@ -19,14 +14,14 @@ use crate::db::data::{Dependency, Page};
 use crate::share::ERROR_CHANNEL;
 use crate::prelude::*;
 
-pub struct RenderTicket<'a> {
+pub struct RenderTicket {
     pub page: Page,
-    pub content: Cow<'a, str>,
+    pub content: String,
     pub context: Context,
     pub dependencies: Vec<Dependency>
 }
 
-impl<'a> RenderTicket<'a> {
+impl RenderTicket {
     pub fn new(page: Page, mut source: String) -> Self {
         source
             .drain(..(page.offset as usize))
@@ -38,7 +33,7 @@ impl<'a> RenderTicket<'a> {
 
 
         RenderTicket {
-            content: Cow::Owned(source),
+            content: source,
             page,
             context,
             dependencies: Vec::new()
@@ -50,22 +45,19 @@ pub struct Engine<'a> {
     pub rev_id: &'a str,
     pub pool: DbPool,
     pub tera: Tera,
-    //pub highlighter: Option<(SyntaxSet, Theme)>,
-    pub sink: flume::Sender<Result<RenderTicket<'a>>>,
+    pub sink: flume::Sender<Result<RenderTicket>>,
 }
 
 impl<'a> Engine<'a> {
-    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket<'a>>>)> {
+    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket>>)> {
         let pool = make_pool()?;
         let tera = template::make_engine(conn, rev_id)?;
-        //let highlighter = Highlighter::build("Solarized (dark)")?;
         let (sink, stream) = flume::unbounded();
 
         let engine = Engine {
             rev_id,
             pool,
             tera,
-            //highlighter,
             sink,
         };
 
@@ -98,7 +90,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     tickets
         .into_par_iter()
-        .map(|mut ticket| -> Result<RenderTicket<'a>> {
+        .map(|mut ticket| -> Result<RenderTicket> {
             expand::expand_shortcodes(&mut ticket, &engine)?;
             expand::highlight_code(&mut ticket, &engine)?;
             pulldown::process(&mut ticket, &engine);
@@ -149,7 +141,7 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
 /// - The page itself is unchanged, but one of the templates/shortcodes it relies upon has changed (expressed via a templating ID, see [`template::dependency::compute_ids`].)
 /// - The page itself is unchanged, but one of the cachebusted assets it relies upon has changed (captured during cachebusting, see [`rewrite::prepare_cachebust`].)
-fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket<'a>>> {
+fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
     let mut get_pages = conn.prepare("
         SELECT DISTINCT pages.* FROM pages, revision_files WHERE
         revision_files.revision = ?1

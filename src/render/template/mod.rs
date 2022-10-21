@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use rusqlite::params;
 use serde_rusqlite::from_rows;
 use tera::Tera;
@@ -91,7 +89,7 @@ pub fn templates(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     if let Some(template) = &ticket.page.template {
         if engine.tera.get_template_names().any(|name| name == template) {
             ticket.context.insert("markup", &ticket.content);
-            ticket.content = Cow::Owned(engine.tera.render(template, &ticket.context)?);
+            ticket.content = engine.tera.render(template, &ticket.context)?;
         }
         else {
             let error = eyre!(
