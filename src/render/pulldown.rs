@@ -1,6 +1,6 @@
-use pulldown_cmark::{Parser, Options, html};
+use pulldown_cmark::{html, Options, Parser};
 
-use super::{RenderTicket, Engine};
+use super::{Engine, RenderTicket};
 
 pub fn process<'a>(ticket: &mut RenderTicket, _engine: &Engine) {
     let parser = init(&ticket.content);

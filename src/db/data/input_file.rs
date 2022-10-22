@@ -4,7 +4,7 @@ use super::dependencies::*;
 /// maps directly to and from rows in the `input_files` table.
 #[derive(Serialize, Deserialize, Debug, Eq)]
 pub struct InputFile {
-    /// The file's ID value. 
+    /// The file's ID value.
     /// Computed as the hash of the file's `hash` and `path` concatenated together,
     /// and formatted as a 16-character hexadecimal string.
     pub id: String,
@@ -19,7 +19,7 @@ pub struct InputFile {
     /// Whether or not the file's contents are stored in the database.
     /// - When `true`, the file's contents are written to the database as UTF-8 TEXT.
     /// - When `false`, the file is copied to `.ftl/cache` and renamed to its hash.
-    pub inline: bool
+    pub inline: bool,
 }
 
 // Because the walking algorithm operates in parallel, we implement
@@ -53,11 +53,13 @@ impl InputFile {
     }
 
     /// Prepares an SQL statement to insert a new row into the `input_files` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&InputFile) -> Result<()> + '_> {        
-        let mut stmt = conn.prepare("
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&InputFile) -> Result<()> + '_> {
+        let mut stmt = conn.prepare(
+            "
             INSERT OR IGNORE INTO input_files
             VALUES(:id, :path, :hash, :extension, :contents, :inline);
-        ")?;
+        ",
+        )?;
 
         let closure = move |input: &InputFile| {
             let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;

@@ -13,11 +13,15 @@ pub struct Stylesheet {
 // Database write methods
 impl Stylesheet {
     /// Prepares an SQL statement to insert a new row into the `stylesheets` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&StylesheetIn) -> Result<()> + '_> {        
-        let mut stmt = conn.prepare("
+    pub fn prepare_insert(
+        conn: &Connection,
+    ) -> Result<impl FnMut(&StylesheetIn) -> Result<()> + '_> {
+        let mut stmt = conn.prepare(
+            "
             INSERT OR IGNORE INTO stylesheets
             VALUES(:revision, :content);
-        ")?;
+        ",
+        )?;
 
         let closure = move |input: &StylesheetIn| {
             let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;
@@ -47,7 +51,7 @@ impl<'a> From<&'a Stylesheet> for StylesheetIn<'a> {
     fn from(source: &'a Stylesheet) -> Self {
         StylesheetIn {
             revision: &source.revision,
-            content: &source.content
+            content: &source.content,
         }
     }
 }

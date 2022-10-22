@@ -1,10 +1,9 @@
+use num_enum::TryFromPrimitive;
+use serde_repr::{Deserialize_repr, Serialize_repr};
+
 use super::dependencies::*;
 
-use serde_repr::{Serialize_repr, Deserialize_repr};
-use num_enum::TryFromPrimitive;
-
-#[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize_repr, Deserialize_repr, TryFromPrimitive, Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum RouteKind {
     Unknown = 0,
@@ -23,12 +22,12 @@ pub struct Route {
     /// The ID of the file this route points to.
     pub id: String,
     /// The URL this route qualifies.
-    /// 
+    ///
     /// Example: `/img/banner.png`, which points to `src/assets/img/banner.png`.
     pub route: String,
-    /// The "parent" path of the route. 
+    /// The "parent" path of the route.
     /// Corresponds to the first subdirectory in the URL.
-    /// 
+    ///
     /// Example: the parent path of `/posts/hello_there` is `posts`.
     pub parent_route: Option<String>,
     /// What type of asset this route points to.
@@ -36,13 +35,15 @@ pub struct Route {
 }
 
 // Database write methods
-impl Route { 
+impl Route {
     /// Prepares an SQL statement to insert a new row into the `routes` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RouteIn) -> Result<()> + '_> {        
-        let mut stmt = conn.prepare("
+    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RouteIn) -> Result<()> + '_> {
+        let mut stmt = conn.prepare(
+            "
             INSERT OR IGNORE INTO routes
             VALUES(:revision, :id, :route, :parent_route, :kind)
-        ")?;
+        ",
+        )?;
 
         let closure = move |input: &RouteIn| {
             let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;

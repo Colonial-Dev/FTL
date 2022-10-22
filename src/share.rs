@@ -1,19 +1,21 @@
+use flume::{Receiver, Sender};
 use lazy_static::lazy_static;
-use flume::{Sender, Receiver};
 
-pub use crate::prepare::{SITE_SRC_DIRECTORY, SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_TEMPLATE_DIRECTORY};
 use crate::prelude::*;
+pub use crate::prepare::{
+    SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_SRC_DIRECTORY, SITE_TEMPLATE_DIRECTORY,
+};
 
-lazy_static!(
+lazy_static! {
     pub static ref ERROR_CHANNEL: ErrorChannel = ErrorChannel::default();
     pub static ref THREADS: u32 = {
         let threads = std::thread::available_parallelism();
         match threads {
             Ok(num) => num.get() as u32,
-            Err(_) => 4
+            Err(_) => 4,
         }
     };
-);
+}
 
 #[derive(Clone)]
 pub struct ErrorChannel {
@@ -38,9 +40,9 @@ impl ErrorChannel {
             .expect("Build error sink has been closed!");
     }
 
-    pub fn filter_error<T, E>(&self, result: Result<T, E>) -> Option<T> 
-    where 
-        E: Into<Error>, 
+    pub fn filter_error<T, E>(&self, result: Result<T, E>) -> Option<T>
+    where
+        E: Into<Error>,
     {
         match result {
             Ok(val) => Some(val),

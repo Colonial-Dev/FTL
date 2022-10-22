@@ -1,10 +1,14 @@
 use rusqlite::params;
-use serde_rusqlite::{from_rows};
 use serde::Deserialize;
+use serde_rusqlite::from_rows;
 
-use crate::db::Connection;
-use crate::db::data::{Page, Route, RouteIn, RouteKind};
-use crate::prelude::*;
+use crate::{
+    db::{
+        data::{Page, Route, RouteIn, RouteKind},
+        Connection,
+    },
+    prelude::*,
+};
 
 pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     #[derive(Deserialize, Debug)]
@@ -15,7 +19,8 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
 
     let mut insert_route = Route::prepare_insert(conn)?;
 
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         SELECT id, path FROM input_files
         WHERE EXISTS (
             SELECT 1
@@ -26,7 +31,8 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         AND input_files.extension != 'md'
         AND input_files.extension != 'sass'
         AND input_files.extension != 'scss'
-    ")?;
+    ",
+    )?;
 
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
@@ -68,22 +74,24 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         id: String,
         path: String,
     }
-    
+
     let mut insert_route = Route::prepare_insert(conn)?;
 
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         SELECT page_id, alias FROM page_attributes
         WHERE EXISTS (
             SELECT 1 FROM revision_files
             WHERE revision_files.revision = ?1
             AND revision_files.id = page_attributes.page_id
         )
-    ")?;
+    ",
+    )?;
 
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
         let row = row?;
-        insert_route(&RouteIn{
+        insert_route(&RouteIn {
             revision: rev_id,
             id: &row.id,
             route: &row.path,

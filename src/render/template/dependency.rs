@@ -1,10 +1,9 @@
-use regex::Regex;
 use lazy_static::lazy_static;
-use rusqlite::{Connection, params};
+use regex::Regex;
+use rusqlite::{params, Connection};
 
-use crate::db;
 use super::Row;
-use crate::prelude::*;
+use crate::{db, prelude::*};
 
 lazy_static! {
     // Example input: {% include "included.html" %}
@@ -20,7 +19,7 @@ lazy_static! {
 
 // TODO: Could this be parallelized, at least in part?
 /// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.
-/// 
+///
 /// The procedure goes roughly like this:
 /// - Attach a new in-memory database and initialize a few tables.
 /// - Insert each template's name and ID into one of the tables.
@@ -33,19 +32,24 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
     // Attach and setup a new in-memory database for mapping dependency relations.
     let txn = conn.transaction()?;
     db::attach_mapping_database(&txn)?;
-    
+
     // Prepare necessary statements for dependency mapping.
-    let mut insert_template = txn.prepare("
+    let mut insert_template = txn.prepare(
+        "
         INSERT OR IGNORE INTO map.templates 
         VALUES (?1, ?2);
-    ")?;
+    ",
+    )?;
 
-    let mut insert_dependency = txn.prepare("
+    let mut insert_dependency = txn.prepare(
+        "
         INSERT OR IGNORE INTO map.dependencies 
         VALUES (?1, (SELECT id FROM map.templates WHERE name = ?2));
-    ")?;
+    ",
+    )?;
 
-    let mut query_set = txn.prepare("
+    let mut query_set = txn.prepare(
+        "
         WITH RECURSIVE 
             transitives (id) AS (
                 SELECT id FROM map.templates
@@ -65,24 +69,24 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
         INSERT OR REPLACE INTO templates
         SELECT template_name.name, transitives.id
         FROM template_name, transitives;
-    ")?;
+    ",
+    )?;
 
     // Purge old template dependencies.
     // We *could* differentiate them based on revision,
     // but that would be pointless since we only care about the IDs for the current one.
-    txn.execute(
-        "DELETE FROM templates;"
-    ,[])?;
+    txn.execute("DELETE FROM templates;", [])?;
 
     // For each row in the templates slice:
     // 1. Trim its path to be relative to SITE_TEMPLATE_DIRECTORY.
     // 2. Insert the trimmed path and ID into the map.templates table.
     for row in templates {
-        let trimmed_path = row.path
+        let trimmed_path = row
+            .path
             .trim_start_matches(crate::share::SITE_SRC_DIRECTORY)
             .trim_start_matches(crate::share::SITE_TEMPLATE_DIRECTORY)
             .trim_end_matches(".tera");
-        
+
         insert_template.execute(params![trimmed_path, row.id])?;
     }
 
@@ -113,14 +117,15 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
 }
 
 /// Parse the contents of the given [`Row`] for its direct dependencies using the `TERA_INCLUDE_*` regular expressions.
-fn find_direct_dependencies<'a>(item: &'a Row) -> impl Iterator<Item=&'a str> {
+fn find_direct_dependencies<'a>(item: &'a Row) -> impl Iterator<Item = &'a str> {
     let mut dependencies: Vec<&str> = Vec::new();
-    
-    let mut capture = |regexp: &Regex | {
-        regexp.captures_iter(&item.contents)
-            .filter_map(|cap| cap.get(1) )
-            .map(|found| found.as_str() )
-            .map(|text| dependencies.push(text) )
+
+    let mut capture = |regexp: &Regex| {
+        regexp
+            .captures_iter(&item.contents)
+            .filter_map(|cap| cap.get(1))
+            .map(|found| found.as_str())
+            .map(|text| dependencies.push(text))
             .for_each(drop)
     };
 

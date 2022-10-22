@@ -1,11 +1,18 @@
+use std::{
+    hash::{Hash, Hasher},
+    path::Path,
+};
+
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
-use std::path::{Path};
-use std::hash::{Hash, Hasher};
 
-use crate::db::data::{RevisionFile, RevisionFileIn};
-use crate::{db::data::InputFile, db::Connection};
-use crate::prelude::*;
+use crate::{
+    db::{
+        data::{InputFile, RevisionFile, RevisionFileIn},
+        Connection,
+    },
+    prelude::*,
+};
 
 pub const SITE_SRC_DIRECTORY: &str = "src/";
 pub const SITE_ASSET_DIRECTORY: &str = "assets/";
@@ -13,11 +20,10 @@ pub const SITE_CONTENT_DIRECTORY: &str = "content/";
 pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
 
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk_src(conn: &mut Connection) -> Result<String>  {
+pub fn walk_src(conn: &mut Connection) -> Result<String> {
     info!("Starting walk...");
 
-    let mut files: Vec<InputFile> = 
-    WalkDir::new(SITE_SRC_DIRECTORY)
+    let mut files: Vec<InputFile> = WalkDir::new(SITE_SRC_DIRECTORY)
         .into_iter()
         .par_bridge()
         .filter_map(drain_entries)
@@ -37,7 +43,8 @@ pub fn walk_src(conn: &mut Connection) -> Result<String>  {
 
     update_input_files(&*txn, &files).context("Failed to update input_files table.")?;
     let rev_id = compute_revision_id(&files);
-    update_revision_files(&*txn, &files, &rev_id).context("Failed to update revision_files table.")?;
+    update_revision_files(&*txn, &files, &rev_id)
+        .context("Failed to update revision_files table.")?;
 
     txn.commit()?;
     Ok(rev_id)
@@ -59,9 +66,12 @@ fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
 fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
     match entry.metadata() {
         Ok(md) => {
-            if md.is_dir() { None }
-            else { Some(entry) }
-        },
+            if md.is_dir() {
+                None
+            } else {
+                Some(entry)
+            }
+        }
         Err(e) => {
             ERROR_CHANNEL.sink_error(eyre!(e));
             None
@@ -84,17 +94,19 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
                 self::hash(joined.as_bytes())
             };
             let path = entry.into_path();
-            
+
             // Optimization: drain data read from non-inline files.
             // This isn't necessary per se, but we don't want to potentially
             // shuffle an entire MP4 around in memory for no reason.
-            if !inline { contents.drain(..); }
+            if !inline {
+                contents.drain(..);
+            }
 
             let str_repr = String::from_utf8_lossy(&contents).to_string();
 
             let contents: Option<String> = match str_repr.len() {
                 0 => None,
-                _ => Some(str_repr)
+                _ => Some(str_repr),
             };
 
             let item = InputFile {
@@ -103,7 +115,7 @@ fn process_entry(entry: DirEntry) -> Option<InputFile> {
                 path,
                 extension,
                 contents,
-                inline
+                inline,
             };
 
             Some(item)
@@ -141,13 +153,13 @@ fn entry_extension(entry: &DirEntry) -> Option<String> {
             let ext = ext.to_str();
             ext.map(|ext| ext.to_string())
         }
-        None => None
+        None => None,
     }
 }
 
 fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
     let mut insert_file = InputFile::prepare_insert(conn)?;
-    
+
     for file in files {
         insert_file(file)?;
 
@@ -166,11 +178,11 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
 
 fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<()> {
     let mut insert_file = RevisionFile::prepare_insert(conn)?;
-    
+
     for file in files {
-        insert_file(&RevisionFileIn{
+        insert_file(&RevisionFileIn {
             revision: rev_id,
-            id: &file.id
+            id: &file.id,
         })?;
     }
 
@@ -184,11 +196,11 @@ fn compute_revision_id(files: &[InputFile]) -> String {
     for file in files {
         ids.push(&file.id);
     }
-    
+
     let mut hasher = seahash::SeaHasher::default();
     ids.hash(&mut hasher);
     let rev_id = format!("{:016x}", hasher.finish());
-    
+
     info!("Computed revision ID {}", rev_id);
 
     rev_id

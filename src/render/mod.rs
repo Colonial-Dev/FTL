@@ -9,34 +9,35 @@ use rusqlite::params;
 use serde_rusqlite::from_rows;
 use tera::{Context, Tera};
 
-use crate::db::*;
-use crate::db::data::{Dependency, Page};
-use crate::share::ERROR_CHANNEL;
-use crate::prelude::*;
+use crate::{
+    db::{
+        data::{Dependency, Page},
+        *,
+    },
+    prelude::*,
+    share::ERROR_CHANNEL,
+};
 
 pub struct RenderTicket {
     pub page: Page,
     pub content: String,
     pub context: Context,
-    pub dependencies: Vec<Dependency>
+    pub dependencies: Vec<Dependency>,
 }
 
 impl RenderTicket {
     pub fn new(page: Page, mut source: String) -> Self {
-        source
-            .drain(..(page.offset as usize))
-            .for_each(drop);
+        source.drain(..(page.offset as usize)).for_each(drop);
 
-            let mut context = Context::new();
+        let mut context = Context::new();
         context.insert("page", &page);
         context.insert("config", Config::global());
-
 
         RenderTicket {
             content: source,
             page,
             context,
-            dependencies: Vec::new()
+            dependencies: Vec::new(),
         }
     }
 }
@@ -49,7 +50,10 @@ pub struct Engine<'a> {
 }
 
 impl<'a> Engine<'a> {
-    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<(Self, flume::Receiver<Result<RenderTicket>>)> {
+    pub fn build(
+        conn: &mut Connection,
+        rev_id: &'a str,
+    ) -> Result<(Self, flume::Receiver<Result<RenderTicket>>)> {
         let pool = make_pool()?;
         let tera = template::make_engine(conn, rev_id)?;
         let (sink, stream) = flume::unbounded();
@@ -66,12 +70,12 @@ impl<'a> Engine<'a> {
 }
 
 /// result replacing the original structure in the text.
-/// 
-/// *Hypertext generation* is actually broken down into two sub-steps. 
-/// - First, the page's expanded Markdown source is rendered into full HTML. 
-/// (A few other syntax expansions, such as `@`-preceded internal links, are also handled here.) 
+///
+/// *Hypertext generation* is actually broken down into two sub-steps.
+/// - First, the page's expanded Markdown source is rendered into full HTML.
+/// (A few other syntax expansions, such as `@`-preceded internal links, are also handled here.)
 /// - Second, the generated hypertext is evaluated against the page's specified template, if any.
-/// 
+///
 /// Finally, *hypertext rewriting* consists of applying various transformations to a page's HTML, such as
 /// cachebusting images or setting external links to open in a new tab.
 pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
@@ -91,26 +95,29 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
             Ok(ticket)
         })
         .for_each(|x| {
-            engine.sink.send(x).expect("Rendering output sink closed unexpectedly!");
+            engine
+                .sink
+                .send(x)
+                .expect("Rendering output sink closed unexpectedly!");
         });
 
     drop(engine);
 
-    let mut insert_hypertext = conn.prepare("
+    let mut insert_hypertext = conn.prepare(
+        "
         INSERT OR IGNORE INTO hypertext 
         VALUES (?1, ?2, ?3)
-    ")?;
+    ",
+    )?;
 
     let mut sanitize = Dependency::prepare_sanitize(conn)?;
     let mut insert_dep = Dependency::prepare_insert(conn)?;
-    
+
     for ticket in stream.into_iter() {
         let mut ticket = ticket?;
 
         if let Some(template) = ticket.page.template {
-            ticket.dependencies.push(
-                Dependency::Template(template)
-            )
+            ticket.dependencies.push(Dependency::Template(template))
         }
 
         sanitize(&ticket.page.id)?;
@@ -122,19 +129,20 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     }
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
-    
+
     Ok(())
 }
 
 /// Queries the database for all pages that need to be rendered for a revision and packages the results into a [`Vec<RenderTicket>`].'
-/// 
+///
 /// N.B. a page will be rendered/re-rendered if any of the following criteria are met:
 /// - The page is marked as dynamic in its frontmatter.
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
 /// - The page itself is unchanged, but one of the templates/shortcodes it relies upon has changed (expressed via a templating ID, see [`template::dependency::compute_ids`].)
 /// - The page itself is unchanged, but one of the cachebusted assets it relies upon has changed (captured during cachebusting, see [`rewrite::prepare_cachebust`].)
 fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
-    let mut get_pages = conn.prepare("
+    let mut get_pages = conn.prepare(
+        "
         SELECT DISTINCT pages.* FROM pages, revision_files WHERE
         revision_files.revision = ?1
         AND pages.id = revision_files.id
@@ -153,22 +161,28 @@ fn query_tickets<'a>(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket
             )
         )
         OR pages.dynamic = 1;
-    ")?;
+    ",
+    )?;
 
-    let mut get_source_stmt = conn.prepare("
+    let mut get_source_stmt = conn.prepare(
+        "
         SELECT contents FROM input_files
         WHERE id = ?1
-    ")?;
+    ",
+    )?;
 
     let pages: Vec<RenderTicket> = from_rows::<Page>(get_pages.query(params![rev_id])?)
-        .filter_map(|x| ERROR_CHANNEL.filter_error(x) )
+        .filter_map(|x| ERROR_CHANNEL.filter_error(x))
         .map(|x| -> Result<RenderTicket> {
             let source = from_rows::<Option<String>>(get_source_stmt.query(params![x.id])?)
-                .filter_map(|x| ERROR_CHANNEL.filter_error(x) )
+                .filter_map(|x| ERROR_CHANNEL.filter_error(x))
                 .filter_map(|x| x)
                 .collect();
-            
-            debug!("Generated render ticket for page \"{}\" ({}).", x.title, x.id);
+
+            debug!(
+                "Generated render ticket for page \"{}\" ({}).",
+                x.title, x.id
+            );
             let ticket = RenderTicket::new(x, source);
 
             Ok(ticket)

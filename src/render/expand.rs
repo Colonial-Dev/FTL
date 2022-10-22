@@ -1,21 +1,27 @@
-
 use color_eyre::eyre::ContextCompat;
 use gh_emoji as emoji;
 use once_cell::sync::Lazy;
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{Theme, ThemeSet};
-use syntect::html::highlighted_html_for_string as highlight_html;
+use syntect::{
+    highlighting::{Theme, ThemeSet},
+    html::highlighted_html_for_string as highlight_html,
+    parsing::SyntaxSet,
+};
 
-use crate::db::data::Dependency;
-use crate::parse::{delimit::*, shortcode::*};
-use crate::prelude::*;
+use super::{Engine, RenderTicket};
+use crate::{
+    db::data::Dependency,
+    parse::{delimit::*, shortcode::*},
+    prelude::*,
+};
 
-use super::{RenderTicket, Engine};
-
-static EMOJI_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new(":", ":", DelimiterKind::Inline) );
-static CODE_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline) );
-static INLINE_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline) );
-static BLOCK_DELIM: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline) );
+static EMOJI_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new(":", ":", DelimiterKind::Inline));
+static CODE_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline));
+static INLINE_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
+static BLOCK_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
 
 pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     EMOJI_DELIM.expand(&mut ticket.content, |tag: Delimited| {
@@ -23,7 +29,7 @@ pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
 
         match emoji::get(name) {
             Some(emoji) => Ok(emoji.to_owned()),
-            None => Ok(format!(":{name}:"))
+            None => Ok(format!(":{name}:")),
         }
     })?;
 
@@ -31,10 +37,12 @@ pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
 }
 
 pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
-    let theme_name = Config::global().render.highlight_theme
+    let theme_name = Config::global()
+        .render
+        .highlight_theme
         .as_ref()
         .expect("Syntax highlighting theme should be Some.");
-    
+
     let (syntaxes, theme) = prepare_highlight(theme_name)?;
 
     CODE_DELIM.expand(&mut ticket.content, |block: Delimited| {
@@ -86,8 +94,8 @@ fn prepare_highlight(theme_name: &str) -> Result<(SyntaxSet, Theme)> {
 
 pub fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     // Note: the borrow checker can't distinguish between multiple mutable
-    // borrows to disjoint fields within the same struct. 
-    // 
+    // borrows to disjoint fields within the same struct.
+    //
     // Unfortunately, we need to mutate both the content and context fields
     // of ticket, which violates this limitation. To get around this, we
     // take the content field from the ticket, operate on it, then
@@ -122,13 +130,13 @@ fn render_shortcode(name: &str, ticket: &mut RenderTicket, engine: &Engine) -> R
         )
         .note("This error occurred because a shortcode referenced a template that FTL couldn't find at build time.")
         .suggestion("Double check the shortcode invocation for spelling and path mistakes, and make sure the template is where you think it is.");
-        
+
         bail!(err)
     }
 
-    ticket.dependencies.push(
-        Dependency::Template(name.to_owned())
-    );
-    
+    ticket
+        .dependencies
+        .push(Dependency::Template(name.to_owned()));
+
     Ok(engine.tera.render(name, &ticket.context)?)
 }

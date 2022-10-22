@@ -1,9 +1,7 @@
-pub mod shortcode;
 pub mod delimit;
+pub mod shortcode;
 
 use std::ops::Range;
-
-use crate::prelude::*;
 
 pub trait Ranged {
     fn range(&self) -> Range<usize>;
@@ -22,9 +20,7 @@ fn trim_whitespace(i: &str) -> (&str, &str) {
 }
 
 fn trim_quotes(i: &str) -> (&str, &str) {
-    let trimmed = i
-        .trim_start_matches('"')
-        .trim_end_matches('"');
-    
+    let trimmed = i.trim_start_matches('"').trim_end_matches('"');
+
     (i, trimmed)
 }

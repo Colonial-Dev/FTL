@@ -8,11 +8,13 @@ mod render;
 mod share;
 
 mod prelude {
-    pub use color_eyre::{Report, Result, Section};
-    pub use color_eyre::eyre::{Context, Error, bail, ensure, eyre};
-    pub use tracing::{debug, info, warn, error};
-    pub use crate::config::*;
-    pub use crate::share::*;
+    pub use color_eyre::{
+        eyre::{bail, ensure, eyre, Context, Error},
+        Report, Result, Section,
+    };
+    pub use tracing::{debug, error, info, warn};
+
+    pub use crate::{config::*, share::*};
 }
 
 use prelude::*;
@@ -33,10 +35,9 @@ fn main() -> Result<()> {
 }
 
 fn install_logging() {
-    use tracing_error::ErrorLayer;
-    use tracing_subscriber::prelude::*;
-    use tracing_subscriber::{fmt, EnvFilter};
     use color_eyre::config::HookBuilder;
+    use tracing_error::ErrorLayer;
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()

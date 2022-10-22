@@ -1,14 +1,12 @@
 use rusqlite::params;
+use serde::Deserialize;
 use serde_rusqlite::from_rows;
 use tera::Tera;
-use serde::Deserialize;
 
 mod dependency;
 
-use crate::db::*;
-use crate::prelude::*;
-
-use super::{RenderTicket, Engine};
+use super::{Engine, RenderTicket};
+use crate::{db::*, prelude::*};
 
 #[derive(Deserialize, Debug)]
 pub struct Row {
@@ -20,7 +18,7 @@ pub struct Row {
 /// Create a standard [`Tera`] instance, and register all known filters, functions, tests and templates with it.
 pub fn make_engine(conn: &mut Connection, rev_id: &str) -> Result<Tera> {
     let mut tera = Tera::default();
-    
+
     register_filters(&mut tera);
     register_functions(&mut tera);
     register_tests(&mut tera);
@@ -47,22 +45,34 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
     let rows = query_templates(conn, rev_id)?;
     // Collect row path/contents into a Vec of references.
     // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
-    let templates: Vec<(&str, &str)> = rows.iter()
-        .map(|x| (x.path.as_str().trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY).trim_end_matches(".tera"), x.contents.as_str()) )
+    let templates: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|x| {
+            (
+                x.path
+                    .as_str()
+                    .trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY)
+                    .trim_end_matches(".tera"),
+                x.contents.as_str(),
+            )
+        })
         .collect();
-    
-    if let Err(e) = tera.add_raw_templates(templates) { return Err(eyre!(e)); }
+
+    if let Err(e) = tera.add_raw_templates(templates) {
+        return Err(eyre!(e));
+    }
 
     dependency::compute_ids(&rows, conn, rev_id)
         .wrap_err("Failed to compute template dependency IDs.")?;
-    
+
     Ok(tera)
 }
 
 /// Queries the database for the `id`, `path` and `contents` tables of all `.tera` files in the provided revision,
 /// then packages the results into a [`Result<Vec<Row>>`].
 fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         SELECT id, path, contents
         FROM input_files
         WHERE EXISTS (
@@ -73,13 +83,17 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
         )
         AND input_files.extension = 'tera'
         AND input_files.contents NOT NULL;
-    ")?;
+    ",
+    )?;
 
     let rows: Vec<Row> = from_rows::<Row>(stmt.query(params![&rev_id])?)
-        .filter_map(|x| x.ok() )
+        .filter_map(|x| x.ok())
         .collect();
 
-    debug!("Query for templates complete, found {} entries.", rows.len());
+    debug!(
+        "Query for templates complete, found {} entries.",
+        rows.len()
+    );
 
     Ok(rows)
 }
@@ -87,11 +101,14 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
 /// Uses the provided [`Tera`] instance to evaluate a page's template, if one was specified.
 pub fn templates(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     if let Some(template) = &ticket.page.template {
-        if engine.tera.get_template_names().any(|name| name == template) {
+        if engine
+            .tera
+            .get_template_names()
+            .any(|name| name == template)
+        {
             ticket.context.insert("markup", &ticket.content);
             ticket.content = engine.tera.render(template, &ticket.context)?;
-        }
-        else {
+        } else {
             let error = eyre!(
                 "Page {} has a template specified ({}), but it can't be resolved.",
                 ticket.page.title,

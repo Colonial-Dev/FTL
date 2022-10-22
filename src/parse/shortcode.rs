@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-use std::ops::Range;
+use std::{collections::HashMap, ops::Range};
 
-use nom::IResult;
-use nom::bytes::complete::take_until;
-use nom::character::complete::char;
-use nom::sequence::terminated;
+use nom::{bytes::complete::take_until, character::complete::char, sequence::terminated, IResult};
 use serde::Serialize;
 
-use super::delimit::{Delimited, DelimiterKind};
-use super::{trim_quotes, Ranged};
-
+use super::{
+    delimit::{Delimited, DelimiterKind},
+    trim_quotes, Ranged,
+};
 use crate::prelude::*;
 
 #[derive(Serialize, Debug)]
@@ -17,7 +14,7 @@ pub struct Shortcode<'a> {
     pub name: &'a str,
     pub args: HashMap<&'a str, &'a str>,
     pub content: Option<&'a str>,
-    pub range: Range<usize>
+    pub range: Range<usize>,
 }
 
 impl<'a> TryFrom<Delimited<'a>> for Shortcode<'a> {
@@ -27,7 +24,7 @@ impl<'a> TryFrom<Delimited<'a>> for Shortcode<'a> {
         match value.kind {
             DelimiterKind::Inline => parse_inline(value),
             DelimiterKind::Multiline => parse_multiline(value),
-            DelimiterKind::Raw => unimplemented!()
+            DelimiterKind::Raw => unimplemented!(),
         }
     }
 }
@@ -39,9 +36,11 @@ impl<'a> Ranged for Shortcode<'a> {
 }
 
 fn parse_inline<'a>(source: Delimited<'a>) -> Result<Shortcode> {
-    let (name, args) = source.contents.split_once(' ')
+    let (name, args) = source
+        .contents
+        .split_once(' ')
         .unwrap_or((source.contents, ""));
-    
+
     let (_, args) = parse_kwargs(args)
         .map_err(|ierr| {
             eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
@@ -54,18 +53,19 @@ fn parse_inline<'a>(source: Delimited<'a>) -> Result<Shortcode> {
         name,
         args,
         content: None,
-        range: source.range
+        range: source.range,
     })
 }
 
 fn parse_multiline<'a>(source: Delimited<'a>) -> Result<Shortcode<'a>> {
-    let token = source.token.expect("Multiline token was None!")
+    let token = source
+        .token
+        .expect("Multiline token was None!")
         .trim_end_matches(" %}")
         .trim();
-    
-    let (name, args) = token.split_once(' ')
-        .unwrap_or((token, ""));
-    
+
+    let (name, args) = token.split_once(' ').unwrap_or((token, ""));
+
     let (_, args) = parse_kwargs(args)
         .map_err(|ierr| {
             eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
@@ -78,38 +78,38 @@ fn parse_multiline<'a>(source: Delimited<'a>) -> Result<Shortcode<'a>> {
         name,
         args,
         content: Some(source.contents),
-        range: source.range
+        range: source.range,
     })
 }
 
 fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
     let mut kwarg_split = terminated(take_until("="), char('='));
-    
-    if i == "" { return Ok((i, HashMap::new())) }
 
-    let kwargs: Vec<&str> = i
-        .split(',')
-        .map(|x| x.trim())
-        .collect();
+    if i == "" {
+        return Ok((i, HashMap::new()));
+    }
 
-    let mut map = HashMap::with_capacity(kwargs.len());    
+    let kwargs: Vec<&str> = i.split(',').map(|x| x.trim()).collect();
+
+    let mut map = HashMap::with_capacity(kwargs.len());
     for pair in kwargs {
         let (value, key) = kwarg_split(pair)?;
         let (_, value) = trim_quotes(value);
         map.insert(key, value);
     }
-    
+
     Ok((i, map))
 }
 
 #[cfg(test)]
 mod inline {
-    use super::*;
-
-    use crate::parse::delimit::Delimiters;
     use once_cell::sync::Lazy;
 
-    static DELIMS: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline) );
+    use super::*;
+    use crate::parse::delimit::Delimiters;
+
+    static DELIMS: Lazy<Delimiters> =
+        Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
 
     #[test]
     fn with_args() {
@@ -142,12 +142,13 @@ mod inline {
 
 #[cfg(test)]
 mod block {
-    use super::*;
-
-    use crate::parse::delimit::Delimiters;
     use once_cell::sync::Lazy;
 
-    static DELIMS: Lazy<Delimiters> = Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline) );
+    use super::*;
+    use crate::parse::delimit::Delimiters;
+
+    static DELIMS: Lazy<Delimiters> =
+        Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
 
     #[test]
     fn with_args() {

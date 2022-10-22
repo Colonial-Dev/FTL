@@ -13,11 +13,15 @@ pub struct RevisionFile {
 // Database write methods
 impl RevisionFile {
     /// Prepares an SQL statement to insert a new row into the `revision_files` table and returns a closure that wraps it.
-    pub fn prepare_insert(conn: &Connection) -> Result<impl FnMut(&RevisionFileIn) -> Result<()> + '_> {        
-        let mut stmt = conn.prepare("
+    pub fn prepare_insert(
+        conn: &Connection,
+    ) -> Result<impl FnMut(&RevisionFileIn) -> Result<()> + '_> {
+        let mut stmt = conn.prepare(
+            "
             INSERT OR IGNORE INTO revision_files
             VALUES(:revision, :id);
-        ")?;
+        ",
+        )?;
 
         let closure = move |input: &RevisionFileIn| {
             let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;
@@ -47,7 +51,7 @@ impl<'a> From<&'a RevisionFile> for RevisionFileIn<'a> {
     fn from(source: &'a RevisionFile) -> Self {
         RevisionFileIn {
             revision: &source.revision,
-            id: &source.id
+            id: &source.id,
         }
     }
 }

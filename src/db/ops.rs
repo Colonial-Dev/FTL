@@ -1,10 +1,9 @@
 use std::path::Path;
 
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
-use super::{KNOWN_TABLES, DbPool};
-
+use super::{DbPool, KNOWN_TABLES};
 use crate::prelude::*;
 
 const DB_PATH: &str = ".ftl/content.db";
@@ -21,10 +20,8 @@ pub fn make_connection() -> Result<Connection> {
 pub fn make_pool() -> Result<DbPool> {
     let manager = SqliteConnectionManager::file(DB_PATH);
 
-    let pool = r2d2::Pool::builder()
-        .max_size(*THREADS)
-        .build(manager)?;
-    
+    let pool = r2d2::Pool::builder().max_size(*THREADS).build(manager)?;
+
     Ok(pool)
 }
 
@@ -39,13 +36,15 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
 
 /// Try and create a new SQLite database at the given path. Fails if the database file already exists.
 pub fn try_create_db(path: &Path) -> Result<Connection> {
-    if path.exists() { return Err(eyre!("Database file already exists.")); }
+    if path.exists() {
+        return Err(eyre!("Database file already exists."));
+    }
 
     // Calling open() implicitly creates the database if it does not exist.
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "journal_mode", &"WAL".to_string())?;
     try_initialize_tables(&conn)?;
-    
+
     Ok(conn)
 }
 
@@ -56,9 +55,11 @@ pub fn try_initialize_tables(conn: &Connection) -> Result<()> {
 
 /// Try to clear all rows from all FTL tables (via `DELETE FROM table`). Leaves table schemas unchanged.
 pub fn try_clear_tables(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         DELETE FROM ?1;
-    ")?;
+    ",
+    )?;
 
     for table in KNOWN_TABLES {
         stmt.execute(params![table])?;
