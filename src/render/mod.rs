@@ -26,8 +26,8 @@ impl RenderTicket {
         source
             .drain(..(page.offset as usize))
             .for_each(drop);
-        debug!("Source: {source}");
-        let mut context = Context::new();
+
+            let mut context = Context::new();
         context.insert("page", &page);
         context.insert("config", Config::global());
 
@@ -65,14 +65,6 @@ impl<'a> Engine<'a> {
     }
 }
 
-/// Executes the render pipeline for the provided revision, inserting the results into the database.
-/// Rendering is composed of three distinct stages:
-/// 1. Source expansion.
-/// 2. Hypertext generation.
-/// 3. Hypertext rewriting.
-/// 
-/// During *source expansion*, each page's Markdown source is parsed for certain structures like
-/// code blocks, shortcodes and emoji tags. These are then evaluated accordingly, with the
 /// result replacing the original structure in the text.
 /// 
 /// *Hypertext generation* is actually broken down into two sub-steps. 

@@ -1,6 +1,10 @@
 
+use color_eyre::eyre::ContextCompat;
 use gh_emoji as emoji;
 use once_cell::sync::Lazy;
+use syntect::parsing::SyntaxSet;
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::html::highlighted_html_for_string as highlight_html;
 
 use crate::db::data::Dependency;
 use crate::parse::{delimit::*, shortcode::*};
@@ -27,12 +31,57 @@ pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
 }
 
 pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
+    let theme_name = Config::global().render.highlight_theme
+        .as_ref()
+        .expect("Syntax highlighting theme should be Some.");
+    
+    let (syntaxes, theme) = prepare_highlight(theme_name)?;
+
     CODE_DELIM.expand(&mut ticket.content, |block: Delimited| {
-        //Ok(engine.highlight(block)?)
-        Ok("a".to_string())
+        let token = block.token.expect("Block token should be Some.");
+
+        if let Some(syntax) = syntaxes.find_syntax_by_token(token) {
+            highlight_html(
+                block.contents,
+                &syntaxes,
+                 syntax,
+                 &theme
+            ).wrap_err("An error occurred in the syntax highlighting engine.")
+        }
+        else if token == "" {
+            let syntax = syntaxes.find_syntax_plain_text();
+            highlight_html(
+                block.contents,
+                &syntaxes,
+                 syntax,
+                 &theme
+            ).wrap_err("An error occurred in the syntax highlighting engine.")
+        }
+        else {
+            let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching syntax definition.")
+            .suggestion("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.");
+            bail!(err)
+        }
     })?;
 
     Ok(())
+}
+
+fn prepare_highlight(theme_name: &str) -> Result<(SyntaxSet, Theme)> {
+    let syntaxes = SyntaxSet::load_defaults_newlines();
+    let mut themes = ThemeSet::load_defaults().themes;
+
+    let theme = match themes.remove(theme_name) {
+        Some(theme) => theme,
+        None => {
+            let err = eyre!("Syntax highlighting theme {theme_name} does not exist.")
+                .note("This error occurred because FTL could not resolve your specified syntax highlighting theme from its name.")
+                .suggestion("Make sure your theme name is spelled correctly, and double-check that the corresponding theme file exists.");
+            bail!(err)
+        }
+    };
+
+    Ok((syntaxes, theme))
 }
 
 pub fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {

@@ -1,1 +1,1 @@
-<code> {{ code.block }} </code>
+<code> {{ code.content }} </code>

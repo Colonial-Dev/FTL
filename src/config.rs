@@ -23,7 +23,33 @@ pub struct Config {
     pub description: Option<String>,
     pub language: Option<String>,
     pub on_non_fatal: Option<String>,
+    pub build: Build,
+    pub render: Render,
     pub extra: HashMap<String, toml::Value>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Build {
+    pub incremental: String,
+    pub cachebust: bool,
+    pub compile_sass: bool,
+    pub external_links_new_tab: bool,
+    pub external_links_no_follow: bool,
+    pub external_links_no_referrer: bool,
+    pub target_disk: bool,
+    pub target_dir: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Render {
+    pub smart_punctuation: bool,
+    pub highlight_code: bool,
+    pub highlight_theme: Option<String>,
+    pub render_emoji: bool,
+    pub render_katex: bool,
+    pub file_inclusion: bool,
+    pub minify_html: bool,
+    pub minify_css: bool
 }
 
 impl Config {
@@ -105,14 +131,14 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Init,
-    Build(Build),
+    Build(BuildCmd),
     Serve(Serve),
     #[command(subcommand)]
     Db(Db)
 }
 
 #[derive(Debug, Args)]
-pub struct Build {
+pub struct BuildCmd {
 
 }
 
