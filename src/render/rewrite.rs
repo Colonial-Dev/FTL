@@ -51,7 +51,7 @@ fn cachebust_img<'a>(
 
                         // First character being / means the src attribute isn't relative,
                         // so we skip rewriting this tag.
-                        if let Some('/') = src.chars().nth(0) {
+                        if let Some('/') = src.chars().next() {
                             return Ok(());
                         }
 

@@ -36,21 +36,8 @@ impl ErrorChannel {
         error!("Error sunk: {}", error);
         // Expect justification: channel should never close while this method is callable
         self.error_sink
-            .send(error.into())
+            .send(error)
             .expect("Build error sink has been closed!");
-    }
-
-    pub fn filter_error<T, E>(&self, result: Result<T, E>) -> Option<T>
-    where
-        E: Into<Error>,
-    {
-        match result {
-            Ok(val) => Some(val),
-            Err(e) => {
-                self.sink_error(eyre!(e));
-                None
-            }
-        }
     }
 
     pub fn stream_errors(&self) -> flume::TryIter<'_, Error> {

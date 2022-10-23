@@ -23,7 +23,7 @@ pub fn make_engine(conn: &mut Connection, rev_id: &str) -> Result<Tera> {
     register_functions(&mut tera);
     register_tests(&mut tera);
 
-    Ok(parse_templates(conn, rev_id, tera)?)
+    parse_templates(conn, rev_id, tera)
 }
 
 fn register_filters(tera: &mut Tera) {
@@ -86,9 +86,11 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
     ",
     )?;
 
-    let rows: Vec<Row> = from_rows::<Row>(stmt.query(params![&rev_id])?)
-        .filter_map(|x| x.ok())
+    let rows: Result<Vec<Row>> = from_rows::<Row>(stmt.query(params![&rev_id])?)
+        .map(|x| x.wrap_err("SQLite deserialization error!"))
         .collect();
+
+    let rows = rows?;
 
     debug!(
         "Query for templates complete, found {} entries.",

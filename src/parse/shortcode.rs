@@ -35,7 +35,7 @@ impl<'a> Ranged for Shortcode<'a> {
     }
 }
 
-fn parse_inline<'a>(source: Delimited<'a>) -> Result<Shortcode> {
+fn parse_inline(source: Delimited<'_>) -> Result<Shortcode> {
     let (name, args) = source
         .contents
         .split_once(' ')
@@ -57,7 +57,7 @@ fn parse_inline<'a>(source: Delimited<'a>) -> Result<Shortcode> {
     })
 }
 
-fn parse_multiline<'a>(source: Delimited<'a>) -> Result<Shortcode<'a>> {
+fn parse_multiline(source: Delimited<'_>) -> Result<Shortcode<'_>> {
     let token = source
         .token
         .expect("Multiline token was None!")
@@ -85,7 +85,7 @@ fn parse_multiline<'a>(source: Delimited<'a>) -> Result<Shortcode<'a>> {
 fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
     let mut kwarg_split = terminated(take_until("="), char('='));
 
-    if i == "" {
+    if i.is_empty() {
         return Ok((i, HashMap::new()));
     }
 

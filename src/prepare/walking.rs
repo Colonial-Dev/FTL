@@ -27,17 +27,17 @@ pub fn walk_src(conn: &mut Connection) -> Result<String> {
         .into_iter()
         .par_bridge()
         .map(process_entry)
-        .filter_map(|x| x.transpose() )
+        .filter_map(|x| x.transpose())
         .collect();
 
     let mut files = files?;
-    
+
     info!("Walking done, found {} items.", files.len());
 
     // Stupid hack to ensure consistent ordering after parallel co`mputation.
     // This means we can generate consistent revision IDs down the line.
     // (Sorting is done by comparing on the item's id value.)
-    files.sort_unstable_by(|a, b| a.id.cmp(&b.id) );
+    files.sort_unstable_by(|a, b| a.id.cmp(&b.id));
 
     // We use a transaction to accelerate database write performance.
     let txn = conn.transaction()?;
@@ -57,7 +57,7 @@ fn process_entry(entry: Result<DirEntry, walkdir::Error>) -> Result<Option<Input
     let metadata = entry.metadata()?;
 
     if metadata.is_dir() {
-        return Ok(None)
+        return Ok(None);
     }
 
     let mut contents = std::fs::read(entry.path())?;
@@ -110,10 +110,10 @@ fn hash(bytes: &[u8]) -> String {
 /// Non-inline entries will be copied to the on-disk cache and renamed to their hash.
 fn entry_is_inline(entry: &DirEntry) -> bool {
     match entry.path().extension() {
-        Some(ext) => match ext.to_string_lossy().as_ref() {
-            "md" | "scss" | "html" | "json" | "tera" => true,
-            _ => false,
-        },
+        Some(ext) => matches!(
+            ext.to_string_lossy().as_ref(),
+            "md" | "scss" | "html" | "json" | "tera"
+        ),
         _ => false,
     }
 }

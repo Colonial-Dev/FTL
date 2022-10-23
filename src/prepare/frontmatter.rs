@@ -1,6 +1,6 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use rayon::prelude::*;
-use regex::Captures;
+use regex::Regex;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_rusqlite::from_rows;
@@ -8,15 +8,12 @@ use toml::value::Datetime;
 
 use crate::{
     db::{data::Page, *},
+    parse::delimit::TOML_DELIM,
     prelude::*,
     share,
 };
 
-lazy_static! {
-    static ref TOML_FRONTMATTER: regex::Regex =
-        regex::Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap();
-    static ref EXT_REGEX: regex::Regex = regex::Regex::new("[.][^.]+$").unwrap();
-}
+static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
 
 #[derive(Serialize, Deserialize, Debug)]
 struct TomlFrontmatter {
@@ -51,30 +48,14 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
 
-    // TODO: refactor to avoid collecting into a Vec.
-    // Probably just need to send the Pages into a channel,
-    // consume the parallel iterator and then iterate
-    // serially over the channel's rx.
-    //
-    // Also, into_par_iter to avoid clones in parse_frontmatter?
-    let num_pages = rows
-        .par_iter()
-        .filter_map(try_extract_frontmatter)
-        .filter_map(parse_frontmatter)
-        .collect::<Vec<Page>>()
-        .into_iter() // Convert to serial iterator, because rusqlite is Not Thread Safe (TM)
-        .map(|x| insert_page(&x))
-        .map(|x| {
-            if let Err(e) = x {
-                error!("Error when inserting Page: {:#?}", e);
-            }
-        })
-        .count();
+    let pages: Vec<Result<Page>> = rows.into_par_iter().map(extract_frontmatter).collect();
 
-    info!(
-        "Done parsing frontmatters for revision {}, processed {} pages.",
-        rev_id, num_pages
-    );
+    for page in pages {
+        let page = page?;
+        insert_page(&page)?;
+    }
+
+    info!("Done parsing frontmatters for revision {}", rev_id);
     Ok(())
 }
 
@@ -97,64 +78,37 @@ fn query_new_pages(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
     ",
     )?;
 
-    let result = from_rows::<Row>(stmt.query(params![&rev_id])?);
-    let mut rows = Vec::new();
-    for row in result {
-        rows.push(row?);
-    }
+    let rows: Result<Vec<Row>> = from_rows::<Row>(stmt.query(params![&rev_id])?)
+        .map(|x| x.wrap_err("SQLite deserialization error!"))
+        .collect();
+
+    let rows = rows?;
 
     debug!(
         "Query for new pages complete, found {} entries.",
         rows.len()
     );
-
     Ok(rows)
 }
 
-fn try_extract_frontmatter(item: &Row) -> Option<(&Row, Captures)> {
+fn extract_frontmatter(item: Row) -> Result<Page> {
     debug!("Extracting frontmatter for file {}...", item.id);
 
-    let captures = TOML_FRONTMATTER.captures(&item.contents);
-    match captures {
-        Some(cap) => Some((item, cap)),
-        None => {
-            error!("Could not locate frontmatter for file {}.", item.id);
-            None
-        }
-    }
-}
+    let frontmatter = TOML_DELIM
+        .parse_iter(&item.contents)
+        .next()
+        .context("Could not find frontmatter.")?;
 
-fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
-    let (item, capture) = bundle;
-
-    let capture = capture.get(0).unwrap();
-    let raw = capture.as_str();
-    let raw = raw
-        .trim_start_matches("+++")
-        .trim_end_matches("+++")
-        .trim();
-
-    match toml::from_str::<TomlFrontmatter>(&raw) {
+    match toml::from_str::<TomlFrontmatter>(frontmatter.contents) {
         Ok(fm) => {
             debug!("Parsed frontmatter for page \"{}\"", fm.title);
-            let page = to_page(item.id.clone(), item.path.clone(), capture.end() as i64, fm);
-            Some(page)
+            let page = to_page(item.id, item.path, frontmatter.range.end as i64, fm);
+            Ok(page)
         }
         Err(e) => {
-            error!("Error when parsing frontmatter for file {}: {}", item.id, e);
-            None
+            bail!("Error when parsing frontmatter for file {}: {}", item.id, e);
         }
     }
-}
-
-fn to_route(path: &str) -> String {
-    let route_path = path
-        .trim_start_matches(share::SITE_SRC_DIRECTORY)
-        .trim_start_matches(share::SITE_CONTENT_DIRECTORY)
-        .trim_end_matches("/index.md")
-        .trim_start_matches('/');
-
-    EXT_REGEX.replace(route_path, "").to_string()
 }
 
 fn to_page(id: String, path: String, offset: i64, fm: TomlFrontmatter) -> Page {
@@ -164,9 +118,9 @@ fn to_page(id: String, path: String, offset: i64, fm: TomlFrontmatter) -> Page {
         path,
         offset,
         title: fm.title,
-        date: unwrap_datetime(fm.date),
-        publish_date: unwrap_datetime(fm.publish_date),
-        expire_date: unwrap_datetime(fm.expire_date),
+        date: fm.date.map(|x| x.to_string()),
+        publish_date: fm.publish_date.map(|x| x.to_string()),
+        expire_date: fm.expire_date.map(|x| x.to_string()),
         description: fm.description,
         summary: fm.summary,
         template: fm.template,
@@ -178,9 +132,12 @@ fn to_page(id: String, path: String, offset: i64, fm: TomlFrontmatter) -> Page {
     }
 }
 
-fn unwrap_datetime(value: Option<Datetime>) -> Option<String> {
-    match value {
-        Some(dt) => Some(dt.to_string()),
-        None => None,
-    }
+fn to_route(path: &str) -> String {
+    let route_path = path
+        .trim_start_matches(share::SITE_SRC_DIRECTORY)
+        .trim_start_matches(share::SITE_CONTENT_DIRECTORY)
+        .trim_end_matches("/index.md")
+        .trim_start_matches('/');
+
+    EXT_REGEX.replace(route_path, "").to_string()
 }

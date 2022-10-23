@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use color_eyre::eyre::ContextCompat;
 use gh_emoji as emoji;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
 use syntect::{
@@ -18,21 +16,6 @@ use crate::{
     prelude::*,
 };
 
-static EMOJI_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new_with_regex(":", ":", DelimiterKind::Inline, r#":[a-z1238+-][a-z0-9_-]*:"#));
-
-static INCLUDE_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new("+++", "+++", DelimiterKind::Multiline));
-
-static CODE_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline)); 
-
-static INLINE_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
-
-static BLOCK_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
-
 #[derive(Deserialize, Debug)]
 struct Include {
     pub path: PathBuf,
@@ -42,7 +25,7 @@ struct Include {
 
 impl Include {
     pub fn is_well_formed(&self) -> Result<()> {
-        if self.start_at.is_none() && self.end_at.is_some()  {
+        if self.start_at.is_none() && self.end_at.is_some() {
             bail!("Encountered an include block with an ending pattern but no start pattern.")
         };
         Ok(())
@@ -58,10 +41,10 @@ pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<(
         path
     };
 
-    INCLUDE_DELIM.expand(&mut ticket.content, |tag: Delimited| {
+    TOML_DELIM.expand(&mut ticket.content, |tag: Delimited| {
         let block: Include = toml::from_str(tag.contents)
             .wrap_err("A TOML parsing error occurred while reading an include block.")?;
-        
+
         block.is_well_formed()?;
 
         let assets_relative = assets_path.join(&block.path);
@@ -71,15 +54,15 @@ pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<(
             path.push(&block.path);
             path
         };
-        
+
         // This is the most concise way I could come up
         // with to short-circuit the file retrieval.
         let file = match get_file(&page_relative)? {
             Some(file) => file,
             None => match get_file(&assets_relative)? {
                 Some(file) => file,
-                None => bail!("")
-            }
+                None => bail!(""),
+            },
         };
 
         // Non-inlined files have no data to be read.
@@ -90,7 +73,7 @@ pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<(
         // An empty file isn't necessarily an error.
         let mut contents = match file.contents {
             Some(text) => text,
-            None => "".to_string()
+            None => "".to_string(),
         };
 
         // At this point we register this page's dependency on the included file.
@@ -98,8 +81,8 @@ pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<(
 
         // Unbounded includes just paste the entire referenced file in,
         // ala C's #include directive.
-        if let None = block.start_at {
-            return Ok(contents)
+        if block.start_at.is_none() {
+            return Ok(contents);
         }
 
         if let Some(start_at) = block.start_at {
@@ -110,7 +93,7 @@ pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<(
                 .context("Could not match opening delimiter when including file.")?
                 .start();
 
-            contents.drain(..start_idx); 
+            contents.drain(..start_idx);
         }
 
         if let Some(end_at) = block.end_at {

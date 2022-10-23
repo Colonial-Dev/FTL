@@ -75,12 +75,12 @@ CREATE TABLE IF NOT EXISTS stylesheets (
 );
 
 CREATE TABLE IF NOT EXISTS hypertext (
-    revision TEXT,
     id TEXT,
+    revision TEXT,
     content TEXT,
     UNIQUE(
-        revision,
         id,
+        revision,
         content
     )
 );

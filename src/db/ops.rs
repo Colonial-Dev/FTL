@@ -92,9 +92,9 @@ pub fn try_compress_cache(conn: &Connection) -> Result<()> {
 }
 
 fn enumerate_static_queries(conn: &Connection, queries: &'static str) -> Result<()> {
-    let mut queries = queries.split(";\n");
+    let queries = queries.split(";\n");
 
-    while let Some(query) = queries.next() {
+    for query in queries {
         conn.execute(query, [])?;
     }
 

@@ -53,8 +53,12 @@ impl InputFile {
 
 //Database read methods
 impl InputFile {
-    pub fn prepare_get_by_path<'a>(conn: &'a Connection, rev_id: &'a str) -> Result<impl FnMut(&Path) -> Result<Option<Self>> + 'a> {
-        let mut stmt = conn.prepare("
+    pub fn prepare_get_by_path<'a>(
+        conn: &'a Connection,
+        rev_id: &'a str,
+    ) -> Result<impl FnMut(&Path) -> Result<Option<Self>> + 'a> {
+        let mut stmt = conn.prepare(
+            "
             SELECT * FROM input_files
             WHERE path = ?1
             AND EXISTS (
@@ -63,13 +67,15 @@ impl InputFile {
                 WHERE revision_files.id = input_files.id
                 AND revision_files.revision = ?2
             )
-        ")?;
+        ",
+        )?;
 
         let closure = move |path: &Path| -> Result<Option<Self>> {
-            let row = from_rows::<Self>(stmt.query(params![&path.to_string_lossy(), &rev_id])?).next();
+            let row =
+                from_rows::<Self>(stmt.query(params![&path.to_string_lossy(), &rev_id])?).next();
             match row {
                 Some(result) => Ok(Some(result?)),
-                None => Ok(None)
+                None => Ok(None),
             }
         };
 

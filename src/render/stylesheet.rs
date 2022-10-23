@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rusqlite::params;
 use serde::Deserialize;
@@ -28,7 +28,7 @@ pub fn compile_stylesheet(conn: &Connection, rev_id: &str) -> Result<()> {
     result
 }
 
-fn compile(conn: &Connection, rev_id: &str, temp_dir: &PathBuf) -> Result<()> {
+fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
     #[derive(Deserialize, Debug)]
     struct Row {
         path: String,
@@ -48,11 +48,11 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &PathBuf) -> Result<()> {
     ",
     )?;
 
-    let mut rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
-    while let Some(row) = rows.next() {
+    let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
+    for row in rows {
         let row = row?;
 
-        let mut target = temp_dir.clone();
+        let mut target = temp_dir.to_path_buf();
         for chunk in row.path.split('/') {
             target.push(chunk);
         }
@@ -79,7 +79,7 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &PathBuf) -> Result<()> {
 
     let mut insert_route = Route::prepare_insert(conn)?;
     insert_route(&RouteIn {
-        revision: &rev_id,
+        revision: rev_id,
         id: "style",
         route: "style.css",
         parent_route: None,

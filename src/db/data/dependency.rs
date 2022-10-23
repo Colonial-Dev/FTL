@@ -9,9 +9,9 @@ pub enum Dependency {
 // Database write methods
 impl Dependency {
     /// Prepares an SQL statement to insert a new row into the `dependencies` table and returns a closure that wraps it.
-    pub fn prepare_insert<'a>(
-        conn: &'a Connection,
-    ) -> Result<impl FnMut(&str, &Dependency) -> Result<()> + 'a> {
+    pub fn prepare_insert(
+        conn: &'_ Connection,
+    ) -> Result<impl FnMut(&str, &Dependency) -> Result<()> + '_> {
         let mut insert_by_id = conn.prepare(
             "
             INSERT OR IGNORE INTO dependencies

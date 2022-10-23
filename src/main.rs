@@ -9,7 +9,7 @@ mod share;
 
 mod prelude {
     pub use color_eyre::{
-        eyre::{bail, ensure, eyre, Context, Error},
+        eyre::{bail, ensure, eyre, Context, ContextCompat, Error},
         Report, Result, Section,
     };
     pub use indoc::indoc;
@@ -52,8 +52,12 @@ fn install_logging() {
         .init();
 
     HookBuilder::new()
-        .panic_section("Well, this is embarassing. It appears FTL has crashed!\nConsider reporting the bug at \"https://github.com/SomewhereOutInSpace/FTL\".")
+        .panic_section(indoc! {
+            "Well, this is embarassing. It appears FTL has crashed!
+            Consider reporting the bug at \"https://github.com/SomewhereOutInSpace/FTL\"."
+        })
         .display_env_section(false)
         .display_location_section(false)
-        .install().expect("Could not install Eyre hooks!");
+        .install()
+        .expect("Could not install Eyre hooks!");
 }

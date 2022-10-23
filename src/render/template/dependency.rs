@@ -94,7 +94,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
     // 1. Match for the row's direct dependencies.
     // 2. Insert them into the map.dependencies table.
     for row in templates {
-        for dependency in find_direct_dependencies(&row) {
+        for dependency in find_direct_dependencies(row) {
             insert_dependency.execute(params![row.id, dependency])?;
         }
     }
@@ -117,7 +117,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
 }
 
 /// Parse the contents of the given [`Row`] for its direct dependencies using the `TERA_INCLUDE_*` regular expressions.
-fn find_direct_dependencies<'a>(item: &'a Row) -> impl Iterator<Item = &'a str> {
+fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
     let mut dependencies: Vec<&str> = Vec::new();
 
     let mut capture = |regexp: &Regex| {

@@ -101,14 +101,11 @@ impl Page {
         ",
         )?;
 
-        let results: Vec<Page> = from_rows::<Page>(stmt.query(params![rev_id])?)
-            .filter_map(|x| match x {
-                Ok(x) => Some(x),
-                Err(_) => None,
-            })
+        let results: Result<Vec<Page>> = from_rows::<Page>(stmt.query(params![rev_id])?)
+            .map(|x| x.wrap_err("SQLite deserialization error!"))
             .collect();
 
-        Ok(results)
+        results
     }
 }
 

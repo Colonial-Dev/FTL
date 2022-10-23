@@ -1,9 +1,31 @@
 use std::{marker::PhantomData, ops::Range};
 
+use once_cell::sync::Lazy;
 use regex::{Match, Regex};
 
 use super::Ranged;
 use crate::prelude::*;
+
+pub static EMOJI_DELIM: Lazy<Delimiters> = Lazy::new(|| {
+    Delimiters::new_with_regex(
+        ":",
+        ":",
+        DelimiterKind::Inline,
+        r#":[a-z1238+-][a-z0-9_-]*:"#,
+    )
+});
+
+pub static TOML_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("+++", "+++", DelimiterKind::Multiline));
+
+pub static CODE_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline));
+
+pub static INLINE_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
+
+pub static BLOCK_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
 
 /// Unit enum representing the possible types of delimited structures in textual data.
 #[derive(Debug, Clone, Copy)]
@@ -64,9 +86,14 @@ impl<'a> Delimiters<'a> {
     }
 
     /// Same as [`Delimiters::new()`], but uses a user-provided regex instead of auto-generating one.
-    pub fn new_with_regex(start: &'static str, end: &'static str, kind: DelimiterKind, regex: &'a str) -> Self {
-        let regex = Regex::new(&regex).expect("Failed to compile regular expression!");
-        
+    pub fn new_with_regex(
+        start: &'static str,
+        end: &'static str,
+        kind: DelimiterKind,
+        regex: &'a str,
+    ) -> Self {
+        let regex = Regex::new(regex).expect("Failed to compile regular expression!");
+
         Delimiters {
             start,
             end,
@@ -74,13 +101,6 @@ impl<'a> Delimiters<'a> {
             regex,
             phantom: PhantomData,
         }
-    }
-
-    /// Replaces the auto-generated regex used for parsing with a user-provided expression.
-    ///
-    /// Panics if the provided expression is invalid.
-    pub fn override_regex(&mut self, regex: &'a str) {
-        self.regex = Regex::new(regex).expect("Failed to compile regular expression!");
     }
 
     /// Parses the provided input into instances of [`Delimited`] using the "template"
