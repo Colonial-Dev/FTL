@@ -12,6 +12,7 @@ mod prelude {
         eyre::{bail, ensure, eyre, Context, Error},
         Report, Result, Section,
     };
+    pub use indoc::indoc;
     pub use tracing::{debug, error, info, warn};
 
     pub use crate::{config::*, share::*};

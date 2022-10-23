@@ -63,6 +63,19 @@ impl<'a> Delimiters<'a> {
         }
     }
 
+    /// Same as [`Delimiters::new()`], but uses a user-provided regex instead of auto-generating one.
+    pub fn new_with_regex(start: &'static str, end: &'static str, kind: DelimiterKind, regex: &'a str) -> Self {
+        let regex = Regex::new(&regex).expect("Failed to compile regular expression!");
+        
+        Delimiters {
+            start,
+            end,
+            kind,
+            regex,
+            phantom: PhantomData,
+        }
+    }
+
     /// Replaces the auto-generated regex used for parsing with a user-provided expression.
     ///
     /// Panics if the provided expression is invalid.
@@ -160,19 +173,13 @@ impl<'a> Delimiters<'a> {
         // (A good example is language extensions in Markdown codeblocks.)
         let (token, contents) = contents.split_once('\n').unwrap_or(("", contents));
 
-        // Empty tokens are converted to None.
-        let token = match token.is_empty() {
-            true => None,
-            false => Some(token),
-        };
-
         // Trimming the contents takes place after token extraction,
         // so no whitespace or newlines are missed.
         let contents = contents.trim();
 
         Delimited {
             range: m.start()..m.end(),
-            token,
+            token: Some(token),
             contents,
             kind: self.kind,
         }

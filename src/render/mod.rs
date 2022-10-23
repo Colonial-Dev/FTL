@@ -87,7 +87,9 @@ pub fn render<'a>(conn: &mut Connection, rev_id: &str) -> Result<()> {
     tickets
         .into_par_iter()
         .map(|mut ticket| -> Result<RenderTicket> {
+            expand::expand_emoji(&mut ticket, &engine)?;
             expand::expand_shortcodes(&mut ticket, &engine)?;
+            expand::evaluate_includes(&mut ticket, &engine)?;
             expand::highlight_code(&mut ticket, &engine)?;
             pulldown::process(&mut ticket, &engine);
             template::templates(&mut ticket, &engine)?;

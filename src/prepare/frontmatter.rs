@@ -14,7 +14,7 @@ use crate::{
 
 lazy_static! {
     static ref TOML_FRONTMATTER: regex::Regex =
-        regex::Regex::new(r#"(\+\+\+)(.|\n)*(\+\+\+)"#).unwrap();
+        regex::Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap();
     static ref EXT_REGEX: regex::Regex = regex::Regex::new("[.][^.]+$").unwrap();
 }
 
@@ -129,7 +129,10 @@ fn parse_frontmatter(bundle: (&Row, Captures)) -> Option<Page> {
 
     let capture = capture.get(0).unwrap();
     let raw = capture.as_str();
-    let raw = raw.replace("+++", "");
+    let raw = raw
+        .trim_start_matches("+++")
+        .trim_end_matches("+++")
+        .trim();
 
     match toml::from_str::<TomlFrontmatter>(&raw) {
         Ok(fm) => {

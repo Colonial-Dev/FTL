@@ -1,8 +1,10 @@
+use std::path::Path;
+
 use super::dependencies::*;
 
 /// Represents a file discovered by FTL's walking algorithm;
 /// maps directly to and from rows in the `input_files` table.
-#[derive(Serialize, Deserialize, Debug, Eq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct InputFile {
     /// The file's ID value.
     /// Computed as the hash of the file's `hash` and `path` concatenated together,
@@ -20,27 +22,6 @@ pub struct InputFile {
     /// - When `true`, the file's contents are written to the database as UTF-8 TEXT.
     /// - When `false`, the file is copied to `.ftl/cache` and renamed to its hash.
     pub inline: bool,
-}
-
-// Because the walking algorithm operates in parallel, we implement
-// Ord based on the `hash` value as a way to smooth over any variations
-// between program runs.
-impl Ord for InputFile {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
-    }
-}
-
-impl PartialOrd for InputFile {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for InputFile {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
 }
 
 // Database write methods
@@ -64,6 +45,32 @@ impl InputFile {
         let closure = move |input: &InputFile| {
             let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;
             Ok(())
+        };
+
+        Ok(closure)
+    }
+}
+
+//Database read methods
+impl InputFile {
+    pub fn prepare_get_by_path<'a>(conn: &'a Connection, rev_id: &'a str) -> Result<impl FnMut(&Path) -> Result<Option<Self>> + 'a> {
+        let mut stmt = conn.prepare("
+            SELECT * FROM input_files
+            WHERE path = ?1
+            AND EXISTS (
+                SELECT 1
+                FROM revision_files
+                WHERE revision_files.id = input_files.id
+                AND revision_files.revision = ?2
+            )
+        ")?;
+
+        let closure = move |path: &Path| -> Result<Option<Self>> {
+            let row = from_rows::<Self>(stmt.query(params![&path.to_string_lossy(), &rev_id])?).next();
+            match row {
+                Some(result) => Ok(Some(result?)),
+                None => Ok(None)
+            }
         };
 
         Ok(closure)

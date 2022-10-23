@@ -23,20 +23,21 @@ pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
 pub fn walk_src(conn: &mut Connection) -> Result<String> {
     info!("Starting walk...");
 
-    let mut files: Vec<InputFile> = WalkDir::new(SITE_SRC_DIRECTORY)
+    let files: Result<Vec<InputFile>> = WalkDir::new(SITE_SRC_DIRECTORY)
         .into_iter()
         .par_bridge()
-        .filter_map(drain_entries)
-        .filter_map(extract_metadata)
-        .filter_map(process_entry)
+        .map(process_entry)
+        .filter_map(|x| x.transpose() )
         .collect();
 
+    let mut files = files?;
+    
     info!("Walking done, found {} items.", files.len());
 
-    // Stupid hack to ensure consistent ordering after parallel computation.
+    // Stupid hack to ensure consistent ordering after parallel co`mputation.
     // This means we can generate consistent revision IDs down the line.
     // (Sorting is done by comparing on the item's id value.)
-    files.sort_unstable();
+    files.sort_unstable_by(|a, b| a.id.cmp(&b.id) );
 
     // We use a transaction to accelerate database write performance.
     let txn = conn.transaction()?;
@@ -50,81 +51,52 @@ pub fn walk_src(conn: &mut Connection) -> Result<String> {
     Ok(rev_id)
 }
 
-/// Drains all non-`Ok(...)` values from the walk output.
-fn drain_entries(entry: Result<DirEntry, walkdir::Error>) -> Option<DirEntry> {
-    match entry {
-        Ok(entry) => Some(entry),
-        Err(e) => {
-            ERROR_CHANNEL.sink_error(eyre!(e));
-            None
-        }
-    }
-}
-
-/// Extracts the metadata from each item in the walk output, and filters out any directories.
-/// The files that remain are returned.
-fn extract_metadata(entry: DirEntry) -> Option<DirEntry> {
-    match entry.metadata() {
-        Ok(md) => {
-            if md.is_dir() {
-                None
-            } else {
-                Some(entry)
-            }
-        }
-        Err(e) => {
-            ERROR_CHANNEL.sink_error(eyre!(e));
-            None
-        }
-    }
-}
-
 /// Reads and hashes the entries that remain after `drain_entries` and `filter_metadata`.
-fn process_entry(entry: DirEntry) -> Option<InputFile> {
+fn process_entry(entry: Result<DirEntry, walkdir::Error>) -> Result<Option<InputFile>> {
+    let entry = entry?;
+    let metadata = entry.metadata()?;
+
+    if metadata.is_dir() {
+        return Ok(None)
+    }
+
+    let mut contents = std::fs::read(entry.path())?;
+
     debug!("Walk found item {:#?}", entry.path());
 
-    let contents = std::fs::read(entry.path());
-    match contents {
-        Ok(mut contents) => {
-            let hash = hash(&contents);
-            let inline = entry_is_inline(&entry);
-            let extension = entry_extension(&entry);
-            let id = {
-                let joined = format!("{}{}", &hash, &entry.path().to_string_lossy());
-                self::hash(joined.as_bytes())
-            };
-            let path = entry.into_path();
+    let hash = hash(&contents);
+    let inline = entry_is_inline(&entry);
+    let extension = entry_extension(&entry);
+    let id = {
+        let joined = format!("{}{}", &hash, &entry.path().to_string_lossy());
+        self::hash(joined.as_bytes())
+    };
+    let path = entry.into_path();
 
-            // Optimization: drain data read from non-inline files.
-            // This isn't necessary per se, but we don't want to potentially
-            // shuffle an entire MP4 around in memory for no reason.
-            if !inline {
-                contents.drain(..);
-            }
-
-            let str_repr = String::from_utf8_lossy(&contents).to_string();
-
-            let contents: Option<String> = match str_repr.len() {
-                0 => None,
-                _ => Some(str_repr),
-            };
-
-            let item = InputFile {
-                id,
-                hash,
-                path,
-                extension,
-                contents,
-                inline,
-            };
-
-            Some(item)
-        }
-        Err(e) => {
-            ERROR_CHANNEL.sink_error(eyre!(e));
-            None
-        }
+    // Optimization: drain data read from non-inline files.
+    // This isn't necessary per se, but we don't want to potentially
+    // shuffle an entire MP4 around in memory for no reason.
+    if !inline {
+        contents.drain(..);
     }
+
+    let str_repr = String::from_utf8_lossy(&contents).to_string();
+
+    let contents: Option<String> = match str_repr.len() {
+        0 => None,
+        _ => Some(str_repr),
+    };
+
+    let item = InputFile {
+        id,
+        hash,
+        path,
+        extension,
+        contents,
+        inline,
+    };
+
+    Ok(Some(item))
 }
 
 /// Hash the provided bytestream using `seahash` and `format!` it as a hexadecimal string.
@@ -166,9 +138,10 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
         if !file.inline {
             debug!("Caching non-inline file {:#?}", &file.path);
             let destination = format!(".ftl/cache/{}", &file.hash);
-            // TODO check for file already existing - recopies
-            // can still potentially be quite expensive
-            std::fs::copy(&file.path, Path::new(&destination))?;
+            let destination = Path::new(&destination);
+            if !&destination.exists() {
+                std::fs::copy(&file.path, &destination)?;
+            }
         }
     }
 

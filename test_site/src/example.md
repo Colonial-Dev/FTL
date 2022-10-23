@@ -18,6 +18,8 @@ Some text put inside a codeblock by a block shortcode.
 Unlike the inline flavor, block shortcodes can capture an arbitrary block of text!
 {% endsc %}
 
+Here are some emojis expanded from their names: :smile: :skull: :eagle:
+
 Here's an image:
 
 ![Ya boi](image.png)
@@ -31,4 +33,20 @@ Here's some highlighted Rust code:
 fn main() {
     println!("Hello, world!");
 }
+```
+
+This text snippet was included whole-cloth from another file:
+```
++++
+path = "include.tera"
++++
+```
+
+And this one was extracted from a different file using regular expressions:
+```
++++
+path = "post.tera"
+start_at = "<body>"
+end_at = "</body>"
++++
 ```

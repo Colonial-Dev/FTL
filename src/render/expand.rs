@@ -1,6 +1,10 @@
+use std::path::PathBuf;
+
 use color_eyre::eyre::ContextCompat;
 use gh_emoji as emoji;
 use once_cell::sync::Lazy;
+use regex::Regex;
+use serde::Deserialize;
 use syntect::{
     highlighting::{Theme, ThemeSet},
     html::highlighted_html_for_string as highlight_html,
@@ -9,19 +13,130 @@ use syntect::{
 
 use super::{Engine, RenderTicket};
 use crate::{
-    db::data::Dependency,
+    db::data::{Dependency, InputFile},
     parse::{delimit::*, shortcode::*},
     prelude::*,
 };
 
 static EMOJI_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new(":", ":", DelimiterKind::Inline));
+    Lazy::new(|| Delimiters::new_with_regex(":", ":", DelimiterKind::Inline, r#":[a-z1238+-][a-z0-9_-]*:"#));
+
+static INCLUDE_DELIM: Lazy<Delimiters> =
+    Lazy::new(|| Delimiters::new("+++", "+++", DelimiterKind::Multiline));
+
 static CODE_DELIM: Lazy<Delimiters> =
-    Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline));
+    Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline)); 
+
 static INLINE_DELIM: Lazy<Delimiters> =
     Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
+
 static BLOCK_DELIM: Lazy<Delimiters> =
     Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
+
+#[derive(Deserialize, Debug)]
+struct Include {
+    pub path: PathBuf,
+    pub start_at: Option<String>,
+    pub end_at: Option<String>,
+}
+
+impl Include {
+    pub fn is_well_formed(&self) -> Result<()> {
+        if self.start_at.is_none() && self.end_at.is_some()  {
+            bail!("Encountered an include block with an ending pattern but no start pattern.")
+        };
+        Ok(())
+    }
+}
+
+pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    let conn = engine.pool.get()?;
+    let mut get_file = InputFile::prepare_get_by_path(&conn, engine.rev_id)?;
+    let assets_path = {
+        let mut path = PathBuf::from(SITE_SRC_DIRECTORY);
+        path.push(SITE_ASSET_DIRECTORY);
+        path
+    };
+
+    INCLUDE_DELIM.expand(&mut ticket.content, |tag: Delimited| {
+        let block: Include = toml::from_str(tag.contents)
+            .wrap_err("A TOML parsing error occurred while reading an include block.")?;
+        
+        block.is_well_formed()?;
+
+        let assets_relative = assets_path.join(&block.path);
+        let page_relative = {
+            let mut path = PathBuf::from(&ticket.page.path);
+            path.pop();
+            path.push(&block.path);
+            path
+        };
+        
+        // This is the most concise way I could come up
+        // with to short-circuit the file retrieval.
+        let file = match get_file(&page_relative)? {
+            Some(file) => file,
+            None => match get_file(&assets_relative)? {
+                Some(file) => file,
+                None => bail!("")
+            }
+        };
+
+        // Non-inlined files have no data to be read.
+        if !file.inline {
+            bail!("Cannot include non-inlined files.")
+        }
+
+        // An empty file isn't necessarily an error.
+        let mut contents = match file.contents {
+            Some(text) => text,
+            None => "".to_string()
+        };
+
+        // At this point we register this page's dependency on the included file.
+        ticket.dependencies.push(Dependency::Id(file.id));
+
+        // Unbounded includes just paste the entire referenced file in,
+        // ala C's #include directive.
+        if let None = block.start_at {
+            return Ok(contents)
+        }
+
+        if let Some(start_at) = block.start_at {
+            let start_regex = make_regex(start_at)?;
+            let start_idx = start_regex
+                .find_iter(&contents)
+                .next()
+                .context("Could not match opening delimiter when including file.")?
+                .start();
+
+            contents.drain(..start_idx); 
+        }
+
+        if let Some(end_at) = block.end_at {
+            let end_regex = make_regex(end_at)?;
+            let end_idx = end_regex
+                .find_iter(&contents)
+                .next()
+                .context("Could not match closing delimiter when including file.")?
+                .end();
+
+            contents.drain(end_idx..);
+        }
+
+        Ok(contents)
+    })?;
+
+    Ok(())
+}
+
+#[inline]
+fn make_regex(expression: String) -> Result<Regex> {
+    let expression = regex::escape(&expression);
+    let regex = Regex::new(&expression)
+        .wrap_err("Error while compiling include block regular expression.")?;
+    Ok(regex)
+}
 
 pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     EMOJI_DELIM.expand(&mut ticket.content, |tag: Delimited| {
@@ -48,28 +163,26 @@ pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()>
     CODE_DELIM.expand(&mut ticket.content, |block: Delimited| {
         let token = block.token.expect("Block token should be Some.");
 
-        if let Some(syntax) = syntaxes.find_syntax_by_token(token) {
-            highlight_html(
-                block.contents,
-                &syntaxes,
-                 syntax,
-                 &theme
-            ).wrap_err("An error occurred in the syntax highlighting engine.")
-        }
-        else if token == "" {
-            let syntax = syntaxes.find_syntax_plain_text();
-            highlight_html(
-                block.contents,
-                &syntaxes,
-                 syntax,
-                 &theme
-            ).wrap_err("An error occurred in the syntax highlighting engine.")
+        let syntax = if token.is_empty() {
+            syntaxes.find_syntax_plain_text()
         }
         else {
-            let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching syntax definition.")
-            .suggestion("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.");
-            bail!(err)
-        }
+            match syntaxes.find_syntax_by_token(token) {
+                Some(syntax) => syntax,
+                None => {
+                    let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching syntax definition.")
+                    .suggestion("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.");
+                    bail!(err)
+                }
+            }
+        };
+
+        highlight_html(
+            block.contents,
+            &syntaxes,
+             syntax,
+             &theme
+        ).wrap_err("An error occurred in the syntax highlighting engine.")
     })?;
 
     Ok(())
@@ -78,7 +191,7 @@ pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()>
 fn prepare_highlight(theme_name: &str) -> Result<(SyntaxSet, Theme)> {
     let syntaxes = SyntaxSet::load_defaults_newlines();
     let mut themes = ThemeSet::load_defaults().themes;
-
+    // TODO: load user-provided syntaxes and themes.
     let theme = match themes.remove(theme_name) {
         Some(theme) => theme,
         None => {
