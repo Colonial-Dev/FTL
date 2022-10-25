@@ -21,13 +21,9 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
 
     let mut stmt = conn.prepare(
         "
-        SELECT id, path FROM input_files
-        WHERE EXISTS (
-            SELECT 1
-            FROM revision_files
-            WHERE revision_files.id = input_files.id
-            AND revision_files.revision = ?1
-        )
+        SELECT input_files.id, path FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
         AND input_files.extension != 'md'
         AND input_files.extension != 'sass'
         AND input_files.extension != 'scss'
@@ -39,7 +35,7 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         let row = row?;
         insert_route(&RouteIn {
             revision: rev_id,
-            id: &row.id,
+            id: Some(&row.id),
             route: row.path.trim_start_matches("src/assets/"),
             parent_route: None,
             kind: RouteKind::StaticAsset,
@@ -57,7 +53,7 @@ pub fn create_page_routes(conn: &Connection, rev_id: &str) -> Result<()> {
     for page in pages {
         insert_route(&RouteIn {
             revision: rev_id,
-            id: &page.id,
+            id: Some(&page.id),
             route: &page.route,
             parent_route: Some(to_parent_path(&page.route)),
             kind: RouteKind::Page,
@@ -79,12 +75,9 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
 
     let mut stmt = conn.prepare(
         "
-        SELECT page_id, alias FROM page_attributes
-        WHERE EXISTS (
-            SELECT 1 FROM revision_files
-            WHERE revision_files.revision = ?1
-            AND revision_files.id = page_attributes.page_id
-        )
+        SELECT page_attributes.id, alias FROM page_attributes
+        JOIN revision_files ON revision_files.id = page_attributes.id
+        WHERE revision_files.revision = ?1
     ",
     )?;
 
@@ -93,7 +86,7 @@ pub fn create_alias_routes(conn: &Connection, rev_id: &str) -> Result<()> {
         let row = row?;
         insert_route(&RouteIn {
             revision: rev_id,
-            id: &row.id,
+            id: Some(&row.id),
             route: &row.path,
             parent_route: None,
             kind: RouteKind::Redirect,

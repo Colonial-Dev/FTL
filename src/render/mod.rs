@@ -115,8 +115,8 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     let mut insert_hypertext = conn.prepare(
         "
-        INSERT OR IGNORE INTO hypertext 
-        VALUES (?1, ?2, ?3)
+        INSERT OR IGNORE INTO output 
+        VALUES (?1, 1, ?2)
     ",
     )?;
 
@@ -135,7 +135,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
             insert_dep(&ticket.page.id, dependency)?;
         }
         debug!("Hypertext: {}", ticket.content);
-        insert_hypertext.execute(params![rev_id, ticket.page.id, ticket.content])?;
+        insert_hypertext.execute(params![ticket.page.id, ticket.content])?;
     }
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
@@ -148,8 +148,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 /// N.B. a page will be rendered/re-rendered if any of the following criteria are met:
 /// - The page is marked as dynamic in its frontmatter.
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
-/// - The page itself is unchanged, but one of the templates/shortcodes it relies upon has changed (expressed via a templating ID, see [`template::dependency::compute_ids`].)
-/// - The page itself is unchanged, but one of the cachebusted assets it relies upon has changed (captured during cachebusting, see [`rewrite::prepare_cachebust`].)
+/// - The page itself is unchanged, but one of its dependencies has.
 fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
     let mut get_pages = conn.prepare(
         "
@@ -159,8 +158,8 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
                 WHERE revision_files.revision = ?1
                 AND revision_files.id = pages.id
             EXCEPT
-                SELECT 1 FROM hypertext
-                WHERE hypertext.id = pages.id
+                SELECT 1 FROM output
+                WHERE output.id = pages.id
         )
         AND EXISTS (
             SELECT 1 FROM dependencies
@@ -203,7 +202,6 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
 
             Ok(ticket)
         })
-        .map(|x| x.wrap_err("SQLite deserialization error!"))
         .collect();
 
     pages

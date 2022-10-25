@@ -4,6 +4,7 @@ use std::{
 };
 
 use rayon::prelude::*;
+use rusqlite::params;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
@@ -34,7 +35,7 @@ pub fn walk_src(conn: &mut Connection) -> Result<String> {
 
     info!("Walking done, found {} items.", files.len());
 
-    // Stupid hack to ensure consistent ordering after parallel co`mputation.
+    // Stupid hack to ensure consistent ordering after parallel computation.
     // This means we can generate consistent revision IDs down the line.
     // (Sorting is done by comparing on the item's id value.)
     files.sort_unstable_by(|a, b| a.id.cmp(&b.id));
@@ -43,7 +44,7 @@ pub fn walk_src(conn: &mut Connection) -> Result<String> {
     let txn = conn.transaction()?;
 
     update_input_files(&*txn, &files).context("Failed to update input_files table.")?;
-    let rev_id = compute_revision_id(&files);
+    let rev_id = init_revision(&*txn, &files)?;
     update_revision_files(&*txn, &files, &rev_id)
         .context("Failed to update revision_files table.")?;
 
@@ -149,6 +150,29 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
     Ok(())
 }
 
+fn init_revision(conn: &Connection, files: &[InputFile]) -> Result<String> {
+    let hasher = seahash::SeaHasher::default();
+    
+    files
+        .iter()
+        .fold(hasher, |mut acc, x| {
+            x.id.hash(&mut acc);
+            acc
+        });
+
+    let rev_id = format!("{:016x}", hasher.finish());
+    info!("Computed revision ID {}", rev_id);
+
+    let mut stmt = conn.prepare("
+        INSERT OR IGNORE INTO revisions
+        VALUES (?1, NULL, NULL, FALSE, FALSE)
+    ")?;
+
+    stmt.execute(params![&rev_id])?;
+
+    Ok(rev_id)
+}
+
 fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -> Result<()> {
     let mut insert_file = RevisionFile::prepare_insert(conn)?;
 
@@ -161,20 +185,4 @@ fn update_revision_files(conn: &Connection, files: &[InputFile], rev_id: &str) -
 
     info!("Updated revision_files table.");
     Ok(())
-}
-
-fn compute_revision_id(files: &[InputFile]) -> String {
-    let mut ids: Vec<&str> = Vec::new();
-
-    for file in files {
-        ids.push(&file.id);
-    }
-
-    let mut hasher = seahash::SeaHasher::default();
-    ids.hash(&mut hasher);
-    let rev_id = format!("{:016x}", hasher.finish());
-
-    info!("Computed revision ID {}", rev_id);
-
-    rev_id
 }

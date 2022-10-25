@@ -2,8 +2,10 @@
 name = "ftl"
 version = "0.1.0"
 edition = "2021"
+description = "A sorta-static site generator and server."
+repository = "https://github.com/SomewhereOutInSpace/FTL"
+readme = "README.md"
 license = "AGPL-3.0"
-description = "An almost-static site generator and server."
 
 [profile.release]
 lto = "fat"
@@ -24,6 +26,7 @@ seahash = "4.1"
 walkdir = "2"
 # Database
 rusqlite = { version = "0.28", features = ["bundled"] }
+rusqlite_migration = "1.0.0"
 r2d2_sqlite = "0.21"
 r2d2 = "0.8.10"
 # Serialization
@@ -39,12 +42,10 @@ pulldown-cmark = { version = "0.9.2", default-features = false, features = ["sim
 grass = "0.11"
 lol_html = "0.3.1"
 # Other
-lazy_static = "1.4"
-num_enum = "0.5"
 time = { version = "0.3", features = ["serde", "parsing", "formatting"] }
 clap = { version = "4", features = ["derive"] }
+num_enum = "0.5"
 once_cell = "1.15.0"
-nom = "7.1.1"
 gh-emoji = "1.0.7"
 syntect = "5.0.0"
 indoc = "1.0.7"

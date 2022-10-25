@@ -31,20 +31,18 @@ pub fn compile_stylesheet(conn: &Connection, rev_id: &str) -> Result<()> {
 fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
     #[derive(Deserialize, Debug)]
     struct Row {
+        id: String,
         path: String,
         contents: String,
     }
 
     let mut stmt = conn.prepare(
         "
-        SELECT path, contents FROM input_files
-        WHERE extension = 'sass'
+        SELECT input_files.id, path, contents FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+        AND extension = 'sass'
         OR extension = 'scss'
-        AND EXISTS (
-            SELECT 1 FROM revision_files
-            WHERE revision_files.id = input_files.id
-            AND revision_files.revision = ?1
-        )
     ",
     )?;
 
@@ -56,9 +54,10 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
         for chunk in row.path.split('/') {
             target.push(chunk);
         }
-
+        
         std::fs::create_dir_all(target.parent().unwrap())?;
         std::fs::write(&target, &row.contents)?;
+        
         debug!(
             "Wrote temporary SASS file {:?} to disk (full path: {:?}).",
             target.file_name(),
@@ -80,7 +79,7 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
     let mut insert_route = Route::prepare_insert(conn)?;
     insert_route(&RouteIn {
         revision: rev_id,
-        id: "style",
+        id: None,
         route: "style.css",
         parent_route: None,
         kind: RouteKind::Stylesheet,

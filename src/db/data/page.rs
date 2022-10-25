@@ -91,13 +91,9 @@ impl Page {
     pub fn for_revision(conn: &Connection, rev_id: &str) -> Result<Vec<Page>> {
         let mut stmt = conn.prepare(
             "
-            SELECT * FROM pages
-            WHERE EXISTS (
-                SELECT 1
-                FROM revision_files
-                WHERE revision_files.id = pages.id
-                AND revision_files.revision = ?1
-            );
+            SELECT pages.* FROM pages
+            JOIN revision_files ON revision_files.id = pages.id
+            WHERE revision_files.revision = ?1
         ",
         )?;
 
@@ -113,13 +109,9 @@ impl Page {
 fn serialize_slice<T, S>(x: &[T], s: S) -> Result<S::Ok, S::Error>
 where
     T: Serialize,
-    S: Serializer,
+    S: Serializer
 {
-    let json = serde_json::to_string(&x).unwrap_or_else(|err| {
-        let err = eyre!("Error when serializing a vector: {err}");
-        ERROR_CHANNEL.sink_error(err);
-        String::from("[]")
-    });
+    let json = serde_json::to_string(&x).unwrap();
     s.serialize_str(&json)
 }
 
@@ -131,10 +123,6 @@ where
     T: DeserializeOwned,
 {
     let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(d)?;
-    let vec: Vec<T> = serde_json::from_str(&s).unwrap_or_else(|err| {
-        let err = eyre!("Error when deserializing a vector: {err}");
-        ERROR_CHANNEL.sink_error(err);
-        Vec::new()
-    });
+    let vec: Vec<T> = serde_json::from_str(&s).unwrap();
     Ok(vec)
 }

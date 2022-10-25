@@ -17,10 +17,10 @@ pub enum RouteKind {
 /// Maps directly to and from rows in the `routes` table.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Route {
+    /// The ID of the file this route points to.
+    pub id: Option<String>,
     /// The ID of the revision this route is associated with.
     pub revision: String,
-    /// The ID of the file this route points to.
-    pub id: String,
     /// The URL this route qualifies.
     ///
     /// Example: `/img/banner.png`, which points to `src/assets/img/banner.png`.
@@ -41,7 +41,7 @@ impl Route {
         let mut stmt = conn.prepare(
             "
             INSERT OR IGNORE INTO routes
-            VALUES(:revision, :id, :route, :parent_route, :kind)
+            VALUES(:id, :revision, :route, :parent_route, :kind)
         ",
         )?;
 
@@ -57,8 +57,8 @@ impl Route {
 /// Reference-and-[Copy]-only version of [Route], intended for wrapping non-owned data for database insertion.
 #[derive(Serialize, Debug)]
 pub struct RouteIn<'a> {
+    pub id: Option<&'a str>,
     pub revision: &'a str,
-    pub id: &'a str,
     pub route: &'a str,
     pub parent_route: Option<&'a str>,
     pub kind: RouteKind,

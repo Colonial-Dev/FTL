@@ -58,9 +58,7 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
         })
         .collect();
 
-    if let Err(e) = tera.add_raw_templates(templates) {
-        return Err(eyre!(e));
-    }
+    tera.add_raw_templates(templates)?;
 
     dependency::compute_ids(&rows, conn, rev_id)
         .wrap_err("Failed to compute template dependency IDs.")?;
@@ -73,14 +71,9 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
 fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
     let mut stmt = conn.prepare(
         "
-        SELECT id, path, contents
-        FROM input_files
-        WHERE EXISTS (
-                SELECT 1
-                FROM revision_files
-                WHERE revision_files.id = input_files.id
-                AND revision_files.revision = ?1
-        )
+        SELECT input_files.id, path, contents FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
         AND input_files.extension = 'tera'
         AND input_files.contents NOT NULL;
     ",

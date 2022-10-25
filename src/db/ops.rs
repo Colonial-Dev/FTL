@@ -1,16 +1,44 @@
 use std::path::Path;
 
+use once_cell::sync::Lazy;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection};
+use rusqlite_migration::{Migrations, M};
 
-use super::{DbPool, KNOWN_TABLES};
+use super::DbPool;
 use crate::prelude::*;
 
 const DB_PATH: &str = ".ftl/content.db";
-const DB_INIT_QUERY: &str = include_str!("db_init.sql");
-const MAP_INIT_QUERY: &str = include_str!("map_init.sql");
+const MAP_INIT_QUERY: &str = include_str!("sql/aux_up.sql");
 
-/// Attempt to open a connection to an SQLite database at the given path.
+static PRIME_MIGRATIONS: Lazy<Migrations> = Lazy::new(|| {
+    Migrations::new(vec![
+        M::up(include_str!("sql/prime_up.sql"))
+            .down(include_str!("sql/prime_down.sql"))
+    ])
+});
+
+/// Try and create a new SQLite database at the given path. Fails if the database file already exists.
+pub fn try_create_db(path: &Path) -> Result<Connection> {
+    if path.exists() {
+        bail!("Database file already exists.");
+    }
+
+    // Calling open() implicitly creates the database if it does not exist.
+    let mut conn = Connection::open(path)?;
+    
+    // WAL grants faster performance and allows reads that are concurrent to writes.
+    // NORMAL synchronization is safe with WAL enabled, and gives an extra speed boost
+    // by minimizing filesystem IO.
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    PRIME_MIGRATIONS.to_latest(&mut conn)?;
+
+    Ok(conn)
+}
+
+/// Attempt to open a connection to the SQLite database.
 pub fn make_connection() -> Result<Connection> {
     let conn = Connection::open(DB_PATH)?;
     Ok(conn)
@@ -18,9 +46,16 @@ pub fn make_connection() -> Result<Connection> {
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool() -> Result<DbPool> {
-    let manager = SqliteConnectionManager::file(DB_PATH);
+    let manager = SqliteConnectionManager::file(DB_PATH)
+        .with_init(|c| {
+            c.pragma_update(None, "journal_mode", "WAL")?;
+            c.pragma_update(None, "synchronous", "NORMAL")?;
+            c.pragma_update(None, "foreign_keys", "ON")
+        });
 
-    let pool = r2d2::Pool::builder().max_size(*THREADS).build(manager)?;
+    let pool = r2d2::Pool::builder()
+        .max_size(*THREADS)
+        .build(manager)?;
 
     Ok(pool)
 }
@@ -34,55 +69,48 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Try and create a new SQLite database at the given path. Fails if the database file already exists.
-pub fn try_create_db(path: &Path) -> Result<Connection> {
-    if path.exists() {
-        return Err(eyre!("Database file already exists."));
-    }
+pub fn dump_input_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
+    let mut stmt = conn.prepare("
+        SELECT input_files.* FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+    ")?;
 
-    // Calling open() implicitly creates the database if it does not exist.
-    let conn = Connection::open(path)?;
-    conn.pragma_update(None, "journal_mode", &"WAL".to_string())?;
-    try_initialize_tables(&conn)?;
+    // Basically:
+    // 1. Get all input files for the revision
+    // 2. Iterate over them, matching on their "inline" value to determine
+    //    if we need to fetch from the flat-file cache.
+    // 3. Append the file's original path onto that of the dump directory,
+    //    and write/copy its data to that location.
 
-    Ok(conn)
+    // For dumping *output*, we instead get all the *routes* for the revision.
+    // From there, we match on its kind value to determine where to fetch the data from
+    // (either the `output` table or the flat-file cache), then write the file to the dump
+    // target at its route.
+
+    //from_rows::<InputFile>(stmt.query(params![&rev_id])?)
+
+    todo!()
 }
 
-/// Try to create all FTL-specific tables in the given database. Does NOT fail if any of the tables already exist.
-pub fn try_initialize_tables(conn: &Connection) -> Result<()> {
-    enumerate_static_queries(conn, DB_INIT_QUERY)
-}
-
-/// Try to clear all rows from all FTL tables (via `DELETE FROM table`). Leaves table schemas unchanged.
-pub fn try_clear_tables(conn: &Connection) -> Result<()> {
-    let mut stmt = conn.prepare(
-        "
-        DELETE FROM ?1;
-    ",
-    )?;
-
-    for table in KNOWN_TABLES {
-        stmt.execute(params![table])?;
-    }
-
-    Ok(())
-}
-
-/// Try to drop and recreate all FTL tables (using [`try_initialize_tables`]).
-pub fn try_reset_tables(conn: &Connection) -> Result<()> {
-    for table in KNOWN_TABLES {
-        let query = format!("DROP TABLE IF EXISTS {table};");
-        conn.execute(&query, [])?;
-    }
-
-    try_initialize_tables(conn)?;
-
+/// Try to drop and recreate all FTL tables.
+pub fn try_reset_tables(conn: &mut Connection) -> Result<()> {
+    PRIME_MIGRATIONS.to_version(conn, 0)?;
+    PRIME_MIGRATIONS.to_latest(conn)?;
     Ok(())
 }
 
 /// Tries to drop all information from the database that is not relevant for the current active revision.
 /// Under the hood, this consists of some `SELECT` and `DELETE FROM` operations followed by a `VACUUM` call.
 pub fn try_compress_db(conn: &Connection) -> Result<()> {
+    // The goal here is to delete as much from the database as we possibly can, within
+    // the constraints set by the user.
+    // Specifically, this means we have to keep both the input and output of any pinned revisions.
+    //
+    // Clearing unwanted revisions is simple; simply delete all non-pinned rows, and FOREIGN KEY cascades
+    // will handle the rest.
+    // For input files, we need to query only for IDs not associated with any pinned revision, and delete 
+    // just those (once again, cascades will do the rest.)
     todo!()
 }
 
@@ -99,4 +127,14 @@ fn enumerate_static_queries(conn: &Connection, queries: &'static str) -> Result<
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod migrations {
+    use super::*;
+
+    #[test]
+    fn prime() {
+        assert_eq!(PRIME_MIGRATIONS.validate(), Ok(()));
+    }
 }

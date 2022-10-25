@@ -1,21 +1,20 @@
 use flume::{Receiver, Sender};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 pub use crate::prepare::{
     SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_SRC_DIRECTORY, SITE_TEMPLATE_DIRECTORY,
 };
 
-lazy_static! {
-    pub static ref ERROR_CHANNEL: ErrorChannel = ErrorChannel::default();
-    pub static ref THREADS: u32 = {
-        let threads = std::thread::available_parallelism();
-        match threads {
-            Ok(num) => num.get() as u32,
-            Err(_) => 4,
-        }
-    };
-}
+pub static ERROR_CHANNEL: Lazy<ErrorChannel> = Lazy::new(|| ErrorChannel::default() );
+pub static THREADS: Lazy<u32> = Lazy::new(|| {
+    let threads = std::thread::available_parallelism();
+    match threads {
+        Ok(num) => num.get() as u32,
+        Err(_) => 4,
+    }
+});
+
 
 #[derive(Clone)]
 pub struct ErrorChannel {

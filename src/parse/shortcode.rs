@@ -1,11 +1,10 @@
 use std::{collections::HashMap, ops::Range};
 
-use nom::{bytes::complete::take_until, character::complete::char, sequence::terminated, IResult};
 use serde::Serialize;
 
 use super::{
     delimit::{Delimited, DelimiterKind},
-    trim_quotes, Ranged,
+    Ranged,
 };
 use crate::prelude::*;
 
@@ -41,12 +40,12 @@ fn parse_inline(source: Delimited<'_>) -> Result<Shortcode> {
         .split_once(' ')
         .unwrap_or((source.contents, ""));
 
-    let (_, args) = parse_kwargs(args)
+    let args = parse_kwargs(args)
         .map_err(|ierr| {
             eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
             .note("This error occurred because FTL found a shortcode invocation with improperly formatted arguments.")
             .suggestion("Make sure your shortcode invocation is well-formed.")
-            .section(ierr.to_owned())
+            .section(ierr)
         })?;
 
     Ok(Shortcode {
@@ -66,12 +65,12 @@ fn parse_multiline(source: Delimited<'_>) -> Result<Shortcode<'_>> {
 
     let (name, args) = token.split_once(' ').unwrap_or((token, ""));
 
-    let (_, args) = parse_kwargs(args)
+    let args = parse_kwargs(args)
         .map_err(|ierr| {
             eyre!("Encountered a shortcode with malformed kwargs. (Source: {source:?})")
             .note("This error occurred because FTL found a shortcode invocation with improperly formatted arguments.")
             .suggestion("Make sure your shortcode invocation is well-formed.")
-            .section(ierr.to_owned())
+            .section(ierr)
         })?;
 
     Ok(Shortcode {
@@ -82,23 +81,28 @@ fn parse_multiline(source: Delimited<'_>) -> Result<Shortcode<'_>> {
     })
 }
 
-fn parse_kwargs(i: &str) -> IResult<&str, HashMap<&str, &str>> {
-    let mut kwarg_split = terminated(take_until("="), char('='));
+fn parse_kwargs(i: &str) -> Result<HashMap<&str, &str>> {
 
     if i.is_empty() {
-        return Ok((i, HashMap::new()));
+        return Ok(HashMap::new());
     }
 
     let kwargs: Vec<&str> = i.split(',').map(|x| x.trim()).collect();
 
     let mut map = HashMap::with_capacity(kwargs.len());
     for pair in kwargs {
-        let (value, key) = kwarg_split(pair)?;
-        let (_, value) = trim_quotes(value);
+        let (key, value) = pair
+            .split_once('=')
+            .with_context(|| format!("Malformed pair: {pair}"))?;
+
+        let value = value
+            .trim_start_matches('"')
+            .trim_end_matches('"');
+        
         map.insert(key, value);
     }
 
-    Ok((i, map))
+    Ok(map)
 }
 
 #[cfg(test)]

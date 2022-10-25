@@ -1,21 +1,19 @@
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use rusqlite::{params, Connection};
 
 use super::Row;
 use crate::{db, prelude::*};
 
-lazy_static! {
-    // Example input: {% include "included.html" %}
-    // The first capture: included.html
-    static ref TERA_INCLUDE_REGEXP: Regex = Regex::new(r#"\{% include "(.*?)"(?: ignore missing |\s)%\}"#).unwrap();
-    // Example input: {% import "macros.html" as macros %}
-    // The first capture: macros.html
-    static ref TERA_IMPORT_REGEXP: Regex = Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap();
-    // Example input: {% extends "base.html" %}
-    // The first capture: base.html
-    static ref TERA_EXTENDS_REGEXP: Regex = Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap();
-}
+// Example input: {% include "included.html" %}
+// The first capture: included.html
+static TERA_INCLUDE_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% include "(.*?)"(?: ignore missing |\s)%\}"#).unwrap() );
+// Example input: {% import "macros.html" as macros %}
+// The first capture: macros.html
+static TERA_IMPORT_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap() );
+// Example input: {% extends "base.html" %}
+// The first capture: base.html
+static TERA_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap() );
 
 // TODO: Could this be parallelized, at least in part?
 /// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.

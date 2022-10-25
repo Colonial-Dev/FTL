@@ -1,4 +1,4 @@
-#![warn(clippy::perf, clippy::style, clippy::cargo, warnings)]
+#![warn(clippy::perf, clippy::style, warnings)]
 
 mod config;
 mod db;
