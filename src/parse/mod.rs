@@ -1,4 +1,5 @@
 pub mod delimit;
+pub mod link;
 pub mod shortcode;
 
 use std::ops::Range;
@@ -13,14 +14,4 @@ pub trait Ranged {
     fn end(&self) -> usize {
         self.range().end
     }
-}
-
-fn trim_whitespace(i: &str) -> (&str, &str) {
-    (i, i.trim())
-}
-
-fn trim_quotes(i: &str) -> (&str, &str) {
-    let trimmed = i.trim_start_matches('"').trim_end_matches('"');
-
-    (i, trimmed)
 }

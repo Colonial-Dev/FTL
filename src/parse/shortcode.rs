@@ -82,7 +82,6 @@ fn parse_multiline(source: Delimited<'_>) -> Result<Shortcode<'_>> {
 }
 
 fn parse_kwargs(i: &str) -> Result<HashMap<&str, &str>> {
-
     if i.is_empty() {
         return Ok(HashMap::new());
     }

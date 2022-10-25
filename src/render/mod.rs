@@ -102,6 +102,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
             expand::highlight_code(&mut ticket, &engine)?;
             pulldown::process(&mut ticket, &engine);
             template::templates(&mut ticket, &engine)?;
+            rewrite::rewrite(&mut ticket, &engine)?;
             Ok(ticket)
         })
         .for_each(|x| {
@@ -161,7 +162,7 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
                 SELECT 1 FROM output
                 WHERE output.id = pages.id
         )
-        AND EXISTS (
+        OR EXISTS (
             SELECT 1 FROM dependencies
             WHERE dependencies.page_id = pages.id
             AND dependencies.asset_id NOT IN (

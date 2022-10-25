@@ -31,14 +31,13 @@ pub fn compile_stylesheet(conn: &Connection, rev_id: &str) -> Result<()> {
 fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
     #[derive(Deserialize, Debug)]
     struct Row {
-        id: String,
         path: String,
         contents: String,
     }
 
     let mut stmt = conn.prepare(
         "
-        SELECT input_files.id, path, contents FROM input_files
+        SELECT path, contents FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND extension = 'sass'
