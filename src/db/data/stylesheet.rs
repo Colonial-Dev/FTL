@@ -18,13 +18,13 @@ impl Stylesheet {
     ) -> Result<impl FnMut(&StylesheetIn) -> Result<()> + '_> {
         let mut stmt = conn.prepare(
             "
-            INSERT OR IGNORE INTO stylesheets
-            VALUES(:revision, :content);
+            INSERT OR IGNORE INTO output
+            VALUES(NULL, 2, ?1);
         ",
         )?;
 
         let closure = move |input: &StylesheetIn| {
-            let _ = stmt.execute(input.to_params()?.to_slice().as_slice())?;
+            let _ = stmt.execute(params![input.content])?;
             Ok(())
         };
 
