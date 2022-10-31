@@ -6,6 +6,7 @@ mod parse;
 mod prepare;
 mod render;
 mod share;
+mod utils;
 
 mod prelude {
     pub use color_eyre::{
@@ -15,7 +16,7 @@ mod prelude {
     pub use indoc::indoc;
     pub use tracing::{debug, error, info, warn};
 
-    pub use crate::{config::*, share::*};
+    pub use crate::{config::*, share::*, utils::*};
 }
 
 use prelude::*;

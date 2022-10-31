@@ -1,26 +1,15 @@
-use std::{
-    borrow::Cow,
-    path::Path, cell::{RefCell, Cell}
-};
-
 use lol_html::{element, HtmlRewriter, Settings};
 
 use super::{Engine, RenderTicket};
-use crate::{
-    db::data::Dependency,
-    parse::link::Link,
-    prelude::*,
-};
-
-
+use crate::prelude::*;
 
 pub fn rewrite(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
-    ticket.content = lazy_load(&ticket.content)?;
+    lazy_load(ticket)?;
     Ok(())
 }
 
 /// Rewrites the `loading` attribute of all `<img>` and `<video>` tags to be `lazy`.
-fn lazy_load(hypertext: &str) -> Result<String> {
+fn lazy_load(ticket: &mut RenderTicket) -> Result<()> {
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -40,17 +29,17 @@ fn lazy_load(hypertext: &str) -> Result<String> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(hypertext.as_bytes())?;
+        rewriter.write(ticket.content.as_bytes())?;
     }
-    let hypertext = String::from_utf8(output)?;
-    Ok(hypertext)
+    ticket.content = String::from_utf8(output)?;
+    Ok(())
 }
 
 /// Based on user configuration, rewrites the `rel` and `target` attributes of `<a>` tags.
 /// - If `external_links_new_tab` is true, then `rel="noopener"` and `target="_blank"`.
 /// - If `external_links_no_follow` is true, then `rel="nofollow"`.
 /// - If `external_links_no_referrer` is true, then `rel="noreferrer"`.
-fn link_targets<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
+fn link_targets(ticket: &mut RenderTicket) -> Result<()> {
     let config = Config::global();
     let mut output = vec![];
     {
@@ -61,8 +50,8 @@ fn link_targets<'a>(hypertext: Cow<'a, str>) -> Result<Cow<'a, str>> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(hypertext.as_bytes())?;
+        rewriter.write(ticket.content.as_bytes())?;
     }
-    let hypertext = String::from_utf8(output)?;
-    Ok(Cow::Owned(hypertext))
+    ticket.content = String::from_utf8(output)?;
+    Ok(())
 }

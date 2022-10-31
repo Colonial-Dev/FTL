@@ -1,12 +1,23 @@
+use std::collections::HashMap;
+
 use pulldown_cmark::{html, Options, Parser, Event, Tag};
 
-use super::{Engine, RenderTicket};
+use super::{Engine, RenderTicket, template};
 use crate::prelude::*;
 
-pub fn process(ticket: &mut RenderTicket, _engine: &Engine) {
+pub fn generate(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     let parser = init(&ticket.content);
-    let parser = map(parser);
-    ticket.content = write(parser);
+
+    template::templates(ticket, engine)?;
+
+    Ok(())
+}
+
+fn link_headings<'a>(parser: Parser<'a, 'a>) -> impl Iterator<Item=Event<'a>> {
+    let mut headings: HashMap<&str, (&str, usize)> = HashMap::new();
+    parser.map(|event| match event {
+        _ => event
+    })
 }
 
 /// Initializes a [`Parser`] instance with the given Markdown input and all available extensions.
@@ -20,10 +31,4 @@ fn write(parser: Parser) -> String {
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
     html_output
-}
-
-fn map<'a>(parser: Parser<'a, 'a>) -> Parser<'a, 'a> {
-    parser
-    // Anchors/deep linking
-    // ...internal linking?
 }

@@ -16,6 +16,15 @@ use crate::{
     prelude::*,
 };
 
+pub fn expand(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    expand_shortcodes(ticket, engine)?;
+    expand_includes(ticket, engine)?;
+    expand_emoji(ticket, engine)?;
+    highlight_code(ticket, engine)?;
+    
+    Ok(())
+}
+
 #[derive(Deserialize, Debug)]
 struct Include {
     pub path: PathBuf,
@@ -32,7 +41,7 @@ impl Include {
     }
 }
 
-pub fn evaluate_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+fn expand_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     let conn = engine.pool.get()?;
     let mut get_file = InputFile::prepare_get_by_path(&conn, engine.rev_id)?;
     let assets_path = {
@@ -121,7 +130,7 @@ fn make_regex(expression: String) -> Result<Regex> {
     Ok(regex)
 }
 
-pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
+fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     EMOJI_DELIM.expand(&mut ticket.content, |tag: Delimited| {
         let name = tag.contents;
 
@@ -134,7 +143,7 @@ pub fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     Ok(())
 }
 
-pub fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
+fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     let theme_name = Config::global()
         .render
         .highlight_theme
@@ -188,7 +197,7 @@ fn prepare_highlight(theme_name: &str) -> Result<(SyntaxSet, Theme)> {
     Ok((syntaxes, theme))
 }
 
-pub fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     // Note: the borrow checker can't distinguish between multiple mutable
     // borrows to disjoint fields within the same struct.
     //

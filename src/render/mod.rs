@@ -1,5 +1,5 @@
 mod expand;
-mod pulldown;
+mod generate;
 mod rewrite;
 mod stylesheet;
 mod template;
@@ -16,7 +16,6 @@ use crate::{
         *,
     },
     prelude::*,
-    share::ERROR_CHANNEL,
 };
 
 pub struct RenderTicket {
@@ -47,26 +46,20 @@ pub struct Engine<'a> {
     pub rev_id: &'a str,
     pub pool: DbPool,
     pub tera: Tera,
-    pub sink: flume::Sender<Result<RenderTicket>>,
 }
 
 impl<'a> Engine<'a> {
-    pub fn build(
-        conn: &mut Connection,
-        rev_id: &'a str,
-    ) -> Result<(Self, flume::Receiver<Result<RenderTicket>>)> {
+    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<Self> {
         let pool = make_pool()?;
         let tera = template::make_engine(conn, rev_id)?;
-        let (sink, stream) = flume::unbounded();
 
         let engine = Engine {
             rev_id,
             pool,
             tera,
-            sink,
         };
 
-        Ok((engine, stream))
+        Ok(engine)
     }
 }
 
@@ -90,55 +83,53 @@ impl<'a> Engine<'a> {
 pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
     info!("Starting render stage...");
 
-    let (engine, stream) = Engine::build(conn, rev_id)?;
-    let tickets = query_tickets(conn, rev_id)?;
+    let engine = Engine::build(conn, rev_id)?;
 
-    tickets
+    let mut consumer_conn = engine.pool.get()?;
+    let consumer = Consumer::new_manual(move |stream: flume::Receiver<Result<RenderTicket>>| {
+        let conn = consumer_conn.transaction()?;
+        
+        let mut insert_hypertext = conn.prepare("
+            INSERT OR IGNORE INTO output
+            VALUES (?1, 1, ?2)
+        ")?;
+        let mut sanitize = Dependency::prepare_sanitize(&conn)?;
+        let mut insert_dep = Dependency::prepare_insert(&conn)?;
+
+        while let Ok(ticket) = stream.recv() {
+            let mut ticket = ticket?;
+
+            if let Some(template) = ticket.page.template {
+                ticket.dependencies.push(Dependency::Template(template))
+            }
+    
+            sanitize(&ticket.page.id)?;
+            for dependency in &ticket.dependencies {
+                insert_dep(&ticket.page.id, dependency)?;
+            }
+            debug!("Hypertext: {}", ticket.content);
+            insert_hypertext.execute(params![ticket.page.id, ticket.content])?;
+        }
+
+        drop(insert_hypertext);
+        drop(sanitize);
+        drop(insert_dep);
+
+        conn.commit()?;
+        Ok(())
+    });
+
+    query_tickets(conn, rev_id)?
         .into_par_iter()
         .map(|mut ticket| -> Result<RenderTicket> {
-            expand::expand_emoji(&mut ticket, &engine)?;
-            expand::expand_shortcodes(&mut ticket, &engine)?;
-            expand::evaluate_includes(&mut ticket, &engine)?;
-            expand::highlight_code(&mut ticket, &engine)?;
-            pulldown::process(&mut ticket, &engine);
-            template::templates(&mut ticket, &engine)?;
+            expand::expand(&mut ticket, &engine)?;
+            generate::generate(&mut ticket, &engine)?;
             rewrite::rewrite(&mut ticket, &engine)?;
             Ok(ticket)
         })
-        .for_each(|x| {
-            engine
-                .sink
-                .send(x)
-                .expect("Rendering output sink closed unexpectedly!");
-        });
-
-    drop(engine);
-
-    let mut insert_hypertext = conn.prepare(
-        "
-        INSERT OR IGNORE INTO output 
-        VALUES (?1, 1, ?2)
-    ",
-    )?;
-
-    let mut sanitize = Dependency::prepare_sanitize(conn)?;
-    let mut insert_dep = Dependency::prepare_insert(conn)?;
-
-    for ticket in stream.into_iter() {
-        let mut ticket = ticket?;
-
-        if let Some(template) = ticket.page.template {
-            ticket.dependencies.push(Dependency::Template(template))
-        }
-
-        sanitize(&ticket.page.id)?;
-        for dependency in &ticket.dependencies {
-            insert_dep(&ticket.page.id, dependency)?;
-        }
-        debug!("Hypertext: {}", ticket.content);
-        insert_hypertext.execute(params![ticket.page.id, ticket.content])?;
-    }
-
+        .for_each(|x| consumer.send(x));
+    
+    consumer.finalize()?;
     stylesheet::compile_stylesheet(conn, rev_id)?;
 
     Ok(())

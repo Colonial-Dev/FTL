@@ -16,7 +16,7 @@ use crate::{
 static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
 
 #[derive(Serialize, Deserialize, Debug)]
-struct TomlFrontmatter {
+struct Frontmatter {
     pub title: String,
     pub date: Option<Datetime>,
     pub publish_date: Option<Datetime>,
@@ -48,7 +48,10 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
 
-    let pages: Vec<Result<Page>> = rows.into_par_iter().map(extract_frontmatter).collect();
+    let pages: Vec<Result<Page>> = rows
+        .into_par_iter()
+        .map(extract_frontmatter)
+        .collect();
 
     for page in pages {
         let page = page?;
@@ -99,7 +102,7 @@ fn extract_frontmatter(item: Row) -> Result<Page> {
         .next()
         .context("Could not find frontmatter.")?;
 
-    match toml::from_str::<TomlFrontmatter>(frontmatter.contents) {
+    match toml::from_str::<Frontmatter>(frontmatter.contents) {
         Ok(fm) => {
             debug!("Parsed frontmatter for page \"{}\"", fm.title);
             let page = to_page(item.id, item.path, frontmatter.range.end as i64, fm);
@@ -111,7 +114,7 @@ fn extract_frontmatter(item: Row) -> Result<Page> {
     }
 }
 
-fn to_page(id: String, path: String, offset: i64, fm: TomlFrontmatter) -> Page {
+fn to_page(id: String, path: String, offset: i64, fm: Frontmatter) -> Page {
     Page {
         id,
         route: to_route(&path),
