@@ -24,19 +24,22 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         SELECT input_files.id, path FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND input_files.extension != 'md'
-        AND input_files.extension != 'sass'
-        AND input_files.extension != 'scss'
+        AND input_files.extension NOT IN ('md', 'sass', 'scss', 'tera')
     ",
     )?;
 
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
         let row = row?;
+        let route = row.path
+            .trim_start_matches(SITE_SRC_DIRECTORY)
+            .trim_start_matches(SITE_ASSET_DIRECTORY)
+            .trim_start_matches(SITE_CONTENT_DIRECTORY);
+        
         insert_route(&RouteIn {
             revision: rev_id,
             id: Some(&row.id),
-            route: row.path.trim_start_matches("src/assets/"),
+            route,
             parent_route: None,
             kind: RouteKind::StaticAsset,
         })?;

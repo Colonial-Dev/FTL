@@ -16,7 +16,7 @@ pub struct Consumer<T: Send + 'static> {
 impl<T: Send + 'static> Consumer<T> {
     /// Creates a new consumer using a simple event loop.
     /// 
-    /// The provided closure is invoked with each message received by the consumer;
+    /// The provided closure is invoked with each message received by the consumer; 
     /// handling the channel itself is done externally.
     pub fn new(mut handler: impl FnMut(T) -> Result<()> + Send + 'static) -> Self {
         Self::new_manual(move |stream: Receiver<T>| {
@@ -29,13 +29,18 @@ impl<T: Send + 'static> Consumer<T> {
 
     /// Creates a new consumer using a caller-defined event loop.
     /// 
-    /// The provided closure is given the receiving end of the channel,
-    /// and is responsible for its proper handling.
+    /// The provided closure is given the receiving end of the channel, and is responsible for its proper handling.
+    /// Useful if the event loop needs to set up some non-`Send`/`'static` state.
     pub fn new_manual(mut handler: impl FnMut(Receiver<T>) -> Result<()> + Send + 'static) -> Self {
         let (sink, stream) = flume::unbounded::<T>();
 
         let handle = std::thread::spawn(move || -> Result<()> {
-            handler(stream)
+            if let Err(e) = handler(stream) {
+                error!("Consumer terminated due to handler error: {e}");
+                Err(e)
+            } else {
+                Ok(())
+            }
         });
 
         Consumer {
@@ -55,10 +60,10 @@ impl<T: Send + 'static> Consumer<T> {
     }
 
     /// Non-destructively flushes the consumer.
-    /// This method locks the sending end of the channel and blocks until it is empty.
+    /// This method locks the sending end of the channel and blocks until it is empty or disconnected.
     pub fn flush(&self) {
         let sink = self.sink.write().unwrap();
-        while !sink.is_empty() {
+        while !sink.is_empty() && !sink.is_disconnected() {
             std::thread::yield_now();
         }
     }
@@ -74,3 +79,4 @@ impl<T: Send + 'static> Consumer<T> {
             .expect("Consumer receiving thread panicked.")
     }
 }
+

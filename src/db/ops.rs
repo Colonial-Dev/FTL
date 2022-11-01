@@ -26,13 +26,7 @@ pub fn try_create_db(path: &Path) -> Result<Connection> {
 
     // Calling open() implicitly creates the database if it does not exist.
     let mut conn = Connection::open(path)?;
-    
-    // WAL grants faster performance and allows reads that are concurrent to writes.
-    // NORMAL synchronization is safe with WAL enabled, and gives an extra speed boost
-    // by minimizing filesystem IO.
-    conn.pragma_update(None, "journal_mode", "WAL")?;
-    conn.pragma_update(None, "synchronous", "NORMAL")?;
-    conn.pragma_update(None, "foreign_keys", "ON")?;
+    set_pragmas(&mut conn)?;
     PRIME_MIGRATIONS.to_latest(&mut conn)?;
 
     Ok(conn)
@@ -40,18 +34,15 @@ pub fn try_create_db(path: &Path) -> Result<Connection> {
 
 /// Attempt to open a connection to the SQLite database.
 pub fn make_connection() -> Result<Connection> {
-    let conn = Connection::open(DB_PATH)?;
+    let mut conn = Connection::open(DB_PATH)?;
+    set_pragmas(&mut conn)?;
     Ok(conn)
 }
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool() -> Result<DbPool> {
     let manager = SqliteConnectionManager::file(DB_PATH)
-        .with_init(|c| {
-            c.pragma_update(None, "journal_mode", "WAL")?;
-            c.pragma_update(None, "synchronous", "NORMAL")?;
-            c.pragma_update(None, "foreign_keys", "ON")
-        });
+        .with_init(set_pragmas);
 
     let pool = r2d2::Pool::builder()
         .max_size(*THREADS as u32)
@@ -60,8 +51,19 @@ pub fn make_pool() -> Result<DbPool> {
     Ok(pool)
 }
 
+fn set_pragmas(conn: &mut Connection) -> Result<(), rusqlite::Error> {
+    // WAL grants faster performance and allows reads that are concurrent to writes.
+    // NORMAL synchronization is safe with WAL enabled, and gives an extra speed boost
+    // by minimizing filesystem IO.
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    Ok(())
+}
+
 pub fn attach_mapping_database(conn: &Connection) -> Result<()> {
-    enumerate_static_queries(conn, MAP_INIT_QUERY)
+    conn.execute_batch(MAP_INIT_QUERY)
+        .context("Could not attach mapping database!")
 }
 
 pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
@@ -117,16 +119,6 @@ pub fn try_compress_db(conn: &Connection) -> Result<()> {
 /// Tries to delete all files from the cache that are not relevant for the current active revision.
 pub fn try_compress_cache(conn: &Connection) -> Result<()> {
     todo!()
-}
-
-fn enumerate_static_queries(conn: &Connection, queries: &'static str) -> Result<()> {
-    let queries = queries.split(";\n");
-
-    for query in queries {
-        conn.execute(query, [])?;
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

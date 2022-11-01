@@ -22,10 +22,8 @@ impl Dependency {
         let mut insert_by_template = conn.prepare(
             "
             INSERT OR IGNORE INTO dependencies
-            VALUES (
-                ?1,
-                (SELECT id FROM templates WHERE name = ?2)
-            )
+            SELECT ?1, templates.id
+            FROM templates WHERE name = ?2
         ",
         )?;
 

@@ -574,6 +574,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serde_rusqlite",
+ "slug",
  "syntect",
  "tera",
  "time",

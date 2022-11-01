@@ -16,12 +16,15 @@ use crate::{
     prelude::*,
 };
 
+/// Applies expansions to Markdown source text according to user configuration.
 pub fn expand(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    // Warning: order of execution matters here!
+    // For example, if code highlighting were to be done before include expansion,
+    // includes within code blocks would get mangled and cause parsing errors.
     expand_shortcodes(ticket, engine)?;
     expand_includes(ticket, engine)?;
     expand_emoji(ticket, engine)?;
     highlight_code(ticket, engine)?;
-    
     Ok(())
 }
 
@@ -70,7 +73,7 @@ fn expand_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
             Some(file) => file,
             None => match get_file(&assets_relative)? {
                 Some(file) => file,
-                None => bail!(""),
+                None => bail!("Tried to include a file, but it does not exist."),
             },
         };
 

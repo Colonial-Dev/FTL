@@ -38,15 +38,15 @@ fn main() {
 This text snippet was included whole-cloth from another file:
 ```
 +++
-path = "include.tera"
+path = "include.in"
 +++
 ```
 
 And this one was extracted from a different file using regular expressions:
 ```
 +++
-path = "post.tera"
-start_at = "<body>"
-end_at = "</body>"
+path = "code.in"
+start_at = "fn main"
+end_at = "}"
 +++
 ```

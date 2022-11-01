@@ -66,6 +66,8 @@ CREATE TABLE revision_files (
     UNIQUE (id, revision)
 );
 
+CREATE INDEX idx_rev_files_revision ON revision_files(revision);
+
 -- Records information specific to "pages" - that is, Markdown documents.
 -- This largely consists of TOML frontmatter information.
 CREATE TABLE pages (
@@ -129,7 +131,7 @@ CREATE TABLE templates (
 );
 
 CREATE TABLE dependencies (
-    page_id TEXT PRIMARY KEY,
+    page_id TEXT,
     asset_id TEXT,
 
     FOREIGN KEY (page_id)
@@ -147,11 +149,17 @@ CREATE TABLE dependencies (
 
 CREATE TABLE output (
     id TEXT PRIMARY KEY,
+    revision TEXT,
     kind INTEGER,
     content TEXT,
 
     FOREIGN KEY (id)
     REFERENCES input_files (id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+    
+    FOREIGN KEY (revision)
+    REFERENCES revisions (id)
         ON UPDATE CASCADE
         ON DELETE CASCADE
 );

@@ -1,0 +1,11 @@
+fn invisible() {
+    unreachable!()
+}
+
+fn main() {
+    println!("Hello, world!");
+}
+
+fn also_invisible() {
+    unreachable!()
+}

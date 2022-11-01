@@ -86,12 +86,13 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
     let engine = Engine::build(conn, rev_id)?;
 
     let mut consumer_conn = engine.pool.get()?;
+    let consumer_rev_id = rev_id.to_owned();
     let consumer = Consumer::new_manual(move |stream: flume::Receiver<Result<RenderTicket>>| {
         let conn = consumer_conn.transaction()?;
-        
+
         let mut insert_hypertext = conn.prepare("
             INSERT OR IGNORE INTO output
-            VALUES (?1, 1, ?2)
+            VALUES (?1, ?2, 1, ?3)
         ")?;
         let mut sanitize = Dependency::prepare_sanitize(&conn)?;
         let mut insert_dep = Dependency::prepare_insert(&conn)?;
@@ -108,7 +109,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
                 insert_dep(&ticket.page.id, dependency)?;
             }
             debug!("Hypertext: {}", ticket.content);
-            insert_hypertext.execute(params![ticket.page.id, ticket.content])?;
+            insert_hypertext.execute(params![ticket.page.id, consumer_rev_id, ticket.content])?;
         }
 
         drop(insert_hypertext);
@@ -144,22 +145,30 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
     let mut get_pages = conn.prepare(
         "
-        SELECT DISTINCT pages.* FROM pages
-        WHERE EXISTS (
-                SELECT 1 FROM revision_files
-                WHERE revision_files.revision = ?1
-                AND revision_files.id = pages.id
-            EXCEPT
-                SELECT 1 FROM output
-                WHERE output.id = pages.id
+        WITH page_set AS (
+            SELECT pages.* FROM pages
+            WHERE EXISTS (
+                    SELECT 1 FROM revision_files
+                    WHERE revision_files.revision = ?1
+                    AND revision_files.id = pages.id
+                EXCEPT
+                    SELECT 1 FROM output
+                    WHERE output.id = pages.id
+            )
         )
-        OR EXISTS (
+
+        SELECT DISTINCT * FROM page_set AS pages
+        WHERE EXISTS (
             SELECT 1 FROM dependencies
             WHERE dependencies.page_id = pages.id
             AND dependencies.asset_id NOT IN (
                 SELECT id FROM revision_files
                 WHERE revision = ?1
             )
+        )
+        OR NOT EXISTS (
+            SELECT 1 FROM dependencies
+            WHERE dependencies.page_id = pages.id
         )
         OR pages.dynamic = 1;
     ",

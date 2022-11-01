@@ -7,15 +7,27 @@ use crate::prelude::*;
 
 pub fn generate(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     let parser = init(&ticket.content);
-
+    
+    ticket.content = write(parser);
     template::templates(ticket, engine)?;
 
     Ok(())
 }
 
+fn parse_header(source: &str) -> &str {
+    let source = source
+        .trim()
+        .trim_start_matches('#');
+    
+    match source.split_once("{#") {
+        Some((content, _)) => content,
+        None => source
+    }
+}
+
 fn link_headings<'a>(parser: Parser<'a, 'a>) -> impl Iterator<Item=Event<'a>> {
     let mut headings: HashMap<&str, (&str, usize)> = HashMap::new();
-    parser.map(|event| match event {
+    parser.into_offset_iter().map(|(event, range)| match event {
         _ => event
     })
 }

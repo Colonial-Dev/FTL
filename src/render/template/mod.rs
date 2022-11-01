@@ -8,6 +8,8 @@ mod dependency;
 use super::{Engine, RenderTicket};
 use crate::{db::*, prelude::*};
 
+static TEMPLATE_PRELUDE: &str = include_str!("ftl.tera");
+
 #[derive(Deserialize, Debug)]
 pub struct Row {
     pub id: String,
@@ -42,21 +44,32 @@ fn register_tests(tera: &mut Tera) {
 /// 1. Add every template to the provided [`Tera`] instance.
 /// 2. Use the [`dependency`] module to compute and cache templating IDs for the provided revision.
 fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Result<Tera> {
-    let rows = query_templates(conn, rev_id)?;
+    let mut rows = query_templates(conn, rev_id)?;
     // Collect row path/contents into a Vec of references.
     // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
-    let templates: Vec<(&str, &str)> = rows
-        .iter()
+    let mut templates: Vec<(&str, &str)> = rows
+        .iter_mut()
+        .map(|x| {
+            // Every template implicitly imports a special FTL prelude.
+            // The prelude includes various macros for tasks like cachebusting.
+            let prelude = String::from("{% import \"ftl\" as ftl %}\n");
+            x.contents = prelude + &x.contents;
+            x
+        })
         .map(|x| {
             (
                 x.path
                     .as_str()
-                    .trim_start_matches(crate::prepare::SITE_SRC_DIRECTORY)
+                    .trim_start_matches(SITE_SRC_DIRECTORY)
+                    .trim_start_matches(SITE_TEMPLATE_DIRECTORY)
                     .trim_end_matches(".tera"),
                 x.contents.as_str(),
             )
         })
         .collect();
+    
+    // Add the prelude to the template set.
+    templates.push(("ftl", TEMPLATE_PRELUDE));
 
     tera.add_raw_templates(templates)?;
 

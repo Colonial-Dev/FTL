@@ -101,6 +101,7 @@ fn process_entry(entry: Result<DirEntry, walkdir::Error>) -> Result<Option<Input
 }
 
 /// Hash the provided bytestream using `seahash` and `format!` it as a hexadecimal string.
+#[inline]
 fn hash(bytes: &[u8]) -> String {
     format!("{:016x}", seahash::hash(bytes))
 }
@@ -109,17 +110,19 @@ fn hash(bytes: &[u8]) -> String {
 ///
 /// Inline entries will have their content inserted directly into the content database.
 /// Non-inline entries will be copied to the on-disk cache and renamed to their hash.
+#[inline]
 fn entry_is_inline(entry: &DirEntry) -> bool {
     match entry.path().extension() {
         Some(ext) => matches!(
             ext.to_string_lossy().as_ref(),
-            "md" | "scss" | "html" | "json" | "tera"
+            "md" | "in" | "scss" | "html" | "json" | "tera"
         ),
         _ => false,
     }
 }
 
 /// Gets the extension of the entry, if any.
+#[inline]
 fn entry_extension(entry: &DirEntry) -> Option<String> {
     match entry.path().extension() {
         Some(ext) => {
@@ -151,14 +154,11 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
 }
 
 fn init_revision(conn: &Connection, files: &[InputFile]) -> Result<String> {
-    let hasher = seahash::SeaHasher::default();
+    let mut hasher = seahash::SeaHasher::default();
     
-    files
-        .iter()
-        .fold(hasher, |mut acc, x| {
-            x.id.hash(&mut acc);
-            acc
-        });
+    for file in files {
+        file.id.hash(&mut hasher)
+    }
 
     let rev_id = format!("{:016x}", hasher.finish());
     info!("Computed revision ID {}", rev_id);

@@ -2,7 +2,7 @@
 <title>{{ page.title }}</title>
 </head>
 <body>
-<h1> {{ page.title }} </h1>
+<h1> {{ ftl::test() }} </h1>
 <h5> Date: {{ page.date | date }}<br><i>{{ page.summary }}</i></h5>
 {{ markup }}
 </body>

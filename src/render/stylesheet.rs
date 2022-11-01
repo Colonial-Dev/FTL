@@ -40,8 +40,7 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
         SELECT path, contents FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND extension = 'sass'
-        OR extension = 'scss'
+        AND extension IN ('sass', 'scss')
     ",
     )?;
 
@@ -65,11 +64,17 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
     }
 
     let style_file = temp_dir.join("src/assets/sass/style.scss");
-    let style_file = style_file.to_str().unwrap();
 
-    let output = grass::from_path(style_file, &grass::Options::default())?;
+    if !style_file.exists() {
+        warn!("Trying to build SCSS but style file does not exist - skipping.");
+        return Ok(());
+    }
 
-    let mut insert_sheet = Stylesheet::prepare_insert(conn)?;
+    let style_file = style_file.to_string_lossy();
+
+    let output = grass::from_path(&style_file, &grass::Options::default())?;
+
+    let mut insert_sheet = Stylesheet::prepare_insert(conn, rev_id)?;
     insert_sheet(&StylesheetIn {
         revision: rev_id,
         content: &output,
