@@ -61,4 +61,6 @@ fn install_logging() {
         .display_location_section(false)
         .install()
         .expect("Could not install Eyre hooks!");
+    
+    info!("Logging installed.")
 }

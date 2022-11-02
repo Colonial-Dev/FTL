@@ -75,8 +75,8 @@ fn process_entry(entry: Result<DirEntry, walkdir::Error>) -> Result<Option<Input
     let path = entry.into_path();
 
     // Optimization: drain data read from non-inline files.
-    // This isn't necessary per se, but we don't want to potentially
-    // shuffle an entire MP4 around in memory for no reason.
+    // Not doing this could very possibly result in huge memory
+    // consumption when the walking iterator is collected.
     if !inline {
         contents.drain(..);
     }
@@ -140,10 +140,10 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
         insert_file(file)?;
 
         if !file.inline {
-            debug!("Caching non-inline file {:#?}", &file.path);
             let destination = format!(".ftl/cache/{}", &file.hash);
             let destination = Path::new(&destination);
             if !&destination.exists() {
+                debug!("Caching non-inline file {:#?}", &file.path);
                 std::fs::copy(&file.path, &destination)?;
             }
         }
