@@ -1,9 +1,15 @@
+mod config;
+mod consumer;
+
 use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 pub use crate::prepare::{
     SITE_ASSET_DIRECTORY, SITE_CONTENT_DIRECTORY, SITE_SRC_DIRECTORY, SITE_TEMPLATE_DIRECTORY,
 };
+
+pub use config::*;
+pub use consumer::Consumer;
 
 pub static ERROR_CONSUMER: Lazy<Consumer<Error>> = Lazy::new(|| {
     Consumer::new(|error: Error| {

@@ -1,12 +1,11 @@
 #![warn(clippy::perf, clippy::style, warnings)]
 
-mod config;
+mod common;
 mod db;
 mod parse;
 mod prepare;
 mod render;
-mod share;
-mod utils;
+mod serve;
 
 mod prelude {
     pub use color_eyre::{
@@ -16,7 +15,7 @@ mod prelude {
     pub use indoc::indoc;
     pub use tracing::{debug, error, info, warn};
 
-    pub use crate::{config::*, share::*, utils::*};
+    pub use crate::common::*;
 }
 
 use prelude::*;
@@ -24,6 +23,8 @@ use prelude::*;
 fn main() -> Result<()> {
     install_logging();
     Config::init()?;
+    serve::serve()?;
+    return Ok(());
     let mut conn = db::make_connection()?;
 
     let rev_id = prepare::walk_src(&mut conn)?;

@@ -9,8 +9,7 @@ use toml::value::Datetime;
 use crate::{
     db::{data::Page, *},
     parse::delimit::TOML_DELIM,
-    prelude::*,
-    share,
+    prelude::*
 };
 
 static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
@@ -137,8 +136,8 @@ fn to_page(id: String, path: String, offset: i64, fm: Frontmatter) -> Page {
 
 fn to_route(path: &str) -> String {
     let route_path = path
-        .trim_start_matches(share::SITE_SRC_DIRECTORY)
-        .trim_start_matches(share::SITE_CONTENT_DIRECTORY)
+        .trim_start_matches(SITE_SRC_DIRECTORY)
+        .trim_start_matches(SITE_CONTENT_DIRECTORY)
         .trim_end_matches("/index.md")
         .trim_start_matches('/');
 

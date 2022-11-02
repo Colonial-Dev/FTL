@@ -81,8 +81,8 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
     for row in templates {
         let trimmed_path = row
             .path
-            .trim_start_matches(crate::share::SITE_SRC_DIRECTORY)
-            .trim_start_matches(crate::share::SITE_TEMPLATE_DIRECTORY)
+            .trim_start_matches(SITE_SRC_DIRECTORY)
+            .trim_start_matches(SITE_TEMPLATE_DIRECTORY)
             .trim_end_matches(".tera");
 
         insert_template.execute(params![trimmed_path, row.id])?;
