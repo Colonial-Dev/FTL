@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use gh_emoji as emoji;
+use pulldown_cmark::{Options, Parser, Event, Tag};
 use regex::Regex;
 use serde::Deserialize;
 use syntect::{
@@ -247,4 +248,12 @@ fn render_shortcode(name: &str, ticket: &mut RenderTicket, engine: &Engine) -> R
         .push(Dependency::Template(name.to_owned()));
 
     Ok(engine.tera.render(name, &ticket.context)?)
+}
+
+/// Adds deep links to all Markdown headings (where they are not already present.)
+fn link_anchors(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+    Parser::new_ext(&ticket.content, Options::all())
+        .into_offset_iter();
+
+    todo!()
 }

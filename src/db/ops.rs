@@ -72,6 +72,10 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
 }
 
 pub fn dump_input_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
+    use std::path::PathBuf;
+    use serde_rusqlite::from_rows;
+    use crate::db::data::InputFile;
+
     let mut stmt = conn.prepare("
         SELECT input_files.* FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
@@ -90,9 +94,28 @@ pub fn dump_input_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
     // (either the `output` table or the flat-file cache), then write the file to the dump
     // target at its route.
 
-    //from_rows::<InputFile>(stmt.query(params![&rev_id])?)
+    let target_dir = PathBuf::from("target/").join(format!("input-{}", &rev_id));
+    let cache_dir = PathBuf::from(".ftl/cache/");
 
-    todo!()
+    let result = from_rows::<InputFile>(stmt.query(params![&rev_id])?)
+        .try_for_each(|file| -> Result<()> {
+            let file: InputFile = file?;
+
+            let target = target_dir.join(file.path);
+            std::fs::create_dir_all(target.parent().unwrap())?;
+
+            if !file.inline {
+                let source = cache_dir.join(file.hash);
+                std::fs::copy(source, target)?;
+            }
+            else {
+                std::fs::write(&target, &file.contents.unwrap_or_default())?;
+            }
+
+            Ok(())
+        });
+    
+    result
 }
 
 /// Try to drop and recreate all FTL tables.
