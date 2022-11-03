@@ -5,6 +5,7 @@ use crate::prelude::*;
 
 pub fn rewrite(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     lazy_load(ticket)?;
+    link_targets(ticket)?;
     Ok(())
 }
 
@@ -35,6 +36,10 @@ fn lazy_load(ticket: &mut RenderTicket) -> Result<()> {
     Ok(())
 }
 
+const NO_OPENER: &str = "noopener ";
+const NO_FOLLOW: &str = "nofollow ";
+const NO_REFERRER: &str = "noreferrer";
+
 /// Based on user configuration, rewrites the `rel` and `target` attributes of `<a>` tags.
 /// - If `external_links_new_tab` is true, then `rel="noopener"` and `target="_blank"`.
 /// - If `external_links_no_follow` is true, then `rel="nofollow"`.
@@ -45,7 +50,28 @@ fn link_targets(ticket: &mut RenderTicket) -> Result<()> {
     {
         let mut rewriter = HtmlRewriter::new(
             Settings {
-                element_content_handlers: vec![element!("a", |el| { Ok(()) })],
+                element_content_handlers: vec![element!("a", |el| {
+                    let mut rel_attribute = String::new();
+                    
+                    if config.build.external_links_new_tab {
+                        el.set_attribute("target", "_blank").unwrap();
+                        rel_attribute.push_str(NO_OPENER);
+                    }
+                    
+                    if config.build.external_links_no_follow {
+                        rel_attribute.push_str(NO_FOLLOW);
+                    }
+
+                    if config.build.external_links_no_referrer {
+                        rel_attribute.push_str(NO_REFERRER);
+                    }
+
+                    if !rel_attribute.is_empty() {
+                        el.set_attribute("rel", &rel_attribute).unwrap()
+                    }
+                    
+                    Ok(()) 
+                })],
                 ..Settings::default()
             },
             |c: &[u8]| output.extend_from_slice(c),

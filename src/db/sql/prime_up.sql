@@ -126,7 +126,7 @@ CREATE TABLE routes (
 );
 
 CREATE TABLE templates (
-    name TEXT PRIMARY KEY,
+    name TEXT,
     id TEXT
 );
 

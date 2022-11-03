@@ -23,10 +23,8 @@ use prelude::*;
 fn main() -> Result<()> {
     install_logging();
     Config::init()?;
-    serve::serve()?;
-    return Ok(());
     let mut conn = db::make_connection()?;
-
+    // db::try_reset_tables(&mut conn)?;
     let rev_id = prepare::walk_src(&mut conn)?;
     prepare::parse_frontmatters(&conn, &rev_id)?;
     prepare::create_static_asset_routes(&conn, &rev_id)?;

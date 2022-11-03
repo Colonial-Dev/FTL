@@ -5,9 +5,10 @@ language = "en-US"
 on_non_fatal = "WARN"
 
 [build]
-incremental = "FULL"
+incremental = true
 cachebust = true
 compile_sass = true
+inline_extensions = ["rs"]
 external_links_new_tab = false
 external_links_no_follow = false
 external_links_no_referrer = false

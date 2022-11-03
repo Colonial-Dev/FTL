@@ -49,13 +49,13 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
     // This is necessary because Tera needs to ingest every template at once to allow for dependency resolution.
     let mut templates: Vec<(&str, &str)> = rows
         .iter_mut()
-        .map(|x| {
+        /*.map(|x| {
             // Every template implicitly imports a special FTL prelude.
             // The prelude includes various macros for tasks like cachebusting.
             let prelude = String::from("{% import \"ftl\" as ftl %}\n");
             x.contents = prelude + &x.contents;
             x
-        })
+        })*/
         .map(|x| {
             (
                 x.path
@@ -69,7 +69,7 @@ fn parse_templates(conn: &mut Connection, rev_id: &str, mut tera: Tera) -> Resul
         .collect();
     
     // Add the prelude to the template set.
-    templates.push(("ftl", TEMPLATE_PRELUDE));
+    // templates.push(("ftl", TEMPLATE_PRELUDE));
 
     tera.add_raw_templates(templates)?;
 

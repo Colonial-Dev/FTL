@@ -122,7 +122,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     query_tickets(conn, rev_id)?
         .into_par_iter()
-        .map(|mut ticket| -> Result<RenderTicket> {
+        .map(|mut ticket| {
             expand::expand(&mut ticket, &engine)?;
             generate::generate(&mut ticket, &engine)?;
             rewrite::rewrite(&mut ticket, &engine)?;
@@ -151,24 +151,25 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
                     SELECT 1 FROM revision_files
                     WHERE revision_files.revision = ?1
                     AND revision_files.id = pages.id
-                EXCEPT
-                    SELECT 1 FROM output
-                    WHERE output.id = pages.id
             )
         )
 
         SELECT DISTINCT * FROM page_set AS pages
-        WHERE EXISTS (
+        WHERE NOT EXISTS (
+            SELECT 1 FROM output
+            WHERE output.id = pages.id
+        )
+        OR NOT EXISTS (
+            SELECT 1 FROM dependencies
+            WHERE dependencies.page_id = pages.id
+        )
+        OR EXISTS (
             SELECT 1 FROM dependencies
             WHERE dependencies.page_id = pages.id
             AND dependencies.asset_id NOT IN (
                 SELECT id FROM revision_files
                 WHERE revision = ?1
             )
-        )
-        OR NOT EXISTS (
-            SELECT 1 FROM dependencies
-            WHERE dependencies.page_id = pages.id
         )
         OR pages.dynamic = 1;
     ",
@@ -204,6 +205,6 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
             Ok(ticket)
         })
         .collect();
-
+    
     pages
 }

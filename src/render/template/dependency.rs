@@ -64,7 +64,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
                 WHERE id = ?1
             )
         
-        INSERT OR REPLACE INTO templates
+        INSERT OR IGNORE INTO templates
         SELECT template_name.name, transitives.id
         FROM template_name, transitives;
     ",
