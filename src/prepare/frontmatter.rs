@@ -18,8 +18,6 @@ static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
 struct Frontmatter {
     pub title: String,
     pub date: Option<Datetime>,
-    pub publish_date: Option<Datetime>,
-    pub expire_date: Option<Datetime>,
     pub description: Option<String>,
     pub summary: Option<String>,
     pub template: Option<String>,
@@ -121,8 +119,6 @@ fn to_page(id: String, path: String, offset: i64, fm: Frontmatter) -> Page {
         offset,
         title: fm.title,
         date: fm.date.map(|x| x.to_string()),
-        publish_date: fm.publish_date.map(|x| x.to_string()),
-        expire_date: fm.expire_date.map(|x| x.to_string()),
         description: fm.description,
         summary: fm.summary,
         template: fm.template,

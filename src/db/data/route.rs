@@ -22,12 +22,10 @@ pub struct Route {
     /// The ID of the revision this route is associated with.
     pub revision: String,
     /// The URL this route qualifies.
-    ///
     /// Example: `/img/banner.png`, which points to `src/assets/img/banner.png`.
     pub route: String,
     /// The "parent" path of the route.
     /// Corresponds to the first subdirectory in the URL.
-    ///
     /// Example: the parent path of `/posts/hello_there` is `posts`.
     pub parent_route: Option<String>,
     /// What type of asset this route points to.

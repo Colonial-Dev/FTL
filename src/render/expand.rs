@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use gh_emoji as emoji;
+use minijinja::context;
 use pulldown_cmark::{Options, Parser, Event, Tag};
 use regex::Regex;
 use serde::Deserialize;
@@ -10,7 +11,7 @@ use syntect::{
     parsing::SyntaxSet,
 };
 
-use super::{Engine, RenderTicket};
+use super::{Engine, Ticket, Message};
 use crate::{
     db::data::{Dependency, InputFile},
     parse::{delimit::*, shortcode::*},
@@ -18,7 +19,7 @@ use crate::{
 };
 
 /// Applies expansions to Markdown source text according to user configuration.
-pub fn expand(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+pub fn expand(ticket: &mut Ticket, engine: &Engine) -> Result<()> {
     // Warning: order of execution matters here!
     // For example, if code highlighting were to be done before include expansion,
     // includes within code blocks would get mangled and cause parsing errors.
@@ -45,7 +46,7 @@ impl Include {
     }
 }
 
-fn expand_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+fn expand_includes(ticket: &mut Ticket, engine: &Engine) -> Result<()> {
     let conn = engine.pool.get()?;
     let mut get_file = InputFile::prepare_get_by_path(&conn, engine.rev_id)?;
     let assets_path = {
@@ -90,7 +91,8 @@ fn expand_includes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
         };
 
         // At this point we register this page's dependency on the included file.
-        ticket.dependencies.push(Dependency::Id(file.id));
+        let dependency = Dependency::Id(file.id);
+        engine.consumer.send((ticket.page.id.clone(), dependency));
 
         // Unbounded includes just paste the entire referenced file in,
         // ala C's #include directive.
@@ -134,7 +136,7 @@ fn make_regex(expression: String) -> Result<Regex> {
     Ok(regex)
 }
 
-fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
+fn expand_emoji(ticket: &mut Ticket, _engine: &Engine) -> Result<()> {
     EMOJI_DELIM.expand(&mut ticket.content, |tag: Delimited| {
         let name = tag.contents;
 
@@ -147,7 +149,7 @@ fn expand_emoji(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
     Ok(())
 }
 
-fn highlight_code(ticket: &mut RenderTicket, _engine: &Engine) -> Result<()> {
+fn highlight_code(ticket: &mut Ticket, _engine: &Engine) -> Result<()> {
     let theme_name = Config::global()
         .render
         .highlight_theme
@@ -201,7 +203,7 @@ fn prepare_highlight(theme_name: &str) -> Result<(SyntaxSet, Theme)> {
     Ok((syntaxes, theme))
 }
 
-fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+fn expand_shortcodes(ticket: &mut Ticket, engine: &Engine) -> Result<()> {
     // Note: the borrow checker can't distinguish between multiple mutable
     // borrows to disjoint fields within the same struct.
     //
@@ -215,14 +217,12 @@ fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
     let mut content = std::mem::take(&mut ticket.content);
     INLINE_DELIM.expand(&mut content, |code: Delimited| {
         let code = Shortcode::try_from(code)?;
-        ticket.context.insert("code", &code);
-        render_shortcode(code.name, ticket, engine)
+        render_shortcode(code, ticket, engine)
     })?;
 
     BLOCK_DELIM.expand(&mut content, |code: Delimited| {
         let code = Shortcode::try_from(code)?;
-        ticket.context.insert("code", &code);
-        render_shortcode(code.name, ticket, engine)
+        render_shortcode(code, ticket, engine)
     })?;
     let _ = std::mem::replace(&mut ticket.content, content);
 
@@ -230,28 +230,29 @@ fn expand_shortcodes(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
 }
 
 /// Checks that a shortcode of the given name exists, and evaluates it if it does.
-fn render_shortcode(name: &str, ticket: &mut RenderTicket, engine: &Engine) -> Result<String> {
-    if !engine.tera.get_template_names().any(|t| t == name) {
+fn render_shortcode(code: Shortcode, ticket: &mut Ticket, engine: &Engine) -> Result<String> {
+    let Some(template) = engine.get_template(code.name) else {
         let err = eyre!(
             "Page {} contains a shortcode invoking template {}, which does not exist.",
             ticket.page.title,
-            name
+            code.name
         )
         .note("This error occurred because a shortcode referenced a template that FTL couldn't find at build time.")
         .suggestion("Double check the shortcode invocation for spelling and path mistakes, and make sure the template is where you think it is.");
 
         bail!(err)
-    }
+    };
+    
+    // Yes, this cloning is inefficient, but if it turns out to be an issue
+    // then we can apply a clever optimization like putting them behind an Arc.
+    let dependency = Dependency::Template(code.name.to_owned());
+    engine.consumer.send((ticket.page.id.clone(), dependency));
 
-    ticket
-        .dependencies
-        .push(Dependency::Template(name.to_owned()));
-
-    Ok(engine.tera.render(name, &ticket.context)?)
+    Ok(template.render(context!(code => code))?)
 }
 
 /// Adds deep links to all Markdown headings (where they are not already present.)
-fn link_anchors(ticket: &mut RenderTicket, engine: &Engine) -> Result<()> {
+fn link_anchors(ticket: &mut Ticket, engine: &Engine) -> Result<()> {
     Parser::new_ext(&ticket.content, Options::all())
         .into_offset_iter();
 

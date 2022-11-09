@@ -5,6 +5,7 @@ use flume::{Sender, Receiver};
 use crate::prelude::*;
 
 /// Light wrapper around a channel pair and event loop combo. 
+#[derive(Debug)]
 pub struct Consumer<T: Send + 'static> {
     /// Handle for the receiving thread.
     handle: JoinHandle<Result<()>>,
@@ -51,11 +52,11 @@ impl<T: Send + 'static> Consumer<T> {
 
     /// Send a message into the consumer's channel.
     /// This method never blocks *unless* the consumer is currently being flushed.
-    pub fn send(&self, msg: T) {
+    pub fn send(&self, msg: impl Into<T>) {
         self.sink
             .read()
             .unwrap()
-            .send(msg)
+            .send(msg.into())
             .expect("Consumer channel should not be closed.")
     }
 

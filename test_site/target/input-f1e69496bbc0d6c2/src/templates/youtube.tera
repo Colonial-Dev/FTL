@@ -1,3 +1,0 @@
-<iframe width="630" height="470"
-src="https://www.youtube.com/embed/{{ code.args.id }}">
-</iframe> 

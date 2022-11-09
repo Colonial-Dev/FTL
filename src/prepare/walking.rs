@@ -15,11 +15,6 @@ use crate::{
     prelude::*,
 };
 
-pub const SITE_SRC_DIRECTORY: &str = "src/";
-pub const SITE_ASSET_DIRECTORY: &str = "assets/";
-pub const SITE_CONTENT_DIRECTORY: &str = "content/";
-pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
-
 /// Walks the site's `/src` directory for all valid content files.
 pub fn walk_src(conn: &mut Connection) -> Result<String> {
     info!("Starting walk...");
@@ -43,9 +38,9 @@ pub fn walk_src(conn: &mut Connection) -> Result<String> {
     // We use a transaction to accelerate database write performance.
     let txn = conn.transaction()?;
 
-    update_input_files(&*txn, &files).context("Failed to update input_files table.")?;
-    let rev_id = init_revision(&*txn, &files)?;
-    update_revision_files(&*txn, &files, &rev_id)
+    update_input_files(&txn, &files).context("Failed to update input_files table.")?;
+    let rev_id = init_revision(&txn, &files)?;
+    update_revision_files(&txn, &files, &rev_id)
         .context("Failed to update revision_files table.")?;
 
     txn.commit()?;
@@ -81,7 +76,8 @@ fn process_entry(entry: Result<DirEntry, walkdir::Error>) -> Result<Option<Input
         contents.drain(..);
     }
 
-    let str_repr = String::from_utf8_lossy(&contents).to_string();
+    let str_repr = String::from_utf8(contents)
+        .context("Encountered an inline file that is not valid UTF-8.")?;
 
     let contents: Option<String> = match str_repr.len() {
         0 => None,
@@ -115,7 +111,7 @@ fn entry_is_inline(entry: &DirEntry) -> bool {
     match entry.path().extension() {
         Some(ext) => matches!(
             ext.to_string_lossy().as_ref(),
-            "md" | "in" | "scss" | "html" | "json" | "tera"
+            "md" | "in" | "html" | "scss" | "json"
         ),
         _ => false,
     }
@@ -144,7 +140,7 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
             let destination = Path::new(&destination);
             if !&destination.exists() {
                 debug!("Caching non-inline file {:#?}", &file.path);
-                std::fs::copy(&file.path, &destination)?;
+                std::fs::copy(&file.path, destination)?;
             }
         }
     }

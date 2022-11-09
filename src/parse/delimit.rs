@@ -135,9 +135,9 @@ impl<'a> Delimiters<'a> {
         source: &mut String,
         mut replacer: impl FnMut(Delimited) -> Result<String>,
     ) -> Result<()> {
-        let targets = self.parse_from(source);
+        let mut targets = self.parse_iter(source).peekable();
 
-        if targets.is_empty() {
+        if targets.peek().is_none() {
             return Ok(());
         }
 

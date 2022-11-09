@@ -20,10 +20,6 @@ pub struct Page {
     pub title: String,
     /// The date associated with this Page in ISO 8601 format, if any.
     pub date: Option<String>,
-    /// The publish date associated with this Page in ISO 8601 format, if any.
-    pub publish_date: Option<String>,
-    /// The expiration date associated with this Page in ISO 8601 format, if any.
-    pub expire_date: Option<String>,
     /// The description associated with this Page, if any.
     pub description: Option<String>,
     /// The summary associated with this Page, if any.
@@ -58,7 +54,7 @@ impl Page {
     /// Serializes a [`RevisionFile`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
     /// Returns a [`DbError::Serde`] if serialization fails.
     pub fn to_params(&self) -> Result<ParameterSlice> {
-        let params = to_params_named(&self)?;
+        let params = to_params_named(self)?;
         Ok(params)
     }
 
@@ -67,8 +63,8 @@ impl Page {
         let mut stmt = conn.prepare(
             "
             INSERT OR IGNORE INTO pages
-            VALUES(:id, :path, :route, :offset, :title, :date, :publish_date, 
-                :expire_date, :description, :summary, :template, :draft, 
+            VALUES(:id, :path, :route, :offset, :title, :date, 
+                :description, :summary, :template, :draft, 
                 :dynamic, :tags, :collections, :aliases);
         ",
         )?;

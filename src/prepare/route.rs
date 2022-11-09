@@ -24,7 +24,7 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
         SELECT input_files.id, path FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND input_files.extension NOT IN ('md', 'sass', 'scss', 'tera')
+        AND input_files.extension NOT IN ('md', 'html', 'in', 'sass', 'scss')
     ",
     )?;
 

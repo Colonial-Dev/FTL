@@ -2,64 +2,92 @@ mod expand;
 mod generate;
 mod rewrite;
 mod stylesheet;
-mod template;
 
 use color_eyre::eyre::Context;
 use rayon::prelude::*;
 use rusqlite::params;
 use serde_rusqlite::from_rows;
-use tera::Tera;
+use minijinja::{Environment, Template};
+use rusqlite::Connection;
 
 use crate::{
     db::{
         data::{Dependency, Page},
-        *,
+        DbPool, PooledConnection,
+        self
     },
     prelude::*,
 };
 
-pub struct RenderTicket {
+#[derive(Debug)]
+pub struct Ticket {
     pub page: Page,
     pub content: String,
-    pub context: tera::Context,
-    pub dependencies: Vec<Dependency>,
 }
 
-impl RenderTicket {
+impl Ticket {
     pub fn new(page: Page, mut source: String) -> Self {
         source.drain(..(page.offset as usize)).for_each(drop);
 
-        let mut context = tera::Context::new();
-        context.insert("page", &page);
-        context.insert("config", Config::global());
-
-        RenderTicket {
+        Ticket {
             content: source,
-            page,
-            context,
-            dependencies: Vec::new(),
+            page
         }
     }
 }
 
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum Message {
+    Ticket(Ticket),
+    Dependency(String, Dependency),
+}
+
+impl From<(String, Dependency)> for Message {
+    fn from(source: (String, Dependency)) -> Self {
+        Self::Dependency(
+            source.0, 
+            source.1
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct Engine<'a> {
     pub rev_id: &'a str,
     pub pool: DbPool,
-    pub tera: Tera,
+    pub consumer: Consumer<Message>,
+    environment: Environment<'a>
 }
 
 impl<'a> Engine<'a> {
     pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<Self> {
-        let pool = make_pool()?;
-        let tera = template::make_engine(conn, rev_id)?;
+        let pool = db::make_pool()?;
+        let consumer = make_consumer(pool.get()?, rev_id);
+        let environment = generate::make_environment(conn, rev_id)?;
 
         let engine = Engine {
             rev_id,
             pool,
-            tera,
+            consumer,
+            environment
         };
 
         Ok(engine)
+    }
+
+    pub fn get_template(&self, name: &str) -> Option<Template> {
+        // get_template is weird in that it returns a Result rather than an Option
+        // to represent whether a template was found - so it's safe to erase the 
+        // Err match here.
+        match self.environment.get_template(name) {
+            Ok(template) => Some(template),
+            Err(_) => None
+        }
+    }
+
+    pub fn finalize(self) -> Result<()> {
+        self.consumer.finalize()
     }
 }
 
@@ -84,53 +112,22 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
     info!("Starting render stage...");
 
     let engine = Engine::build(conn, rev_id)?;
-
-    let mut consumer_conn = engine.pool.get()?;
-    let consumer_rev_id = rev_id.to_owned();
-    let consumer = Consumer::new_manual(move |stream: flume::Receiver<Result<RenderTicket>>| {
-        let conn = consumer_conn.transaction()?;
-
-        let mut insert_hypertext = conn.prepare("
-            INSERT OR IGNORE INTO output
-            VALUES (?1, ?2, 1, ?3)
-        ")?;
-        let mut sanitize = Dependency::prepare_sanitize(&conn)?;
-        let mut insert_dep = Dependency::prepare_insert(&conn)?;
-
-        while let Ok(ticket) = stream.recv() {
-            let mut ticket = ticket?;
-
-            if let Some(template) = ticket.page.template {
-                ticket.dependencies.push(Dependency::Template(template))
-            }
     
-            sanitize(&ticket.page.id)?;
-            for dependency in &ticket.dependencies {
-                insert_dep(&ticket.page.id, dependency)?;
-            }
-            debug!("Hypertext: {}", ticket.content);
-            insert_hypertext.execute(params![ticket.page.id, consumer_rev_id, ticket.content])?;
-        }
-
-        drop(insert_hypertext);
-        drop(sanitize);
-        drop(insert_dep);
-
-        conn.commit()?;
-        Ok(())
-    });
-
     query_tickets(conn, rev_id)?
         .into_par_iter()
-        .map(|mut ticket| {
+        .map(|mut ticket| -> Result<Ticket> {
             expand::expand(&mut ticket, &engine)?;
             generate::generate(&mut ticket, &engine)?;
             rewrite::rewrite(&mut ticket, &engine)?;
             Ok(ticket)
         })
-        .for_each(|x| consumer.send(x));
+        .try_for_each(|ticket| -> Result<()> {
+            let ticket = Message::Ticket(ticket?);
+            engine.consumer.send(ticket);
+            Ok(())
+        })?;
     
-    consumer.finalize()?;
+    engine.finalize()?;
     stylesheet::compile_stylesheet(conn, rev_id)?;
 
     Ok(())
@@ -142,7 +139,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 /// - The page is marked as dynamic in its frontmatter.
 /// - The page's ID is not in the hypertext table (i.e. it's a new or changed page.)
 /// - The page itself is unchanged, but one of its dependencies has.
-fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
+fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<Ticket>> {
     let mut get_pages = conn.prepare(
         "
         WITH page_set AS (
@@ -182,8 +179,10 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
     ",
     )?;
 
-    let pages: Result<Vec<RenderTicket>> = from_rows::<Page>(get_pages.query(params![rev_id])?)
-        .map(|page| -> Result<RenderTicket> {
+    let mut sanitize = Dependency::prepare_sanitize(conn)?;
+
+    let pages: Result<Vec<Ticket>> = from_rows::<Page>(get_pages.query(params![rev_id])?)
+        .map(|page| -> Result<Ticket> {
             let page = page?;
 
             let source: Result<Option<String>> =
@@ -200,11 +199,45 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<RenderTicket>> {
                 "Generated render ticket for page \"{}\" ({}).",
                 page.title, page.id
             );
-            let ticket = RenderTicket::new(page, source);
 
+            sanitize(&page.id)?;
+
+            let ticket = Ticket::new(page, source);
             Ok(ticket)
         })
         .collect();
     
     pages
+}
+
+fn make_consumer(mut conn: PooledConnection, rev_id: &str) -> Consumer<Message> {
+    let rev_id = rev_id.to_owned();
+
+    Consumer::new_manual(move |stream: flume::Receiver<Message>| {
+        let conn = conn.transaction()?;
+
+        let mut insert_hypertext = conn.prepare("
+            INSERT OR IGNORE INTO output
+            VALUES (?1, ?2, 1, ?3)
+        ")?;
+        let mut insert_dep = Dependency::prepare_insert(&conn)?;
+
+        while let Ok(message) = stream.recv() {
+            match message {
+                Message::Ticket(ticket) => {
+                    debug!("Hypertext: {}", ticket.content);
+                    insert_hypertext.execute(params![ticket.page.id, rev_id, ticket.content])?;
+                }
+                Message::Dependency(page_id, dependency) => {
+                    insert_dep(&page_id, &dependency)?;
+                }
+            }
+        }
+
+        drop(insert_hypertext);
+        drop(insert_dep);
+        conn.commit()?;
+
+        Ok(())
+    })
 }

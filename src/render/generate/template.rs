@@ -1,21 +1,87 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rusqlite::{params, Connection};
+use serde_rusqlite::from_rows;
+use minijinja::{Source, Environment};
 
-use super::Row;
 use crate::{db, prelude::*};
+
+#[derive(serde::Deserialize, Debug)]
+struct Row {
+    pub id: String,
+    pub path: String,
+    pub contents: String,
+}
+
+/// Create a standard [`minijinja::Environment`] instance, and register all known globals, filters, functions, tests and templates with it.
+pub fn make_environment(conn: &mut Connection, rev_id: &str) -> Result<Environment<'static>> {
+    let mut environment = Environment::new();
+    let templates = load_templates(conn, rev_id)?;
+    
+    environment.set_source(load_templates(conn, rev_id)?);
+    // register_filters(&mut tera);
+    // register_functions(&mut tera);
+    // register_tests(&mut tera);
+
+    Ok(environment)
+}
+
+fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
+    let rows = query_templates(conn, rev_id)?;
+    let mut source = Source::new();
+    
+    rows
+        .iter()
+        .map(|row| {
+            (
+                row.path
+                    .trim_start_matches(SITE_SRC_DIRECTORY)
+                    .trim_start_matches(SITE_TEMPLATE_DIRECTORY)
+                    .trim_end_matches(".html"),
+                row.contents.as_str(),
+            )
+        })
+        .try_for_each(|(name, contents)| -> Result<()> {
+            source.add_template(name, contents)?;
+            Ok(())
+        })?;
+
+    compute_ids(rows.as_slice(), conn, rev_id)
+        .wrap_err("Failed to compute template dependency IDs.")?;
+
+    Ok(source)
+}
+
+/// Queries the database for the `id`, `path` and `contents` tables of all templates in the specified revision,
+/// then packages the results into a [`Result<Vec<Row>>`].
+fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
+    let mut stmt = conn.prepare(
+        "
+        SELECT input_files.id, path, contents FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+        AND input_files.extension = 'html'
+        AND input_files.contents NOT NULL;
+    ",
+    )?;
+
+    let rows: Result<Vec<Row>> = from_rows::<Row>(stmt.query(params![&rev_id])?)
+        .map(|x| x.wrap_err("SQLite deserialization error!"))
+        .collect();
+
+    rows
+}
 
 // Example input: {% include "included.html" %}
 // The first capture: included.html
-static TERA_INCLUDE_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% include "(.*?)"(?: ignore missing |\s)%\}"#).unwrap() );
+static MJ_INCLUDE_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% include "(.*?)"(?: ignore missing |\s)%\}"#).unwrap() );
 // Example input: {% import "macros.html" as macros %}
 // The first capture: macros.html
-static TERA_IMPORT_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap() );
+static MJ_IMPORT_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap() );
 // Example input: {% extends "base.html" %}
 // The first capture: base.html
-static TERA_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap() );
+static MJ_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap() );
 
-// TODO: Could this be parallelized, at least in part?
 /// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.
 ///
 /// The procedure goes roughly like this:
@@ -24,9 +90,9 @@ static TERA_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends
 /// - Match the contents of each template against a set of regular expressions to extract its immediate dependencies.
 /// - Insert each template's direct dependencies into another table, where one column is the dependents's ID and the other is the dependency's ID.
 /// - Using a recursive Common Table Expression, map out each template's dependency set (deduplicated using `UNION` and sorted by `id ASC`.)
-/// - Fold the results of each recursive CTE query into a hasher, and insert the resulting hash into the on-disk templates table.
+/// - Insert the results into the on-disk templates table, which maps each templates name to many dependency IDs.
 /// - Detach the in-memory database, deallocating its contents.
-pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -> Result<()> {
+fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -> Result<()> {
     // Attach and setup a new in-memory database for mapping dependency relations.
     let txn = conn.transaction()?;
     db::attach_mapping_database(&txn)?;
@@ -83,7 +149,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
             .path
             .trim_start_matches(SITE_SRC_DIRECTORY)
             .trim_start_matches(SITE_TEMPLATE_DIRECTORY)
-            .trim_end_matches(".tera");
+            .trim_end_matches(".html");
 
         insert_template.execute(params![trimmed_path, row.id])?;
     }
@@ -97,7 +163,9 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
         }
     }
 
-    // For each row in the templates slice,
+    // For each row in the templates slice, recurse (in SQL)
+    // over its transitive dependencies and insert them into the
+    // on-disk templates table.
     for row in templates {
         query_set.execute(params![&row.id])?;
     }
@@ -114,7 +182,7 @@ pub fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &st
     Ok(())
 }
 
-/// Parse the contents of the given [`Row`] for its direct dependencies using the `TERA_INCLUDE_*` regular expressions.
+/// Parse the contents of the given [`Row`] for its direct dependencies using the `MJ_INCLUDE_*` regular expressions.
 fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
     let mut dependencies: Vec<&str> = Vec::new();
 
@@ -127,9 +195,9 @@ fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
             .for_each(drop)
     };
 
-    capture(&TERA_INCLUDE_REGEXP);
-    capture(&TERA_IMPORT_REGEXP);
-    capture(&TERA_EXTENDS_REGEXP);
+    capture(&MJ_INCLUDE_REGEXP);
+    capture(&MJ_IMPORT_REGEXP);
+    capture(&MJ_EXTENDS_REGEXP);
 
     dependencies.sort_unstable();
     dependencies.dedup();
