@@ -4,7 +4,7 @@ date = 2022-09-14T15:00:00-05:00
 summary = "Generating arbitrary hypertext with just 1700 lines of code!"
 tags = ["test"]
 aliases = ["/foo/example", "/bar/example"]
-template = "post"
+template = "post.html"
 +++
 
 ### Hello there! This is an example page output by FTL!
@@ -43,7 +43,7 @@ path = "include.in"
 ```
 
 And this one was extracted from a different file using regular expressions:
-```
+```rs
 +++
 path = "code.in"
 start_at = "fn main"

@@ -59,9 +59,9 @@ fn lazy_load(ticket: &mut Ticket) -> Result<()> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(ticket.content.as_bytes())?;
+        rewriter.write(ticket.source.as_bytes())?;
     }
-    ticket.content = String::from_utf8(output)?;
+    ticket.source = String::from_utf8(output)?;
     Ok(())
 }
 
@@ -105,8 +105,8 @@ fn link_targets(ticket: &mut Ticket) -> Result<()> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(ticket.content.as_bytes())?;
+        rewriter.write(ticket.source.as_bytes())?;
     }
-    ticket.content = String::from_utf8(output)?;
+    ticket.source = String::from_utf8(output)?;
     Ok(())
 }

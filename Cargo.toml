@@ -32,12 +32,13 @@ r2d2_sqlite = "0.21"
 r2d2 = "0.8.10"
 # Serde cinematic universe
 serde = { version = "1.0", features = ["derive"] }
+serde-aux = "4.1.0"
 serde_json = "1"
 serde_repr = "0.1"
 serde_rusqlite = "0.31"
 # Rendering/parsing
 pulldown-cmark = { version = "0.9.2", default-features = false, features = ["simd"] }
-minijinja = { version = "0.25.0", features = ["source", "speedups"] }
+minijinja = { version = "0.26.0", features = ["source", "speedups"] }
 regex = "1.6"
 toml = "0.5"
 gh-emoji = "1.0.7"

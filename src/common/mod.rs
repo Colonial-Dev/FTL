@@ -32,3 +32,24 @@ pub static THREADS: Lazy<u8> = Lazy::new(|| {
         },
     }
 });
+
+#[derive(Debug)]
+pub struct SizedReport(pub Report);
+
+impl std::fmt::Display for SizedReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+impl From<Report> for SizedReport {
+    fn from(report: Report) -> Self {
+        Self(report)
+    }
+}
+
+impl std::error::Error for SizedReport {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}

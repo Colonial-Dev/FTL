@@ -1,7 +1,9 @@
-mod expand;
+// mod expand;
 mod generate;
 mod rewrite;
 mod stylesheet;
+
+use std::sync::Arc;
 
 use color_eyre::eyre::Context;
 use rayon::prelude::*;
@@ -19,27 +21,12 @@ use crate::{
     prelude::*,
 };
 
-#[derive(Debug)]
-pub struct Ticket {
-    pub page: Page,
-    pub content: String,
-}
-
-impl Ticket {
-    pub fn new(page: Page, mut source: String) -> Self {
-        source.drain(..(page.offset as usize)).for_each(drop);
-
-        Ticket {
-            content: source,
-            page
-        }
-    }
-}
+use self::generate::{DatabaseBridge, Ticket};
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum Message {
-    Ticket(Ticket),
+    Ticket(String, Arc<Ticket>),
     Dependency(String, Dependency),
 }
 
@@ -54,22 +41,19 @@ impl From<(String, Dependency)> for Message {
 
 #[derive(Debug)]
 pub struct Engine<'a> {
-    pub rev_id: &'a str,
-    pub pool: DbPool,
-    pub consumer: Consumer<Message>,
-    environment: Environment<'a>
+    pub bridge: Arc<DatabaseBridge>,
+    pub environment: Environment<'a>
 }
 
 impl<'a> Engine<'a> {
     pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<Self> {
         let pool = db::make_pool()?;
         let consumer = make_consumer(pool.get()?, rev_id);
-        let environment = generate::make_environment(conn, rev_id)?;
+        let bridge = DatabaseBridge::build(rev_id, consumer)?;
+        let environment = generate::make_environment(conn, &bridge)?;
 
         let engine = Engine {
-            rev_id,
-            pool,
-            consumer,
+            bridge,
             environment
         };
 
@@ -86,9 +70,14 @@ impl<'a> Engine<'a> {
         }
     }
 
-    pub fn finalize(self) -> Result<()> {
-        self.consumer.finalize()
+    pub fn send(&self, msg: impl Into<Message>) {
+        self.bridge.consumer.send(msg)
     }
+
+    pub fn finalize(self) -> Result<()> {
+        Ok(())
+    }
+
 }
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
@@ -113,17 +102,51 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     let engine = Engine::build(conn, rev_id)?;
     
+    // TODO:
+    // - Move file inclusion into MiniJinja via shortcodes.
+    // - Figure out good SQLite connection pool size.
+    // - Fold source expansion / markdown rendering into MiniJinja.
+
     query_tickets(conn, rev_id)?
         .into_par_iter()
-        .map(|mut ticket| -> Result<Ticket> {
-            expand::expand(&mut ticket, &engine)?;
-            generate::generate(&mut ticket, &engine)?;
-            rewrite::rewrite(&mut ticket, &engine)?;
-            Ok(ticket)
+        .map(|mut ticket| -> Result<(String, Arc<Ticket>)> {
+            let ticket = Arc::new(ticket);
+            // expand::expand(&mut ticket, &engine)?;
+            // generate::generate(&mut ticket, &engine)?;
+            // rewrite::rewrite(&mut ticket, &engine)?;
+
+            let mut buffer = ticket.source.clone();
+            let Some(name) = &ticket.page.template else {
+                warn!(
+                    "Tried to evaluate template for page {} (\"{}\"), but none was specified.",
+                    ticket.page.id,
+                    ticket.page.title
+                );
+        
+                // This isn't *technically* an error, so we just silently yield.
+                return Ok((buffer, ticket))
+            };
+        
+            let Some(template) = engine.get_template(name) else {
+                let error = eyre!(
+                    "Tried to resolve a nonexistent template (\"{}\").",
+                    name,
+                )
+                .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
+                .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
+                bail!(error)
+            };
+            
+            let page = minijinja::value::Value::from_object(Arc::clone(&ticket));
+            buffer = template.render(minijinja::context!(page => page))
+                .wrap_err("Minijinja encountered an error when rendering a template.")?;
+
+            Ok((buffer, ticket))
         })
         .try_for_each(|ticket| -> Result<()> {
-            let ticket = Message::Ticket(ticket?);
-            engine.consumer.send(ticket);
+            let ticket = ticket?;
+            let ticket = Message::Ticket(ticket.0, ticket.1);
+            engine.send(ticket);
             Ok(())
         })?;
     
@@ -224,9 +247,9 @@ fn make_consumer(mut conn: PooledConnection, rev_id: &str) -> Consumer<Message> 
 
         while let Ok(message) = stream.recv() {
             match message {
-                Message::Ticket(ticket) => {
-                    debug!("Hypertext: {}", ticket.content);
-                    insert_hypertext.execute(params![ticket.page.id, rev_id, ticket.content])?;
+                Message::Ticket(output, ticket) => {
+                    debug!("Hypertext: {}", output);
+                    insert_hypertext.execute(params![ticket.page.id, rev_id, output])?;
                 }
                 Message::Dependency(page_id, dependency) => {
                     insert_dep(&page_id, &dependency)?;

@@ -44,7 +44,7 @@ pub fn make_pool() -> Result<DbPool> {
         .with_init(set_pragmas);
 
     let pool = r2d2::Pool::builder()
-        .max_size(*THREADS as u32)
+        .max_size(*THREADS as u32 * 2)
         .build(manager)?;
 
     Ok(pool)
