@@ -6,7 +6,7 @@ use minijinja::{
 };
 use serde_rusqlite::from_rows;
 
-use super::{Engine, TResult};
+use super::{Bridge, TResult};
 
 const MUTATING_STATEMENTS: &[&str] = &[
     "ALTER",
@@ -30,7 +30,7 @@ const MUTATING_STATEMENTS: &[&str] = &[
 type QueryOutput = Vec<Value>;
 type QueryParams = rusqlite::ParamsFromIter<Vec<Box<dyn rusqlite::ToSql>>>;
 
-impl Engine {
+impl Bridge {
     /// Performs invariant checks on the provided SQL and parameters, and queries them against
     /// the database if they pass.
     ///

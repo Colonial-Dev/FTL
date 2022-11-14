@@ -6,8 +6,7 @@ mod template;
 use std::sync::Arc;
 
 use color_eyre::eyre::Context;
-use minijinja::{Environment, Template};
-use once_cell::sync::OnceCell;
+use minijinja::Environment;
 use rayon::prelude::*;
 use rusqlite::{params, Connection};
 use serde_rusqlite::from_rows;
@@ -19,7 +18,7 @@ use crate::{
         data::{Dependency, Page},
         DbPool, PooledConnection,
     },
-    prelude::*,
+    prelude::*, render::rewrite::rewrite,
 };
 
 #[derive(Debug)]
@@ -36,43 +35,22 @@ impl From<(String, Dependency)> for Message {
 }
 
 #[derive(Debug)]
-pub struct Engine {
+pub struct Bridge {
     pub pool: DbPool,
     pub rev_id: String,
-    pub consumer: Consumer<Message>,
-    pub environment: OnceCell<Environment<'static>>,
+    pub consumer: Consumer<Message>
 }
 
-impl Engine {
-    pub fn build(conn: &mut Connection, rev_id: &str) -> Result<Arc<Self>> {
-        let pool = db::make_pool()?;
-        let consumer = make_consumer(pool.get()?, rev_id);
-        let arc = Arc::new(Self {
+impl Bridge {
+    pub fn build(rev_id: &str) -> Arc<Self> {
+        let pool = db::make_pool_sync().expect("Could not initialize pool.");
+        let consumer_conn = pool.get().expect("Could not retrieve consumer connection.");
+        let consumer = make_consumer(consumer_conn, rev_id);
+        Arc::new(Self {
             pool,
             rev_id: rev_id.to_owned(),
-            consumer,
-            environment: OnceCell::new(),
-        });
-
-        arc.environment
-            .set(template::make_environment(conn, &arc)?)
-            .unwrap();
-
-        Ok(arc)
-    }
-
-    pub fn env(&self) -> &Environment {
-        self.environment.get().unwrap()
-    }
-
-    pub fn get_template(&self, name: &str) -> Option<Template> {
-        // get_template is weird in that it returns a Result rather than an Option
-        // to represent whether a template was found - so it's safe to erase the
-        // Err match here.
-        match self.env().get_template(name) {
-            Ok(template) => Some(template),
-            Err(_) => None,
-        }
+            consumer
+        })
     }
 
     pub fn send(&self, msg: impl Into<Message>) {
@@ -80,82 +58,108 @@ impl Engine {
     }
 }
 
+#[derive(Debug)]
+pub struct Engine {
+    pub bridge: Arc<Bridge>,
+    pub environment: Environment<'static>,
+}
+
+impl Engine {
+    pub fn build(conn: &mut Connection, rev_id: &str) -> Result<Arc<Self>> {
+        let bridge = Bridge::build(rev_id);
+        let environment = template::make_environment(conn, &bridge)?;
+        let arc = Arc::new(Self {
+            bridge,
+            environment
+        });
+
+        Ok(arc)
+    }
+
+    pub fn eval_page_template(&self, ticket: &Arc<Ticket>) -> Result<String> {
+        let name = match &ticket.page.template {
+            Some(name) => name,
+            None => template::FTL_BUILTIN_NAME
+        };
+
+        let Ok(template) = self.environment.get_template(name) else {
+            let error = eyre!(
+                "Tried to resolve a nonexistent template (\"{}\").",
+                name,
+            )
+            .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
+            .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
+            bail!(error)
+        };
+
+        let page = minijinja::value::Value::from_object(Arc::clone(ticket));
+
+        let buffer = template.render(minijinja::context!(page => page))
+            .wrap_err("Minijinja encountered an error when rendering a template.")?;
+
+        Ok(buffer)
+    } 
+}
+
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
-/// Rendering is composed of three distinct stages:
-/// 1. Source expansion.
-/// 2. Hypertext generation.
-/// 3. Hypertext rewriting.
+/// Page rendering happens in two distinct stages: template evaluation and rewriting.
 ///
-/// During *source expansion*, each page's Markdown source is parsed for certain structures like
-/// code blocks, shortcodes and emoji tags. These are then evaluated accordingly, with the
-/// result replacing the original structure in the text.
-///
-/// *Hypertext generation* is actually broken down into two sub-steps.
-/// - First, the page's expanded Markdown source is rendered into full HTML.
-/// (A few other syntax expansions, such as `@`-preceded internal links, are also handled here.)
-/// - Second, the generated hypertext is evaluated against the page's specified template, if any.
-///
-/// Finally, *hypertext rewriting* consists of applying various transformations to a page's HTML, such as
-/// cachebusting images or setting external links to open in a new tab.
+/// During template evaluation, each page is evaluated against its specified [`minijinja`] template
+/// (or the basic FTL-provided template, if one wasn't specified.) This is where the majority of rendering takes place;
+/// FTL exposes a `render` filter within the engine that does several passes over the page's source, performing operations
+/// like syntax highlighting before feeding it into [`pulldown_cmark`] to get the final output value.
+/// 
+/// Rewriting takes place after template evaluation; the [`lol_html`] crate is used to post-process the generated
+/// HTML, taking care of tasks like redirecting external links to new tabs and setting media to load lazily.
+/// 
+/// Once rendering is complete, the final output is dispatched to a [`Consumer`] for writing to the database.
+/// 
+/// Stylesheet compilation is performed once page rendering is complete.
 pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
     info!("Starting render stage...");
 
     let engine = Engine::build(conn, rev_id)?;
 
-    // TODO:
-    // - Move file inclusion into MiniJinja via shortcodes.
-    // - Figure out good SQLite connection pool size.
-    // - Fold source expansion / markdown rendering into MiniJinja.
-
     query_tickets(conn, rev_id)?
         .into_par_iter()
+        .map(Arc::new)
         .map(|ticket| -> Result<Arc<Ticket>> {
-            let ticket = Arc::new(ticket);
+            let rendered = engine.eval_page_template(&ticket)?; 
 
-            let Some(name) = &ticket.page.template else {
-                warn!(
-                    "Tried to evaluate template for page {} (\"{}\"), but none was specified.",
-                    ticket.page.id,
-                    ticket.page.title
-                );
-        
-                // This isn't *technically* an error, so we just silently yield.
-                return Ok(ticket)
-            };
-        
-            let Some(template) = engine.get_template(name) else {
-                let error = eyre!(
-                    "Tried to resolve a nonexistent template (\"{}\").",
-                    name,
-                )
-                .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
-                .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
-                bail!(error)
-            };
-            
-            let page = minijinja::value::Value::from_object(Arc::clone(&ticket));
-
-            let buffer = template.render(minijinja::context!(page => page))
-                .wrap_err("Minijinja encountered an error when rendering a template.")?;
-
-            let mut source = ticket
+            *ticket
                 .source
                 .write()
-                .unwrap();
-            
-            *source = buffer;
-            drop(source);
+                .unwrap() = rendered;
 
+            Ok(ticket)
+        })
+        .map(|ticket| -> Result<Arc<Ticket>> {
+            let ticket = ticket?;
+            let rewritten = rewrite(&ticket, &engine)?;
+            *ticket
+                .source
+                .write()
+                .unwrap() = rewritten;
+            
             Ok(ticket)
         })
         .try_for_each(|ticket| -> Result<()> {
             let ticket = Message::Ticket(ticket?);
-            engine.send(ticket);
+            engine.bridge.send(ticket);
             Ok(())
         })?;
+    
+    let bridge = Arc::clone(&engine.bridge);
+    drop(engine);
+
+    Arc::try_unwrap(bridge)
+        .expect("Lingering reference to bridge Arc!")
+        .consumer
+        .finalize()?;
 
     stylesheet::compile_stylesheet(conn, rev_id)?;
-
+    
+    info!("Render stage complete.");
     Ok(())
 }
 
@@ -258,6 +262,7 @@ fn make_consumer(mut conn: PooledConnection, rev_id: &str) -> Consumer<Message> 
                     insert_hypertext.execute(params![ticket.page.id, rev_id, &*output])?;
                 }
                 Message::Dependency(page_id, dependency) => {
+                    debug!("Dependency: {page_id} : {dependency:?}");
                     insert_dep(&page_id, &dependency)?;
                 }
             }

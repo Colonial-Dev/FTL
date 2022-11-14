@@ -1,6 +1,6 @@
 mod loading;
 mod querying;
-mod rendering;
+mod pipelining;
 
 use std::sync::{Arc, RwLock};
 
@@ -12,8 +12,10 @@ use minijinja::{
 use rusqlite::Connection;
 use serde_aux::serde_introspection::serde_introspect;
 
-use super::Engine;
+use super::Bridge;
 use crate::{db::data::Page, prelude::*};
+
+pub use loading::FTL_BUILTIN_NAME;
 
 type TResult<T> = Result<T, minijinja::Error>;
 
@@ -55,7 +57,7 @@ impl Object for Ticket {
 /// Create a standard [`minijinja::Environment`] instance, and register all known globals, filters, functions, tests and templates with it.
 pub fn make_environment(
     conn: &mut Connection,
-    bridge_arc: &Arc<Engine>,
+    bridge_arc: &Arc<Bridge>,
 ) -> Result<Environment<'static>> {
     let mut environment = Environment::new();
     environment.set_source(load_templates(conn, &bridge_arc.rev_id)?);
@@ -64,7 +66,7 @@ pub fn make_environment(
     Ok(environment)
 }
 
-fn register_routines(environment: &mut Environment, bridge_arc: &Arc<Engine>) -> Result<()> {
+fn register_routines(environment: &mut Environment, bridge_arc: &Arc<Bridge>) -> Result<()> {
     let bridge = Arc::clone(bridge_arc);
     let query_fn = move |sql: String, params: Option<Value>| -> TResult<Value> {
         let query_result = bridge.query(sql, params)?;
@@ -77,7 +79,7 @@ fn register_routines(environment: &mut Environment, bridge_arc: &Arc<Engine>) ->
         Ok(Value::from_serializable(&query_result))
     };
 
-    let renderer = rendering::prepare_renderer(bridge_arc)?;
+    let renderer = pipelining::prepare_pipeline(bridge_arc)?;
     let render_filter = move |state: &State, ticket: Value| -> TResult<Value> {
         let Some(ticket) = ticket.downcast_object_ref::<Arc<Ticket>>() else {
             return Err(minijinja::Error::new(

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData, ops::Range};
+use std::{marker::PhantomData, ops::Range};
 
 use once_cell::sync::Lazy;
 use regex::{Match, Regex};
@@ -108,12 +108,14 @@ impl<'a> Delimiters<'a> {
     ///
     /// Note that this parsing is infallible, and should always produce well-formed
     /// results *given that* the parsing regular expression is itself well-formed.
+    #[allow(dead_code)]
     pub fn parse_from(&self, source: &'a str) -> Vec<Delimited> {
         self.parse_iter(source).collect()
     }
 
     /// Parses the provided input into instances of [`T`] by first parsing it into
     /// instances of [`Delimited`], then fallibly converting to [`T`].
+    #[allow(dead_code)]
     pub fn parse_into<T>(&self, source: &'a str) -> Result<Vec<T>>
     where
         T: TryFrom<Delimited<'a>, Error = Report>,
@@ -159,34 +161,6 @@ impl<'a> Delimiters<'a> {
         source.shrink_to_fit();
 
         Ok(())
-    }
-
-    pub fn expand_cow(
-        &self,
-        source: Cow<'a, str>,
-        mut replacer: impl FnMut(Delimited) -> Result<String>,
-    ) -> Result<Cow<'a, str>> {
-        let mut targets = self.parse_iter(&source).peekable();
-
-        if targets.peek().is_none() {
-            drop(targets);
-            return Ok(source);
-        }
-
-        let mut buffer = String::with_capacity(source.len());
-        let mut last_match = 0;
-        for target in targets {
-            let range = target.range();
-            let replacement = replacer(target)?;
-
-            buffer.push_str(&source[last_match..range.start]);
-            buffer.push_str(&replacement);
-
-            last_match = range.end;
-        }
-        buffer.push_str(&source[last_match..]);
-        buffer.shrink_to_fit();
-        Ok(Cow::Owned(buffer))
     }
 
     fn parse_inline(&self, m: Match<'a>) -> Delimited<'a> {

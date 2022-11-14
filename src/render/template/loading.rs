@@ -6,6 +6,9 @@ use serde_rusqlite::from_rows;
 
 use crate::{db, prelude::*};
 
+pub const FTL_BUILTIN_NAME: &str = "FTL_BUILTIN.html";
+const FTL_BUILTIN_CONTENT: &str = "{{ page | render }}";
+
 pub fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
     let rows = query_templates(conn, rev_id)?;
     let mut source = Source::new();
@@ -25,7 +28,10 @@ pub fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
         })?;
 
     compute_ids(rows.as_slice(), conn).wrap_err("Failed to compute template dependency IDs.")?;
-
+    
+    source.add_template(FTL_BUILTIN_NAME, FTL_BUILTIN_CONTENT)
+        .expect("FTL builtin template is invalid!");
+    
     Ok(source)
 }
 
@@ -59,19 +65,19 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
 // Example input: {% include "included.html" %}
 // The first capture: included.html
 static MJ_INCLUDE_REGEXP: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\{% include "(.*?)".* %\}"#).unwrap());
+    Lazy::new(|| Regex::new(r#"\{%\s?include "(.*?)".*\s?%\}"#).unwrap());
 // Example input: {% import "macros.html" as macros %}
 // The first capture: macros.html
 static MJ_FULL_IMPORT_REGEXP: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap());
+    Lazy::new(|| Regex::new(r#"\{%\s?import "(.*?)" as .*\s?%\}"#).unwrap());
 // Example input: {% from "macros.html" import macro_a, macro_b %}
 // The first capture: macros.html
 static MJ_SELECTIVE_IMPORT_REGEXP: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\{% from "(.*?)" import .* %\}"#).unwrap());
+    Lazy::new(|| Regex::new(r#"\{%\s?from "(.*?)" import .*\s?%\}"#).unwrap());
 // Example input: {% extends "base.html" %}
 // The first capture: base.html
 static MJ_EXTENDS_REGEXP: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap());
+    Lazy::new(|| Regex::new(r#"\{%\s?extends "(.*?)"\s?%\}"#).unwrap());
 
 /// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.
 ///
@@ -199,6 +205,68 @@ fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
 #[cfg(test)]
 mod dependency_resolution {
     use super::*;
+
+    fn get_capture<'a>(regexp: &Regex, haystack: &'a str) -> Option<&'a str> {
+        regexp
+            .captures_iter(haystack)
+            .filter_map(|cap| cap.get(1))
+            .map(|found| found.as_str())
+            .next()
+    }
+
+    // Minijinja does not consider spacing when parsing delimiters, so we need to check that our
+    // regexes treat them the same way.
+    #[test]
+    fn include_regexp() {
+        let double_spaced = get_capture(&MJ_INCLUDE_REGEXP, "{% include \"test.html\" %}");
+        let left_spaced = get_capture(&MJ_INCLUDE_REGEXP, "{% include \"test.html\"%}");
+        let right_spaced = get_capture(&MJ_INCLUDE_REGEXP, "{%include \"test.html\" %}");
+        let no_spaced = get_capture(&MJ_INCLUDE_REGEXP, "{%include \"test.html\"%}");
+
+        assert_eq!(double_spaced, Some("test.html"));
+        assert_eq!(left_spaced, Some("test.html"));
+        assert_eq!(right_spaced, Some("test.html"));
+        assert_eq!(no_spaced, Some("test.html"));
+    }
+
+    #[test]
+    fn full_import_regexp() {
+        let double_spaced = get_capture(&MJ_FULL_IMPORT_REGEXP, "{% import \"test.html\" as test %}");
+        let left_spaced = get_capture(&MJ_FULL_IMPORT_REGEXP, "{% import \"test.html\" as test%}");
+        let right_spaced = get_capture(&MJ_FULL_IMPORT_REGEXP, "{%import \"test.html\" as test %}");
+        let no_spaced = get_capture(&MJ_FULL_IMPORT_REGEXP, "{%import \"test.html\" as test%}");
+
+        assert_eq!(double_spaced, Some("test.html"));
+        assert_eq!(left_spaced, Some("test.html"));
+        assert_eq!(right_spaced, Some("test.html"));
+        assert_eq!(no_spaced, Some("test.html"));
+    }
+
+    #[test]
+    fn selective_import_regexp() {
+        let double_spaced = get_capture(&MJ_SELECTIVE_IMPORT_REGEXP, "{% from \"test.html\" import macro %}");
+        let left_spaced = get_capture(&MJ_SELECTIVE_IMPORT_REGEXP, "{% from \"test.html\" import macro%}");
+        let right_spaced = get_capture(&MJ_SELECTIVE_IMPORT_REGEXP, "{%from \"test.html\" import macro %}");
+        let no_spaced = get_capture(&MJ_SELECTIVE_IMPORT_REGEXP, "{%from \"test.html\" import macro%}");
+
+        assert_eq!(double_spaced, Some("test.html"));
+        assert_eq!(left_spaced, Some("test.html"));
+        assert_eq!(right_spaced, Some("test.html"));
+        assert_eq!(no_spaced, Some("test.html"));
+    }
+
+    #[test]
+    fn extends_regexp() {
+        let double_spaced = get_capture(&MJ_EXTENDS_REGEXP, "{% extends \"test.html\" %}");
+        let left_spaced = get_capture(&MJ_EXTENDS_REGEXP, "{% extends \"test.html\"%}");
+        let right_spaced = get_capture(&MJ_EXTENDS_REGEXP, "{%extends \"test.html\" %}");
+        let no_spaced = get_capture(&MJ_EXTENDS_REGEXP, "{%extends \"test.html\"%}");
+
+        assert_eq!(double_spaced, Some("test.html"));
+        assert_eq!(left_spaced, Some("test.html"));
+        assert_eq!(right_spaced, Some("test.html"));
+        assert_eq!(no_spaced, Some("test.html"));
+    }
 
     #[derive(serde::Deserialize, Debug)]
     struct Template {

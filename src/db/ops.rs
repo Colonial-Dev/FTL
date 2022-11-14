@@ -38,11 +38,27 @@ pub fn make_connection() -> Result<Connection> {
 }
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
-pub fn make_pool() -> Result<DbPool> {
+/// This version of `make_pool` is intended for use in sync contexts; the pool size
+/// will be equal to [`THREADS`]`* 2`.
+pub fn make_pool_sync() -> Result<DbPool> {
     let manager = SqliteConnectionManager::file(DB_PATH).with_init(set_pragmas);
 
     let pool = r2d2::Pool::builder()
         .max_size(*THREADS as u32 * 2)
+        .build(manager)?;
+
+    Ok(pool)
+}
+
+/// Attempt to create a connection pool for an SQLite database at the given path.
+/// This version of `make_pool` is intended for use in async contexts; the pool size
+/// will be equal to either [`THREADS`]`* 64` or 512, whichever is larger.
+pub fn make_pool_async() -> Result<DbPool> {
+    let manager = SqliteConnectionManager::file(DB_PATH).with_init(set_pragmas);
+    let pool_size = std::cmp::max(*THREADS as u32 * 64, 512);
+    
+    let pool = r2d2::Pool::builder()
+        .max_size(pool_size)
         .build(manager)?;
 
     Ok(pool)

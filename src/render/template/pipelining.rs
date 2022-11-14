@@ -8,7 +8,7 @@ use syntect::{
     parsing::SyntaxSet,
 };
 
-use super::{Engine, Ticket};
+use super::{Bridge, Ticket};
 use crate::{
     db::data::{Dependency, Page},
     parse::{delimit::*, shortcode::Shortcode},
@@ -17,8 +17,8 @@ use crate::{
 
 type ExpansionFn = Box<dyn Fn(&State, &mut String, &Page) -> Result<()> + Send + Sync>;
 
-pub fn prepare_renderer(
-    bridge_arc: &Arc<Engine>,
+pub fn prepare_pipeline(
+    bridge_arc: &Arc<Bridge>,
 ) -> Result<impl Fn(&State, &Ticket) -> Result<String>> {
     let mut expansions: Vec<ExpansionFn> = Vec::new();
 
@@ -131,7 +131,7 @@ fn eval_shortcode(
     code: Shortcode,
     state: &State,
     page: &Page,
-    bridge: &Arc<Engine>,
+    bridge: &Arc<Bridge>,
 ) -> Result<String> {
     let name = String::from(code.name);
     let name = name + ".html";

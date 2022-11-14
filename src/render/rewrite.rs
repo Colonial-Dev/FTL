@@ -1,17 +1,26 @@
-use lol_html::{element, ElementContentHandlers, HtmlRewriter, Settings};
+use std::sync::Arc;
+
+use lol_html::{element, HtmlRewriter, Settings};
 
 use super::{Engine, Ticket};
 use crate::prelude::*;
 
-pub fn rewrite(ticket: &mut Ticket, engine: &Engine) -> Result<()> {
-    lazy_load(ticket)?;
-    link_targets(ticket)?;
-    Ok(())
+pub fn rewrite(ticket: &Arc<Ticket>, _engine: &Engine) -> Result<String> {
+    let mut buffer = ticket
+        .source
+        .read()
+        .unwrap()
+        .to_owned();
+    
+    lazy_load(&mut buffer)?;
+    link_targets(&mut buffer)?;
+
+    Ok(buffer)
 }
 
 /// Rewrites the `loading` attribute of all `<img>` and `<video>` tags to be `lazy`.
-fn lazy_load(ticket: &mut Ticket) -> Result<()> {
-    /*let mut output = vec![];
+fn lazy_load(source: &mut String) -> Result<()> {
+    let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
             Settings {
@@ -30,9 +39,9 @@ fn lazy_load(ticket: &mut Ticket) -> Result<()> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(ticket.source.as_bytes())?;
+        rewriter.write(source.as_bytes())?;
     }
-    ticket.source = String::from_utf8(output)?;*/
+    *source = String::from_utf8(output)?;
     Ok(())
 }
 
@@ -44,8 +53,8 @@ const NO_REFERRER: &str = "noreferrer";
 /// - If `external_links_new_tab` is true, then `rel="noopener"` and `target="_blank"`.
 /// - If `external_links_no_follow` is true, then `rel="nofollow"`.
 /// - If `external_links_no_referrer` is true, then `rel="noreferrer"`.
-fn link_targets(ticket: &mut Ticket) -> Result<()> {
-    /*let config = Config::global();
+fn link_targets(source: &mut String) -> Result<()> {
+    let config = Config::global();
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -76,8 +85,8 @@ fn link_targets(ticket: &mut Ticket) -> Result<()> {
             },
             |c: &[u8]| output.extend_from_slice(c),
         );
-        rewriter.write(ticket.source.as_bytes())?;
+        rewriter.write(source.as_bytes())?;
     }
-    ticket.source = String::from_utf8(output)?;*/
+    *source = String::from_utf8(output)?;
     Ok(())
 }
