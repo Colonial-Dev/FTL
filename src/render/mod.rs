@@ -1,83 +1,83 @@
 // mod expand;
-mod generate;
 mod rewrite;
 mod stylesheet;
+mod template;
 
 use std::sync::Arc;
 
 use color_eyre::eyre::Context;
-use rayon::prelude::*;
-use rusqlite::params;
-use serde_rusqlite::from_rows;
 use minijinja::{Environment, Template};
-use rusqlite::Connection;
+use once_cell::sync::OnceCell;
+use rayon::prelude::*;
+use rusqlite::{params, Connection};
+use serde_rusqlite::from_rows;
 
+use self::template::Ticket;
 use crate::{
     db::{
+        self,
         data::{Dependency, Page},
         DbPool, PooledConnection,
-        self
     },
     prelude::*,
 };
 
-use self::generate::{DatabaseBridge, Ticket};
-
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum Message {
-    Ticket(String, Arc<Ticket>),
+    Ticket(Arc<Ticket>),
     Dependency(String, Dependency),
 }
 
 impl From<(String, Dependency)> for Message {
     fn from(source: (String, Dependency)) -> Self {
-        Self::Dependency(
-            source.0, 
-            source.1
-        )
+        Self::Dependency(source.0, source.1)
     }
 }
 
 #[derive(Debug)]
-pub struct Engine<'a> {
-    pub bridge: Arc<DatabaseBridge>,
-    pub environment: Environment<'a>
+pub struct Engine {
+    pub pool: DbPool,
+    pub rev_id: String,
+    pub consumer: Consumer<Message>,
+    pub environment: OnceCell<Environment<'static>>,
 }
 
-impl<'a> Engine<'a> {
-    pub fn build(conn: &mut Connection, rev_id: &'a str) -> Result<Self> {
+impl Engine {
+    pub fn build(conn: &mut Connection, rev_id: &str) -> Result<Arc<Self>> {
         let pool = db::make_pool()?;
         let consumer = make_consumer(pool.get()?, rev_id);
-        let bridge = DatabaseBridge::build(rev_id, consumer)?;
-        let environment = generate::make_environment(conn, &bridge)?;
+        let arc = Arc::new(Self {
+            pool,
+            rev_id: rev_id.to_owned(),
+            consumer,
+            environment: OnceCell::new(),
+        });
 
-        let engine = Engine {
-            bridge,
-            environment
-        };
+        arc.environment
+            .set(template::make_environment(conn, &arc)?)
+            .unwrap();
 
-        Ok(engine)
+        Ok(arc)
+    }
+
+    pub fn env(&self) -> &Environment {
+        self.environment.get().unwrap()
     }
 
     pub fn get_template(&self, name: &str) -> Option<Template> {
         // get_template is weird in that it returns a Result rather than an Option
-        // to represent whether a template was found - so it's safe to erase the 
+        // to represent whether a template was found - so it's safe to erase the
         // Err match here.
-        match self.environment.get_template(name) {
+        match self.env().get_template(name) {
             Ok(template) => Some(template),
-            Err(_) => None
+            Err(_) => None,
         }
     }
 
     pub fn send(&self, msg: impl Into<Message>) {
-        self.bridge.consumer.send(msg)
+        self.consumer.send(msg)
     }
-
-    pub fn finalize(self) -> Result<()> {
-        Ok(())
-    }
-
 }
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
@@ -101,7 +101,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
     info!("Starting render stage...");
 
     let engine = Engine::build(conn, rev_id)?;
-    
+
     // TODO:
     // - Move file inclusion into MiniJinja via shortcodes.
     // - Figure out good SQLite connection pool size.
@@ -109,13 +109,9 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
 
     query_tickets(conn, rev_id)?
         .into_par_iter()
-        .map(|mut ticket| -> Result<(String, Arc<Ticket>)> {
+        .map(|ticket| -> Result<Arc<Ticket>> {
             let ticket = Arc::new(ticket);
-            // expand::expand(&mut ticket, &engine)?;
-            // generate::generate(&mut ticket, &engine)?;
-            // rewrite::rewrite(&mut ticket, &engine)?;
 
-            let mut buffer = ticket.source.clone();
             let Some(name) = &ticket.page.template else {
                 warn!(
                     "Tried to evaluate template for page {} (\"{}\"), but none was specified.",
@@ -124,7 +120,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
                 );
         
                 // This isn't *technically* an error, so we just silently yield.
-                return Ok((buffer, ticket))
+                return Ok(ticket)
             };
         
             let Some(template) = engine.get_template(name) else {
@@ -138,19 +134,26 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
             };
             
             let page = minijinja::value::Value::from_object(Arc::clone(&ticket));
-            buffer = template.render(minijinja::context!(page => page))
+
+            let buffer = template.render(minijinja::context!(page => page))
                 .wrap_err("Minijinja encountered an error when rendering a template.")?;
 
-            Ok((buffer, ticket))
+            let mut source = ticket
+                .source
+                .write()
+                .unwrap();
+            
+            *source = buffer;
+            drop(source);
+
+            Ok(ticket)
         })
         .try_for_each(|ticket| -> Result<()> {
-            let ticket = ticket?;
-            let ticket = Message::Ticket(ticket.0, ticket.1);
+            let ticket = Message::Ticket(ticket?);
             engine.send(ticket);
             Ok(())
         })?;
-    
-    engine.finalize()?;
+
     stylesheet::compile_stylesheet(conn, rev_id)?;
 
     Ok(())
@@ -229,7 +232,7 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<Ticket>> {
             Ok(ticket)
         })
         .collect();
-    
+
     pages
 }
 
@@ -239,17 +242,20 @@ fn make_consumer(mut conn: PooledConnection, rev_id: &str) -> Consumer<Message> 
     Consumer::new_manual(move |stream: flume::Receiver<Message>| {
         let conn = conn.transaction()?;
 
-        let mut insert_hypertext = conn.prepare("
+        let mut insert_hypertext = conn.prepare(
+            "
             INSERT OR IGNORE INTO output
             VALUES (?1, ?2, 1, ?3)
-        ")?;
+        ",
+        )?;
         let mut insert_dep = Dependency::prepare_insert(&conn)?;
 
         while let Ok(message) = stream.recv() {
             match message {
-                Message::Ticket(output, ticket) => {
+                Message::Ticket(ticket) => {
+                    let output = ticket.source.read().unwrap();
                     debug!("Hypertext: {}", output);
-                    insert_hypertext.execute(params![ticket.page.id, rev_id, output])?;
+                    insert_hypertext.execute(params![ticket.page.id, rev_id, &*output])?;
                 }
                 Message::Dependency(page_id, dependency) => {
                     insert_dep(&page_id, &dependency)?;

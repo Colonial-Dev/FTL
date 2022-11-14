@@ -94,10 +94,8 @@ fn parse_kwargs(i: &str) -> Result<HashMap<&str, &str>> {
             .split_once('=')
             .with_context(|| format!("Malformed pair: {pair}"))?;
 
-        let value = value
-            .trim_start_matches('"')
-            .trim_end_matches('"');
-        
+        let value = value.trim_start_matches('"').trim_end_matches('"');
+
         map.insert(key, value);
     }
 

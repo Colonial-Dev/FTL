@@ -151,7 +151,7 @@ fn update_input_files(conn: &Connection, files: &[InputFile]) -> Result<()> {
 
 fn init_revision(conn: &Connection, files: &[InputFile]) -> Result<String> {
     let mut hasher = seahash::SeaHasher::default();
-    
+
     for file in files {
         file.id.hash(&mut hasher)
     }
@@ -159,10 +159,12 @@ fn init_revision(conn: &Connection, files: &[InputFile]) -> Result<String> {
     let rev_id = format!("{:016x}", hasher.finish());
     info!("Computed revision ID {}", rev_id);
 
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         INSERT OR IGNORE INTO revisions
         VALUES (?1, NULL, NULL, FALSE, FALSE)
-    ")?;
+    ",
+    )?;
 
     stmt.execute(params![&rev_id])?;
 

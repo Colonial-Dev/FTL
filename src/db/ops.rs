@@ -10,10 +10,9 @@ use crate::prelude::*;
 
 const DB_PATH: &str = ".ftl/content.db";
 
-static PRIME_MIGRATIONS: Lazy<Migrations> = Lazy::new(|| {
+pub static PRIME_MIGRATIONS: Lazy<Migrations> = Lazy::new(|| {
     Migrations::new(vec![
-        M::up(include_str!("sql/prime_up.sql"))
-            .down(include_str!("sql/prime_down.sql"))
+        M::up(include_str!("sql/prime_up.sql")).down(include_str!("sql/prime_down.sql"))
     ])
 });
 
@@ -26,7 +25,7 @@ pub fn try_create_db(path: &Path) -> Result<Connection> {
     // Calling open() implicitly creates the database if it does not exist.
     let mut conn = Connection::open(path)?;
     set_pragmas(&mut conn)?;
-    PRIME_MIGRATIONS.to_latest(&mut conn)?; 
+    PRIME_MIGRATIONS.to_latest(&mut conn)?;
 
     Ok(conn)
 }
@@ -40,8 +39,7 @@ pub fn make_connection() -> Result<Connection> {
 
 /// Attempt to create a connection pool for an SQLite database at the given path.
 pub fn make_pool() -> Result<DbPool> {
-    let manager = SqliteConnectionManager::file(DB_PATH)
-        .with_init(set_pragmas);
+    let manager = SqliteConnectionManager::file(DB_PATH).with_init(set_pragmas);
 
     let pool = r2d2::Pool::builder()
         .max_size(*THREADS as u32 * 2)
@@ -72,14 +70,17 @@ pub fn detach_mapping_database(conn: &Connection) -> Result<()> {
 
 pub fn dump_input_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
     use serde_rusqlite::from_rows;
+
     use crate::db::data::InputFile;
 
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         SELECT input_files.* FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-    ")?;
-    
+    ",
+    )?;
+
     let target_dir = Path::new("target/").join(format!("input-{}", &rev_id));
     let cache_dir = Path::new(".ftl/cache/");
 
@@ -92,12 +93,11 @@ pub fn dump_input_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
         if !file.inline {
             let source = cache_dir.join(file.hash);
             std::fs::copy(source, target)?;
-        }
-        else {
+        } else {
             std::fs::write(&target, &file.contents.unwrap_or_default())?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -107,27 +107,35 @@ pub fn dump_output_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
     // (either the `output` table or the flat-file cache), then write the file to the dump
     // target at its route.
     use std::path::PathBuf;
+
     use serde_rusqlite::from_rows;
+
     use crate::db::data::{Route, RouteKind};
 
     // Stage one: get all "safe" routes (static assets and pages).
     // Safe routes map 1:1 to an entry in the cache or database.
-    let mut get_safe_routes = conn.prepare("
+    let mut get_safe_routes = conn.prepare(
+        "
         SELECT routes.* FROM routes
         JOIN revision_files ON revision_files.id = routes.id
         WHERE revision_files.revision = ?1
         AND kind NOT IN (0, 4, 5)
-    ")?;
+    ",
+    )?;
 
-    let mut get_output = conn.prepare("
+    let mut get_output = conn.prepare(
+        "
         SELECT content FROM output
         WHERE id = ?1 AND revision = ?2
-    ")?;
+    ",
+    )?;
 
-    let mut get_hash = conn.prepare("
+    let mut get_hash = conn.prepare(
+        "
         SELECT hash FROM input_files
         WHERE id = ?1
-    ")?;
+    ",
+    )?;
 
     let target_dir = Path::new("target/").join(format!("output-{}", &rev_id));
     let cache_dir = Path::new(".ftl/cache/");
@@ -163,7 +171,7 @@ pub fn dump_output_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
 
                 std::fs::create_dir_all(target.parent().unwrap())?;
                 std::fs::copy(source, target)?;
-            },
+            }
             RouteKind::Page => {
                 let (mut target, content) = resolve_inline(&route.id.unwrap(), &route.route)?;
                 debug!("{target:?}");
@@ -176,24 +184,28 @@ pub fn dump_output_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
 
                 std::fs::create_dir_all(target.parent().unwrap())?;
                 std::fs::write(target, content)?;
-            },
-            _ => unreachable!()
+            }
+            _ => unreachable!(),
         };
     }
 
-    let mut get_redirects = conn.prepare("
+    let mut get_redirects = conn.prepare(
+        "
         SELECT routes.* FROM routes
         JOIN revision_files ON revision_files.id = routes.id
         WHERE revision_files.revision = ?1
         AND kind = 5
-    ")?;
+    ",
+    )?;
 
-    let mut resolve_redirect = conn.prepare("
+    let mut resolve_redirect = conn.prepare(
+        "
         SELECT * FROM routes
         WHERE routes.id = ?1
         AND revision = ?2
         AND kind IN (1, 3)
-    ")?;
+    ",
+    )?;
 
     for route in from_rows::<Route>(get_redirects.query(params![rev_id])?) {
         let route = route?;
@@ -208,12 +220,12 @@ pub fn dump_output_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
             RouteKind::StaticAsset => {
                 let (_, original) = resolve_disk(&route.id.unwrap(), &route.route)?;
                 soft_link(original, link)?;
-            },
+            }
             RouteKind::Page => {
                 let (original, _) = resolve_inline(&route.id.unwrap(), &route.route)?;
                 soft_link(original, link)?;
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         };
     }
 
@@ -221,11 +233,11 @@ pub fn dump_output_for_revision(conn: &Connection, rev_id: &str) -> Result<()> {
 }
 
 fn soft_link(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
-    #[cfg(target_family="unix")]
+    #[cfg(target_family = "unix")]
     {
         std::os::unix::fs::symlink(original, link)?;
     }
-    #[cfg(target_family="windows")]
+    #[cfg(target_family = "windows")]
     {
         // CERTIFIED WINDOWS MOMENT
         std::os::windows::fs::symlink_file(original, link)?;
@@ -233,12 +245,11 @@ fn soft_link(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-
 /// Tries to wipe the database and flat-file cache clean.
 pub fn try_clear(conn: &mut Connection) -> Result<()> {
     std::fs::remove_dir_all(".ftl/cache")?;
     std::fs::create_dir_all(".ftl/cache")?;
-    
+
     PRIME_MIGRATIONS.to_version(conn, 0)?;
     PRIME_MIGRATIONS.to_latest(conn)?;
     Ok(())
@@ -249,26 +260,31 @@ pub fn try_clear(conn: &mut Connection) -> Result<()> {
 pub fn try_compress(conn: &Connection) -> Result<()> {
     use serde_rusqlite::from_rows;
 
-    conn.execute("
+    conn.execute(
+        "
         DELETE FROM revisions
         WHERE pinned != 1
         AND timestamp NOT IN (SELECT MAX(timestamp) FROM revisions)
-    ", [])?;
+    ",
+        [],
+    )?;
 
     let cache_dir = Path::new(".ftl/cache/");
-    let mut stmt = conn.prepare("
+    let mut stmt = conn.prepare(
+        "
         SELECT hash FROM input_files
         WHERE NOT EXISTS (
             SELECT 1 FROM revision_files
             WHERE revision_files.id = input_files.id
         )
-    ")?;
+    ",
+    )?;
 
     for hash in from_rows::<String>(stmt.query([])?) {
         let hash = hash?;
 
         let target = cache_dir.join(hash);
-        
+
         if target.exists() {
             std::fs::remove_file(target)?;
         } else {
@@ -276,16 +292,19 @@ pub fn try_compress(conn: &Connection) -> Result<()> {
         }
     }
 
-    conn.execute("
+    conn.execute(
+        "
         DELETE FROM input_files
         WHERE NOT EXISTS (
             SELECT 1 FROM revision_files
             WHERE revision_files.id = input_files.id
     )
-    ", [])?;
+    ",
+        [],
+    )?;
 
     conn.execute("VACUUM", [])?;
-    
+
     Ok(())
 }
 

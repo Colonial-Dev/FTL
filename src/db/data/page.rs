@@ -105,7 +105,7 @@ impl Page {
 fn serialize_slice<T, S>(x: &[T], s: S) -> Result<S::Ok, S::Error>
 where
     T: Serialize,
-    S: Serializer
+    S: Serializer,
 {
     let json = serde_json::to_string(&x).unwrap();
     s.serialize_str(&json)

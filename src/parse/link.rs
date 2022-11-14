@@ -31,10 +31,14 @@ pub enum Link<'a> {
 impl<'a> Link<'a> {
     pub fn parse(source: &'a str) -> Result<Self> {
         if URL_SCHEMA.is_match(source) {
-            return Ok(Link::External(source))
+            return Ok(Link::External(source));
         }
 
-        match source.chars().next().context("Cannot parse an empty link.")? {
+        match source
+            .chars()
+            .next()
+            .context("Cannot parse an empty link.")?
+        {
             '@' => {
                 let source = source.trim_start_matches("@/");
                 let source = SITE_ASSET_DIRECTORY.to_string() + source;
@@ -53,7 +57,7 @@ impl<'a> Link<'a> {
                 let source = Link::Internal(source, Root::Source);
                 Ok(source)
             }
-            _ => Ok(Link::Relative(source))
+            _ => Ok(Link::Relative(source)),
         }
     }
 }

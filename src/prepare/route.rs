@@ -31,11 +31,12 @@ pub fn create_static_asset_routes(conn: &Connection, rev_id: &str) -> Result<()>
     let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
     for row in rows {
         let row = row?;
-        let route = row.path
+        let route = row
+            .path
             .trim_start_matches(SITE_SRC_DIRECTORY)
             .trim_start_matches(SITE_ASSET_DIRECTORY)
             .trim_start_matches(SITE_CONTENT_DIRECTORY);
-        
+
         insert_route(&RouteIn {
             revision: rev_id,
             id: Some(&row.id),

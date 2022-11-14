@@ -1,21 +1,27 @@
 use std::sync::Arc;
 
-use minijinja::{State, context};
-use pulldown_cmark::{html, Parser, Options};
+use minijinja::{context, State};
+use pulldown_cmark::{html, Options, Parser};
 use syntect::{
     highlighting::{Theme, ThemeSet},
     html::highlighted_html_for_string as highlight_html,
     parsing::SyntaxSet,
 };
-use super::{DatabaseBridge, Ticket};
 
-use crate::{prelude::*, parse::{delimit::*, shortcode::Shortcode}, db::data::{Page, Dependency}};
+use super::{Engine, Ticket};
+use crate::{
+    db::data::{Dependency, Page},
+    parse::{delimit::*, shortcode::Shortcode},
+    prelude::*,
+};
 
 type ExpansionFn = Box<dyn Fn(&State, &mut String, &Page) -> Result<()> + Send + Sync>;
 
-pub fn prepare_renderer(bridge_arc: &Arc<DatabaseBridge>) -> Result<impl Fn(&State, &Ticket) -> Result<String>> {
+pub fn prepare_renderer(
+    bridge_arc: &Arc<Engine>,
+) -> Result<impl Fn(&State, &Ticket) -> Result<String>> {
     let mut expansions: Vec<ExpansionFn> = Vec::new();
-    
+
     let (syntaxes, theme) = prepare_highlighter()?;
     let highlight_code = move |_: &State, source: &mut String, _: &Page| -> Result<()> {
         CODE_DELIM.expand(source, |block: Delimited| {
@@ -55,7 +61,7 @@ pub fn prepare_renderer(bridge_arc: &Arc<DatabaseBridge>) -> Result<impl Fn(&Sta
             let code = Shortcode::try_from(code)?;
             eval_shortcode(code, state, page, &bridge)
         })?;
-        
+
         Ok(())
     };
 
@@ -63,12 +69,9 @@ pub fn prepare_renderer(bridge_arc: &Arc<DatabaseBridge>) -> Result<impl Fn(&Sta
         // There are no possible worlds in which the HTML output is smaller
         // than the Markdown input, so a little preallocation can't hurt.
         let mut html_buffer = String::with_capacity(source.len());
-        
-        html::push_html(
-            &mut html_buffer,
-            Parser::new_ext(source, Options::all())
-        );
-        
+
+        html::push_html(&mut html_buffer, Parser::new_ext(source, Options::all()));
+
         *source = html_buffer;
         Ok(())
     };
@@ -79,10 +82,12 @@ pub fn prepare_renderer(bridge_arc: &Arc<DatabaseBridge>) -> Result<impl Fn(&Sta
     expansions.push(Box::new(markdown));
 
     Ok(move |state: &State, ticket: &Ticket| -> Result<String> {
-        let mut output = ticket.source.clone();
+        let mut output = ticket.source.read().unwrap().clone();
+
         for expansion in &expansions {
             expansion(state, &mut output, &ticket.page)?
         }
+
         Ok(output)
     })
 }
@@ -104,7 +109,7 @@ fn prepare_highlighter() -> Result<(SyntaxSet, Theme)> {
         .highlight_theme
         .as_ref()
         .expect("Syntax highlighting theme should be Some.");
-    
+
     let syntaxes = SyntaxSet::load_defaults_newlines();
     let mut themes = ThemeSet::load_defaults().themes;
     // TODO: load user-provided syntaxes and themes.
@@ -122,7 +127,12 @@ fn prepare_highlighter() -> Result<(SyntaxSet, Theme)> {
 }
 
 /// Checks that a shortcode of the given name exists, and evaluates it if it does.
-fn eval_shortcode(code: Shortcode, state: &State, page: &Page, bridge: &Arc<DatabaseBridge>) -> Result<String> {
+fn eval_shortcode(
+    code: Shortcode,
+    state: &State,
+    page: &Page,
+    bridge: &Arc<Engine>,
+) -> Result<String> {
     let name = String::from(code.name);
     let name = name + ".html";
     let Ok(template) = state.env().get_template(&name) else {
@@ -136,39 +146,11 @@ fn eval_shortcode(code: Shortcode, state: &State, page: &Page, bridge: &Arc<Data
 
         bail!(err)
     };
-    
+
     // Yes, this cloning is inefficient, but if it turns out to be an issue
     // then we can apply a clever optimization like putting them behind an Arc.
     let dependency = Dependency::Template(code.name.to_owned());
     bridge.consumer.send((page.id.clone(), dependency));
 
     Ok(template.render(context!(code => code))?)
-}
-
-fn eval_template(state: &State, source: &mut String, page: &Page) -> Result<()> {
-    let Some(name) = &page.template else {
-        warn!(
-            "Tried to evaluate template for page {} (\"{}\"), but none was specified.",
-            page.id,
-            page.title
-        );
-
-        // This isn't *technically* an error, so we just silently yield.
-        return Ok(())
-    };
-
-    let Ok(template) = state.env().get_template(name) else {
-        let error = eyre!(
-            "Tried to resolve a nonexistent template (\"{}\").",
-            name,
-        )
-        .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
-        .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
-        bail!(error)
-    };
-
-    *source = template.render(context!(page => &page, markup => &source))
-        .wrap_err("Minijinja encountered an error when rendering a template.")?;
-    
-    Ok(())
 }

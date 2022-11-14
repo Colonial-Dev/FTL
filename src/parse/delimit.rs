@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::Range, borrow::Cow};
+use std::{borrow::Cow, marker::PhantomData, ops::Range};
 
 use once_cell::sync::Lazy;
 use regex::{Match, Regex};

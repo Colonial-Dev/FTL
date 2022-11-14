@@ -1,138 +1,16 @@
-mod rendering;
-mod querying;
-
-use std::sync::Arc;
-
+use minijinja::Source;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rusqlite::{params, Connection};
-use serde_aux::serde_introspection::serde_introspect;
 use serde_rusqlite::from_rows;
-use minijinja::{Source, Environment, value::{Value, Object}, State, ErrorKind};
 
-use crate::{db::{self, DbPool, data::Page}, prelude::*};
-use super::{Message};
+use crate::{db, prelude::*};
 
-type TResult<T> = Result<T, minijinja::Error>;
-
-#[derive(Debug)]
-pub struct Ticket {
-    pub inner: Value,
-    pub page: Page,
-    pub source: String,
-}
-
-impl Ticket {
-    pub fn new(page: Page, mut source: String) -> Self {
-        source.drain(..(page.offset as usize)).for_each(drop);
-
-        Ticket {
-            inner: Value::from_serializable(&page),
-            page,
-            source
-        }
-    }
-}
-
-impl std::fmt::Display for Ticket {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
-
-impl Object for Ticket {
-    fn get_attr(&self, name: &str) -> Option<Value> {
-        self.inner.get_attr(name).ok()
-    }
-    
-    fn attributes(&self) -> Box<dyn Iterator<Item = &str> + '_> {
-        Box::new(
-            serde_introspect::<Page>()
-                .iter()
-                .copied()
-        )
-    }
-}
-
-#[derive(Debug)]
-pub struct DatabaseBridge {
-    pub pool: DbPool,
-    pub rev_id: String,
-    pub consumer: Consumer<Message>,
-}
-
-impl DatabaseBridge {
-    pub fn build(rev_id: &str, consumer: Consumer<Message>) -> Result<Arc<Self>> {
-        let arc = Arc::new(
-            Self {
-                pool: db::make_pool()?,
-                rev_id: rev_id.to_owned(),
-                consumer
-            }
-        );
-        Ok(arc)
-    }
-}
-
-/// Create a standard [`minijinja::Environment`] instance, and register all known globals, filters, functions, tests and templates with it.
-pub fn make_environment(conn: &mut Connection, bridge_arc: &Arc<DatabaseBridge>) -> Result<Environment<'static>> {
-    let mut environment = Environment::new();    
-    environment.set_source(load_templates(conn, &bridge_arc.rev_id)?);
-    environment.add_global(
-        "config", 
-        Value::from_serializable(Config::global())
-    );
-    register_routines(&mut environment, bridge_arc)?;
-    Ok(environment)
-}
-
-fn register_routines(environment: &mut Environment, bridge_arc: &Arc<DatabaseBridge>) -> Result<()> {
-    let bridge = Arc::clone(bridge_arc);
-    let query_fn = move |sql: String, params: Option<Value>| -> TResult<Value> {
-        let query_result = bridge.query(sql, params)?;
-        Ok(Value::from_serializable(&query_result))
-    };
-
-    let bridge = Arc::clone(bridge_arc);
-    let query_filter = move |sql: String, params: Option<Value>| -> TResult<Value> {
-        let query_result = bridge.query(sql, params)?;
-        Ok(Value::from_serializable(&query_result))
-    };
-
-    let renderer = rendering::prepare_renderer(bridge_arc)?;
-    let render_filter = move |state: &State, ticket: Value| -> TResult<Value> {
-        let Some(ticket) = ticket.downcast_object_ref::<Arc<Ticket>>() else {
-            return Err(minijinja::Error::new(
-                ErrorKind::InvalidOperation,
-                "The render filter only supports Page objects."
-            ));
-        };
-
-        match renderer(state, ticket) {
-            Ok(rendered) => Ok(Value::from_safe_string(rendered)),
-            Err(e) => {
-                let e: SizedReport = e.into();
-                Err(minijinja::Error::new(
-                    ErrorKind::UndefinedError,
-                    "An error was encountered during page rendering."
-                ).with_source(e))
-            }
-        }
-    };
-
-    environment.add_function("query", query_fn);
-    environment.add_filter("query", query_filter);
-    environment.add_filter("render", render_filter);
-
-    Ok(())
-}
-
-fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
+pub fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
     let rows = query_templates(conn, rev_id)?;
     let mut source = Source::new();
-    
-    rows
-        .iter()
+
+    rows.iter()
         .map(|row| {
             (
                 row.path
@@ -146,8 +24,7 @@ fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
             Ok(())
         })?;
 
-    compute_ids(rows.as_slice(), conn, rev_id)
-        .wrap_err("Failed to compute template dependency IDs.")?;
+    compute_ids(rows.as_slice(), conn).wrap_err("Failed to compute template dependency IDs.")?;
 
     Ok(source)
 }
@@ -181,16 +58,20 @@ fn query_templates(conn: &Connection, rev_id: &str) -> Result<Vec<Row>> {
 
 // Example input: {% include "included.html" %}
 // The first capture: included.html
-static MJ_INCLUDE_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% include "(.*?)" .* %\}"#).unwrap() );
+static MJ_INCLUDE_REGEXP: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\{% include "(.*?)".* %\}"#).unwrap());
 // Example input: {% import "macros.html" as macros %}
 // The first capture: macros.html
-static MJ_FULL_IMPORT_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap() );
+static MJ_FULL_IMPORT_REGEXP: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\{% import "(.*?)" as .* %\}"#).unwrap());
 // Example input: {% from "macros.html" import macro_a, macro_b %}
 // The first capture: macros.html
-static MJ_SELECTIVE_IMPORT_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% from "(.*?)" import .* %\}"#).unwrap() );
+static MJ_SELECTIVE_IMPORT_REGEXP: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\{% from "(.*?)" import .* %\}"#).unwrap());
 // Example input: {% extends "base.html" %}
 // The first capture: base.html
-static MJ_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap() );
+static MJ_EXTENDS_REGEXP: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\{% extends "(.*?)" %\}"#).unwrap());
 
 /// Maps out the dependency set of each template in the given slice, hashes the sets into templating IDs, and inserts them into the templates table.
 ///
@@ -202,7 +83,7 @@ static MJ_EXTENDS_REGEXP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{% extends "
 /// - Using a recursive Common Table Expression, map out each template's dependency set (deduplicated using `UNION` and sorted by `id ASC`.)
 /// - Insert the results into the on-disk templates table, which maps each templates name to many dependency IDs.
 /// - Detach the in-memory database, deallocating its contents.
-fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -> Result<()> {
+fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection) -> Result<()> {
     // Attach and setup a new in-memory database for mapping dependency relations.
     let txn = conn.transaction()?;
     db::attach_mapping_database(&txn)?;
@@ -259,7 +140,7 @@ fn compute_ids<'a>(templates: &'a [Row], conn: &mut Connection, _rev_id: &str) -
             .path
             .trim_start_matches(SITE_SRC_DIRECTORY)
             .trim_start_matches(SITE_TEMPLATE_DIRECTORY);
-        
+
         insert_template.execute(params![trimmed_path, row.id])?;
     }
 
@@ -313,4 +194,99 @@ fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
     dependencies.dedup();
 
     dependencies.into_iter()
+}
+
+#[cfg(test)]
+mod dependency_resolution {
+    use super::*;
+
+    #[derive(serde::Deserialize, Debug)]
+    struct Template {
+        pub name: String,
+        pub id: String,
+    }
+
+    #[test]
+    #[allow(clippy::needless_collect)]
+    fn sanity_check() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        db::PRIME_MIGRATIONS.to_latest(&mut conn).unwrap();
+
+        let alpha_row = Row {
+            id: "ALPHA_ID".to_string(),
+            path: "alpha.html".to_string(),
+            contents: r#"{% include "beta.html" %}"#.to_string(),
+        };
+
+        let beta_row = Row {
+            id: "BETA_ID".to_string(),
+            path: "beta.html".to_string(),
+            contents: "{% include \"gamma.html\" %}\n{% include \"delta.html\" %}".to_string(),
+        };
+
+        let gamma_row = Row {
+            id: "GAMMA_ID".to_string(),
+            path: "gamma.html".to_string(),
+            contents: String::new(),
+        };
+
+        let delta_row = Row {
+            id: "DELTA_ID".to_string(),
+            path: "delta.html".to_string(),
+            contents: String::new(),
+        };
+
+        let rows = vec![alpha_row, beta_row, gamma_row, delta_row];
+        compute_ids(&rows, &mut conn).unwrap();
+
+        let mut stmt = conn
+            .prepare(
+                "
+            SELECT * FROM templates
+            WHERE name = ?1
+        ",
+            )
+            .unwrap();
+
+        let alpha_deps: Vec<Template> =
+            from_rows::<Template>(stmt.query(params![rows[0].path]).unwrap())
+                .map(|x| x.unwrap())
+                .collect();
+
+        assert_eq!(alpha_deps.len(), 4);
+        assert_eq!(alpha_deps[0].id, "ALPHA_ID");
+        assert_eq!(alpha_deps[1].name, "alpha.html");
+        assert_eq!(alpha_deps[1].id, "BETA_ID");
+        assert_eq!(alpha_deps[2].id, "DELTA_ID");
+        assert_eq!(alpha_deps[3].id, "GAMMA_ID");
+
+        let beta_deps: Vec<Template> =
+            from_rows::<Template>(stmt.query(params![rows[1].path]).unwrap())
+                .map(|x| x.unwrap())
+                .collect();
+
+        assert_eq!(beta_deps.len(), 3);
+        assert_eq!(beta_deps[0].id, "BETA_ID");
+        assert_eq!(beta_deps[0].name, "beta.html");
+        assert_eq!(beta_deps[1].id, "DELTA_ID");
+        assert_eq!(beta_deps[2].id, "GAMMA_ID");
+
+        let gamma_deps: Vec<Template> =
+            from_rows::<Template>(stmt.query(params![rows[2].path]).unwrap())
+                .map(|x| x.unwrap())
+                .collect();
+
+        assert_eq!(gamma_deps.len(), 1);
+        assert_eq!(gamma_deps[0].id, "GAMMA_ID");
+        assert_eq!(gamma_deps[0].name, "gamma.html");
+
+        let delta_deps: Vec<Template> =
+            from_rows::<Template>(stmt.query(params![rows[3].path]).unwrap())
+                .map(|x| x.unwrap())
+                .collect();
+
+        assert_eq!(delta_deps.len(), 1);
+        assert_eq!(delta_deps[0].id, "DELTA_ID");
+        assert_eq!(delta_deps[0].name, "delta.html");
+    }
 }

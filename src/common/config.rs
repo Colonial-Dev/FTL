@@ -56,7 +56,7 @@ impl Default for Build {
             external_links_no_follow: false,
             external_links_no_referrer: false,
             target_disk: false,
-            target_dir: None
+            target_dir: None,
         }
     }
 }

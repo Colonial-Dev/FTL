@@ -52,10 +52,10 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
         for chunk in row.path.split('/') {
             target.push(chunk);
         }
-        
+
         std::fs::create_dir_all(target.parent().unwrap())?;
         std::fs::write(&target, &row.contents)?;
-        
+
         debug!(
             "Wrote temporary SASS file {:?} to disk (full path: {:?}).",
             target.file_name(),

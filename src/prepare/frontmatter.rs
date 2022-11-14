@@ -9,7 +9,7 @@ use toml::value::Datetime;
 use crate::{
     db::{data::Page, *},
     parse::delimit::TOML_DELIM,
-    prelude::*
+    prelude::*,
 };
 
 static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
@@ -45,10 +45,7 @@ pub fn parse_frontmatters(conn: &Connection, rev_id: &str) -> Result<()> {
     let mut insert_page = Page::prepare_insert(conn)?;
     let rows = query_new_pages(conn, rev_id)?;
 
-    let pages: Vec<Result<Page>> = rows
-        .into_par_iter()
-        .map(extract_frontmatter)
-        .collect();
+    let pages: Vec<Result<Page>> = rows.into_par_iter().map(extract_frontmatter).collect();
 
     for page in pages {
         let page = page?;

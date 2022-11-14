@@ -1,10 +1,10 @@
-use std::{thread::JoinHandle, sync::RwLock};
+use std::{sync::RwLock, thread::JoinHandle};
 
-use flume::{Sender, Receiver};
+use flume::{Receiver, Sender};
 
 use crate::prelude::*;
 
-/// Light wrapper around a channel pair and event loop combo. 
+/// Light wrapper around a channel pair and event loop combo.
 #[derive(Debug)]
 pub struct Consumer<T: Send + 'static> {
     /// Handle for the receiving thread.
@@ -16,8 +16,8 @@ pub struct Consumer<T: Send + 'static> {
 
 impl<T: Send + 'static> Consumer<T> {
     /// Creates a new consumer using a simple event loop.
-    /// 
-    /// The provided closure is invoked with each message received by the consumer; 
+    ///
+    /// The provided closure is invoked with each message received by the consumer;
     /// handling the channel itself is done externally.
     pub fn new(mut handler: impl FnMut(T) -> Result<()> + Send + 'static) -> Self {
         Self::new_manual(move |stream: Receiver<T>| {
@@ -29,7 +29,7 @@ impl<T: Send + 'static> Consumer<T> {
     }
 
     /// Creates a new consumer using a caller-defined event loop.
-    /// 
+    ///
     /// The provided closure is given the receiving end of the channel, and is responsible for its proper handling.
     /// Useful if the event loop needs to set up some non-`Send`/`'static` state.
     pub fn new_manual(mut handler: impl FnMut(Receiver<T>) -> Result<()> + Send + 'static) -> Self {
@@ -46,7 +46,7 @@ impl<T: Send + 'static> Consumer<T> {
 
         Consumer {
             handle,
-            sink: RwLock::new(sink)
+            sink: RwLock::new(sink),
         }
     }
 
@@ -80,4 +80,3 @@ impl<T: Send + 'static> Consumer<T> {
             .expect("Consumer receiving thread panicked.")
     }
 }
-
