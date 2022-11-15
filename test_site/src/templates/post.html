@@ -5,14 +5,16 @@
 <h1> {{ page.title }} </h1>
 <h5> Date: {{ page.date }}<br><i>{{ page.summary }}</i></h5>
 {{ page | render }}
+{{ link("image.png") }}
 {% include "footer.html" %}
-{% set files | query() %}
+
+{% set files | query %}
 SELECT * FROM input_files
 {% endset %}
 
 <ul>
 {% for file in files %}
-    <li>{{ file.path}} has an id of {{ file.id }}</li>
+    <li>{{ file.path }} has an id of {{ file.id }}</li>
 {% endfor %}
 </ul>
 </body>

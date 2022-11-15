@@ -1,12 +1,15 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::{PathBuf, Path}};
 
 use minijinja::{
     value::{Object, Value, ValueKind},
     ErrorKind,
 };
+use rusqlite::params;
 use serde_rusqlite::from_rows;
 
-use super::{Bridge, TResult};
+use crate::{prelude::*, db::data::{Page, Dependency}, parse::link::Link};
+
+use super::Bridge;
 
 const MUTATING_STATEMENTS: &[&str] = &[
     "ALTER",
@@ -39,12 +42,9 @@ impl Bridge {
     /// - The parameters are not provided as a sequence or a map.
     /// - The parameters could not be serialized.
     /// - The SQL query is invalid in some form, or if its execution produces errors.
-    pub fn query(&self, sql: String, params: Option<Value>) -> TResult<QueryOutput> {
+    pub fn query(&self, sql: String, params: Option<Value>) -> Result<QueryOutput> {
         if !Self::is_query_safe(&sql) {
-            return Err(minijinja::Error::new(
-                ErrorKind::InvalidOperation,
-                "Template queries that mutate the database are not supported.",
-            ));
+            bail!("Template queries that mutate the database are not supported.");
         }
 
         let Some(params) = params else {
@@ -54,13 +54,8 @@ impl Bridge {
         match params.kind() {
             ValueKind::Seq => {
                 let params: Vec<Value> = params.try_iter().unwrap().collect();
-                let params = serde_rusqlite::to_params(params).map_err(|e| {
-                    minijinja::Error::new(
-                        ErrorKind::UndefinedError,
-                        "Could not serialize query parameters.",
-                    )
-                    .with_source(e)
-                })?;
+                let params = serde_rusqlite::to_params(params)
+                    .wrap_err("Could not serialize query parameters.")?;
 
                 self.execute_query(sql, Some(params))
             }
@@ -86,16 +81,13 @@ impl Bridge {
 
                 self.execute_query(sql, Some(params))
             }
-            _ => Err(minijinja::Error::new(
-                ErrorKind::InvalidOperation,
-                "SQL query parameters must be passed as either a sequence or a map.",
-            )),
+            _ => bail!("SQL query parameters must be passed as either a sequence or a map."),
         }
     }
 
     /// Executes the provided SQL query with optional parameters, and serializes the results
     /// into a [`Vec<ValueMap>`] for consumption by the calling template.
-    fn execute_query(&self, sql: String, params: Option<QueryParams>) -> TResult<QueryOutput> {
+    fn execute_query(&self, sql: String, params: Option<QueryParams>) -> Result<QueryOutput> {
         let conn = self
             .pool
             .get()
@@ -119,15 +111,7 @@ impl Bridge {
         })?;
 
         from_rows::<BTreeMap<String, Value>>(rows)
-            .map(|x| {
-                x.map_err(|e| {
-                    minijinja::Error::new(
-                        ErrorKind::UndefinedError,
-                        "An error occurred when deserializing a query's results.",
-                    )
-                    .with_source(e)
-                })
-            })
+            .map(|x| x.wrap_err("An error occurred when deserializing a query's results.") )
             .map(|x| {
                 x.map(|tree| {
                     let tree: ValueMap = tree.into();
@@ -142,13 +126,97 @@ impl Bridge {
     ///
     /// This is a footgun guard and does not try to handle the possibility of malicious input.
     fn is_query_safe(sql: &str) -> bool {
-        let Some(opener) = sql.lines().next() else {
-            return false;
+        let sql = sql
+            .trim()
+            .lines()
+            .next()
+            .map(|x| x.to_uppercase());
+        
+        match sql {
+            Some(opener) => !MUTATING_STATEMENTS.iter().any(|stmt| opener.contains(stmt)),
+            None => true
+        }
+    }
+
+    pub fn resolve_link(&self, path: &str, page: Option<&Page>) -> Result<String> {
+        let link = Link::parse(path)?;
+
+        let resolved = match link {
+            Link::Relative(path) => {
+                match page {
+                    Some(page) => {
+                        let mut root = PathBuf::from(&page.path);
+                        root.pop();
+                        root.push(path);
+                        root.to_string_lossy().to_string()
+                    },
+                    None => path.to_owned()
+                }
+            },
+            Link::Internal(path, _) => path,
+            Link::External(path) => path.to_owned()
         };
 
-        let opener = opener.to_uppercase();
+        Ok(resolved)
+    }
 
-        !MUTATING_STATEMENTS.iter().any(|stmt| opener.contains(stmt))
+    pub fn cachebust_link(&self, path: &str, page: Option<&Page>, cachebust: bool) -> Result<String> {
+        let resolved = self.resolve_link(path, page)?;
+
+        if !cachebust {
+            return Ok(resolved)
+        }
+
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare_cached("
+            SELECT input_files.id FROM input_files
+            JOIN revision_files ON revision_files.id = input_files.id
+            WHERE revision_files.revision = ?1
+            AND input_files.path = ?2
+        ")?;
+
+        let id = {
+            let id: Result<String> = from_rows::<String>(stmt.query(params![self.rev_id, resolved])?)
+                .map(|x| x.wrap_err("SQLite deserialization error!") )
+                .collect();
+
+            id?
+        };
+
+        if id.is_empty() {
+            let err = eyre!("Tried to cachebust a file at {path} ({resolved}), but it has no ID.")
+                .suggestion("Make sure the file you are referencing exists.");
+            
+            bail!(err)
+        }
+
+        let path = Path::new(&resolved);
+
+        let stem = path
+            .file_stem()
+            .expect("File should have a filename.")
+            .to_string_lossy();
+
+        let ext = path
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy();
+
+        let root = path
+            .parent()
+            .unwrap_or(path)
+            .to_string_lossy();
+
+        let root = root.trim_start_matches(SITE_SRC_DIRECTORY);
+        
+        let busted = format!("{root}/{stem}.{id}.{ext}");
+
+        if let Some(page) = page {
+            let dependency = Dependency::Id(id);
+            self.send((page.id.to_owned(), dependency));
+        }
+
+        Ok(busted)
     }
 }
 
@@ -178,5 +246,16 @@ impl Object for ValueMap {
 
     fn attributes(&self) -> Box<dyn Iterator<Item = &str> + '_> {
         Box::new(self.map.keys().map(|key| key.as_ref()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_safety_check() {
+        assert!(Bridge::is_query_safe("SELECT * FROM input_files"));
+        assert!(!Bridge::is_query_safe("DELETE FROM input_files"));
     }
 }

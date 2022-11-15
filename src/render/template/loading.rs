@@ -6,12 +6,17 @@ use serde_rusqlite::from_rows;
 
 use crate::{db, prelude::*};
 
-pub const FTL_BUILTIN_NAME: &str = "FTL_BUILTIN.html";
-const FTL_BUILTIN_CONTENT: &str = "{{ page | render }}";
+pub const FTL_BUILTIN: &str = "ftl_default.html";
+
+const BUILTINS: &[&str] = &[
+    include_str!("builtins/ftl_default.html"),
+];
 
 pub fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
     let rows = query_templates(conn, rev_id)?;
     let mut source = Source::new();
+
+    load_builtins(&mut source);
 
     rows.iter()
         .map(|row| {
@@ -27,12 +32,19 @@ pub fn load_templates(conn: &mut Connection, rev_id: &str) -> Result<Source> {
             Ok(())
         })?;
 
-    compute_ids(rows.as_slice(), conn).wrap_err("Failed to compute template dependency IDs.")?;
-    
-    source.add_template(FTL_BUILTIN_NAME, FTL_BUILTIN_CONTENT)
-        .expect("FTL builtin template is invalid!");
-    
+    compute_ids(rows.as_slice(), conn).wrap_err("Failed to compute template dependency IDs.")?;    
     Ok(source)
+}
+
+fn load_builtins(source: &mut Source) {
+    for template in BUILTINS {
+        let mut template = template.lines();
+        let name = template.next().expect("FTL builtin has no content!");
+        let body: String = template.collect();
+        
+        source.add_template(name, body)
+            .unwrap_or_else(|_| panic!("FTL builtin {name} is invalid!"))
+    }
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -205,6 +217,12 @@ fn find_direct_dependencies(item: &'_ Row) -> impl Iterator<Item = &'_ str> {
 #[cfg(test)]
 mod dependency_resolution {
     use super::*;
+
+    #[test]
+    fn builtin_templates() {
+        let mut source = Source::new();
+        load_builtins(&mut source);
+    }
 
     fn get_capture<'a>(regexp: &Regex, haystack: &'a str) -> Option<&'a str> {
         regexp

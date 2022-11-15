@@ -89,5 +89,13 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
         kind: RouteKind::Stylesheet,
     })?;
 
+    insert_route(&RouteIn {
+        revision: rev_id,
+        id: None,
+        route: &format!("style.{}.css", rev_id),
+        parent_route: None,
+        kind: RouteKind::Redirect,
+    })?;
+
     Ok(())
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use minijinja::{context, State};
+use minijinja::{context, State, value::Value};
 use pulldown_cmark::{html, Options, Parser};
 use syntect::{
     highlighting::{Theme, ThemeSet},
@@ -52,12 +52,12 @@ pub fn prepare_pipeline(
 
     let bridge = Arc::clone(bridge_arc);
     let expand_shortcodes = move |state: &State, source: &mut String, page: &Page| -> Result<()> {
-        INLINE_DELIM.expand(source, |code: Delimited| {
+        INLINE_SC_DELIM.expand(source, |code: Delimited| {
             let code = Shortcode::try_from(code)?;
             eval_shortcode(code, state, page, &bridge)
         })?;
 
-        BLOCK_DELIM.expand(source, |code: Delimited| {
+        BLOCK_SC_DELIM.expand(source, |code: Delimited| {
             let code = Shortcode::try_from(code)?;
             eval_shortcode(code, state, page, &bridge)
         })?;
@@ -65,21 +65,13 @@ pub fn prepare_pipeline(
         Ok(())
     };
 
-    let markdown = move |_: &State, source: &mut String, _: &Page| -> Result<()> {
-        // There are no possible worlds in which the HTML output is smaller
-        // than the Markdown input, so a little preallocation can't hurt.
-        let mut html_buffer = String::with_capacity(source.len());
-
-        html::push_html(&mut html_buffer, Parser::new_ext(source, Options::all()));
-
-        *source = html_buffer;
-        Ok(())
-    };
+    let bridge = Arc::clone(bridge_arc);
+    let markdown = prepare_markdown_stateful(bridge);
 
     expansions.push(Box::new(expand_shortcodes));
     expansions.push(Box::new(expand_emoji));
     expansions.push(Box::new(highlight_code));
-    expansions.push(Box::new(markdown));
+    expansions.push(markdown);
 
     Ok(move |state: &State, ticket: &Ticket| -> Result<String> {
         let mut output = ticket.source.read().unwrap().clone();
@@ -90,6 +82,38 @@ pub fn prepare_pipeline(
 
         Ok(output)
     })
+}
+
+pub fn prepare_markdown_stateful(bridge: Arc<Bridge>) -> ExpansionFn {
+    use pulldown_cmark::{Event, Tag};
+    
+    Box::new(move |_: &State, source: &mut String, page: &Page| -> Result<()> {
+        let mut buffer = String::with_capacity(source.len());
+        let parser = Parser::new_ext(source, Options::all());
+        let parser = parser.map(|mut event| match event {
+            Event::Start(Tag::Image(_, ref mut target, _)) => {
+                let busted = bridge.cachebust_link(target, Some(page), true)?;
+                *target = busted.into();
+                Ok(event)
+            }
+            _ => Ok(event)
+        });
+
+        let parser: Result<Vec<Event>> = parser.collect();
+        
+        html::push_html(&mut buffer, parser?.into_iter());
+        *source = buffer;
+        Ok(())
+    })
+}
+
+pub fn prepare_markdown_stateless() -> impl Fn(String) -> Value {
+    |input: String| -> Value {
+        let mut buffer = String::with_capacity(input.len());
+        let parser = Parser::new_ext(&input, Options::all());
+        html::push_html(&mut buffer, parser);
+        Value::from_safe_string(buffer)
+    }
 }
 
 fn expand_emoji(_: &State, source: &mut String, _: &Page) -> Result<()> {
@@ -110,19 +134,24 @@ fn prepare_highlighter() -> Result<(SyntaxSet, Theme)> {
         .as_ref()
         .expect("Syntax highlighting theme should be Some.");
 
-    let syntaxes = SyntaxSet::load_defaults_newlines();
-    let mut themes = ThemeSet::load_defaults().themes;
-    // TODO: load user-provided syntaxes and themes.
-    let theme = match themes.remove(theme_name) {
+    let mut syntax_builder = SyntaxSet::load_defaults_newlines().into_builder();
+    syntax_builder.add_from_folder("cfg/highlighting/", true)?;
+
+    let mut theme_set = ThemeSet::load_defaults();
+    theme_set.add_from_folder("cfg/highlighting/")?;
+
+    let theme = match theme_set.themes.remove(theme_name) {
         Some(theme) => theme,
         None => {
-            let err = eyre!("Syntax highlighting theme {theme_name} does not exist.")
+            let err = eyre!("Syntax highlighting theme \"{theme_name}\" does not exist.")
                 .note("This error occurred because FTL could not resolve your specified syntax highlighting theme from its name.")
                 .suggestion("Make sure your theme name is spelled correctly, and double-check that the corresponding theme file exists.");
             bail!(err)
         }
     };
+    let syntaxes = syntax_builder.build();
 
+    debug!("Highlighting syntaxes and themes loaded.");
     Ok((syntaxes, theme))
 }
 
@@ -135,9 +164,10 @@ fn eval_shortcode(
 ) -> Result<String> {
     let name = String::from(code.name);
     let name = name + ".html";
+
     let Ok(template) = state.env().get_template(&name) else {
         let err = eyre!(
-            "Page {} contains a shortcode invoking template {}, which does not exist.",
+            "Page \"{}\" contains a shortcode invoking template \"{}\", which does not exist.",
             page.title,
             code.name
         )
@@ -147,9 +177,7 @@ fn eval_shortcode(
         bail!(err)
     };
 
-    // Yes, this cloning is inefficient, but if it turns out to be an issue
-    // then we can apply a clever optimization like putting them behind an Arc.
-    let dependency = Dependency::Template(code.name.to_owned());
+    let dependency = Dependency::Template(name);
     bridge.consumer.send((page.id.clone(), dependency));
 
     Ok(template.render(context!(code => code))?)

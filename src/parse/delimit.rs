@@ -21,10 +21,10 @@ pub static TOML_DELIM: Lazy<Delimiters> =
 pub static CODE_DELIM: Lazy<Delimiters> =
     Lazy::new(|| Delimiters::new("```", "```", DelimiterKind::Multiline));
 
-pub static INLINE_DELIM: Lazy<Delimiters> =
+pub static INLINE_SC_DELIM: Lazy<Delimiters> =
     Lazy::new(|| Delimiters::new("{% sci ", " %}", DelimiterKind::Inline));
 
-pub static BLOCK_DELIM: Lazy<Delimiters> =
+pub static BLOCK_SC_DELIM: Lazy<Delimiters> =
     Lazy::new(|| Delimiters::new("{% sc ", "{% endsc %}", DelimiterKind::Multiline));
 
 /// Unit enum representing the possible types of delimited structures in textual data.

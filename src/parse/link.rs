@@ -41,13 +41,13 @@ impl<'a> Link<'a> {
         {
             '@' => {
                 let source = source.trim_start_matches("@/");
-                let source = SITE_ASSET_DIRECTORY.to_string() + source;
+                let source = SITE_SRC_DIRECTORY.to_string() + SITE_ASSET_DIRECTORY + source;
                 let source = Link::Internal(source, Root::Assets);
                 Ok(source)
             }
             '~' => {
                 let source = source.trim_start_matches("~/");
-                let source = SITE_CONTENT_DIRECTORY.to_string() + source;
+                let source = SITE_SRC_DIRECTORY.to_string() + SITE_CONTENT_DIRECTORY + source;
                 let source = Link::Internal(source, Root::Contents);
                 Ok(source)
             }

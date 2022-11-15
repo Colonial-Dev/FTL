@@ -131,8 +131,9 @@ fn to_route(path: &str) -> String {
     let route_path = path
         .trim_start_matches(SITE_SRC_DIRECTORY)
         .trim_start_matches(SITE_CONTENT_DIRECTORY)
-        .trim_end_matches("/index.md")
-        .trim_start_matches('/');
+        .trim_end_matches("index.md")
+        .trim_start_matches('/')
+        .trim_end_matches('/');
 
     EXT_REGEX.replace(route_path, "").to_string()
 }

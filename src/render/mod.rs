@@ -1,17 +1,15 @@
-// mod expand;
 mod rewrite;
 mod stylesheet;
 mod template;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
-use color_eyre::eyre::Context;
-use minijinja::Environment;
+use minijinja::{Environment, value::{Value, Object}};
 use rayon::prelude::*;
 use rusqlite::{params, Connection};
+use serde_aux::serde_introspection::serde_introspect;
 use serde_rusqlite::from_rows;
 
-use self::template::Ticket;
 use crate::{
     db::{
         self,
@@ -21,8 +19,55 @@ use crate::{
     prelude::*, render::rewrite::rewrite,
 };
 
+/// Represents a "render ticket" - a discrete unit of rendering work that needs to be done.
+/// 
+/// Implements [`minijinja::value::Object`], which forwards in-engine interactions to the `inner` field
+/// and allows hooked-in Rust functions to downcast from [`Value`] to access the `page` and `source` fields.
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+pub struct Ticket {
+    /// A serialized copy of the `page` field. In-engine interactions with Tickets
+    /// are forwarded here.
+    pub inner: Value,
+    /// The original Page corresponding to this ticket. Not accessible in-engine.
+    pub page: Page,
+    /// The source text of the ticket, from the `input_files` table. Not accessible in-engine.
+    /// Wrapped in a [`RwLock`] to allow in-place mutation as rendering progresses.
+    pub source: RwLock<String>,
+}
+
+impl Ticket {
+    pub fn new(page: Page, mut source: String) -> Self {
+        // Drain away the page's frontmatter.
+        source.drain(..(page.offset as usize)).for_each(drop);
+
+        Ticket {
+            inner: Value::from_serializable(&page),
+            page,
+            source: RwLock::new(source),
+        }
+    }
+}
+
+impl std::fmt::Display for Ticket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl Object for Ticket {
+    fn get_attr(&self, name: &str) -> Option<Value> {
+        // Forward requests for attributes to the `inner` field.
+        self.inner.get_attr(name).ok()
+    }
+
+    fn attributes(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+        // serde_introspect returns an iterator over the field names of
+        // Page - less brittle than hardcoding a static array.
+        Box::new(serde_introspect::<Page>().iter().copied())
+    }
+}
+
+#[derive(Debug)]
 pub enum Message {
     Ticket(Arc<Ticket>),
     Dependency(String, Dependency),
@@ -34,6 +79,8 @@ impl From<(String, Dependency)> for Message {
     }
 }
 
+/// A shared bridge into the database. Contains a connection pool, the revision ID
+/// and write consumer.
 #[derive(Debug)]
 pub struct Bridge {
     pub pool: DbPool,
@@ -58,6 +105,7 @@ impl Bridge {
     }
 }
 
+/// A rendering engine. Wraps a database bridge and templating environment.
 #[derive(Debug)]
 pub struct Engine {
     pub bridge: Arc<Bridge>,
@@ -76,10 +124,12 @@ impl Engine {
         Ok(arc)
     }
 
-    pub fn eval_page_template(&self, ticket: &Arc<Ticket>) -> Result<String> {
+    /// Attempt to evaluate the provided ticket's template. Uses the builtin template
+    /// if the ticket's page does not specify one.
+    pub fn eval_ticket_template(&self, ticket: &Arc<Ticket>) -> Result<String> {
         let name = match &ticket.page.template {
             Some(name) => name,
-            None => template::FTL_BUILTIN_NAME
+            None => template::FTL_BUILTIN
         };
 
         let Ok(template) = self.environment.get_template(name) else {
@@ -94,11 +144,21 @@ impl Engine {
 
         let page = minijinja::value::Value::from_object(Arc::clone(ticket));
 
-        let buffer = template.render(minijinja::context!(page => page))
-            .wrap_err("Minijinja encountered an error when rendering a template.")?;
+        template.render(minijinja::context!(page => page))
+            .map_err(template::flatten_err)
+    }
 
-        Ok(buffer)
-    } 
+    /// Finalizes the engine; this drops the consumer and attempts to flush/commit the database bridge.
+    /// Panics if more than one strong reference is held to the bridge [`Arc`].
+    pub fn finalize(engine: Arc<Engine>) -> Result<()> {
+        let bridge = Arc::clone(&engine.bridge);
+        drop(engine);
+
+        Arc::try_unwrap(bridge)
+            .expect("Lingering reference to bridge Arc!")
+            .consumer
+            .finalize()
+    }
 }
 
 /// Executes the render pipeline for the provided revision, inserting the results into the database.
@@ -124,7 +184,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
         .into_par_iter()
         .map(Arc::new)
         .map(|ticket| -> Result<Arc<Ticket>> {
-            let rendered = engine.eval_page_template(&ticket)?; 
+            let rendered = engine.eval_ticket_template(&ticket)?; 
 
             *ticket
                 .source
@@ -136,6 +196,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
         .map(|ticket| -> Result<Arc<Ticket>> {
             let ticket = ticket?;
             let rewritten = rewrite(&ticket, &engine)?;
+
             *ticket
                 .source
                 .write()
@@ -149,14 +210,7 @@ pub fn render(conn: &mut Connection, rev_id: &str) -> Result<()> {
             Ok(())
         })?;
     
-    let bridge = Arc::clone(&engine.bridge);
-    drop(engine);
-
-    Arc::try_unwrap(bridge)
-        .expect("Lingering reference to bridge Arc!")
-        .consumer
-        .finalize()?;
-
+    Engine::finalize(engine)?;
     stylesheet::compile_stylesheet(conn, rev_id)?;
     
     info!("Render stage complete.");

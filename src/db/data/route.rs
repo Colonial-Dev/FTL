@@ -66,7 +66,7 @@ impl<'a> RouteIn<'a> {
     /// Serializes a [`RouteIn`] instance to a [`ParameterSlice`] suitable for consumption by [`rusqlite`] queries.
     /// Returns a [`DbError::Serde`] if serialization fails.
     pub fn to_params(&self) -> Result<ParameterSlice> {
-        let params = to_params_named(&self)?;
+        let params = to_params_named(self)?;
         Ok(params)
     }
 }

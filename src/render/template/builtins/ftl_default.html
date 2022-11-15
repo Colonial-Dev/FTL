@@ -1,0 +1,10 @@
+ftl_default.html
+<head>
+{% if page.title %}
+    <title>{{ page.title }}</title>
+{% endif %}
+</head>
+
+<body>
+    {{ page | render }}
+</body>
