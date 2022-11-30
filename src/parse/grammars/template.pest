@@ -1,0 +1,26 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+double_quoted_string = @{ "\"" ~ (!("\"") ~ ANY)* ~ "\""}
+single_quoted_string = @{ "\'" ~ (!("\'") ~ ANY)* ~ "\'"}
+string = @{ double_quoted_string | single_quoted_string }
+array = _{ "[" ~ (string  ~ ",")* ~ string? ~ "]"}
+
+rest = _{ (!"%}" ~ ANY)* ~ "%}" }
+
+extends = _{ "{%" ~ "extends" ~ string ~ rest }
+include = _{ "{%" ~ "include" ~ (string | array) ~ rest }
+
+import_full = _{ "{%" ~ "import" ~ string ~ rest }
+import_sub = _{ "{%" ~ "from" ~ string ~ rest }
+import = _{ import_full | import_sub }
+
+ignored = _{ (!(extends | include | import) ~ ANY)+ }
+
+dependency = _{
+	extends |
+    include |
+    import  |
+    ignored
+}
+
+template = _{ SOI ~ dependency* ~ EOI }

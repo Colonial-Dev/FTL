@@ -1,9 +1,0 @@
-- Memmap input files? Unsure just how much this will help with performance.
-- Inline template expressions.
-  - Different from shortcodes, these would be lines/blocks that would be directly parsed and evaluated as a MiniJinja expression.
-  - This comes at a performance cost (each expression must be compiled) but allows you to eval complex logic right in a page!
-  - {! expr !} for inline, !!!/!!! for blocks?
-  - Alternately, extending shortcode syntax: {! expr !} stays the same, but the latter becomes {! startexpr !} and {! endexpr !}
-- Header deep linking/table of contents building.
-- Cachebusting that tries multiple locations if the path isn't explicit.
-- Expose regex in template engine?

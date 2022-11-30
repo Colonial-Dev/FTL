@@ -1,30 +1,19 @@
 use std::{
     collections::HashMap,
-    env,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-use clap::{Args, Parser, Subcommand};
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 
-/// [`OnceCell`] that holds the global [`Config`] instance for the program.
-/// Not intended to be accessed directly; an immutable reference to its contents can be obtained via [`Config::global()`].
-static CONFIG_CELL: OnceCell<Config> = OnceCell::new();
-static ARGS_CELL: OnceCell<Cli> = OnceCell::new();
-const CONFIG_FILENAME: &str = "ftl.toml";
-
-/// Represents the contents of (and a safe interface to) FTL's global configuration,
-/// which includes command line arguments and the contents of `ftl.toml`.
+/// Represents the contents of FTL's global configuration.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub root_url: String,
     pub title: Option<String>,
     pub description: Option<String>,
     pub language: Option<String>,
-    pub on_non_fatal: Option<String>,
     pub build: Build,
     pub render: Render,
     #[serde(default)]
@@ -37,7 +26,6 @@ pub struct Build {
     pub incremental: bool,
     pub cachebust: bool,
     pub compile_sass: bool,
-    pub inline_extensions: Vec<String>,
     pub external_links_new_tab: bool,
     pub external_links_no_follow: bool,
     pub external_links_no_referrer: bool,
@@ -51,7 +39,6 @@ impl Default for Build {
             incremental: true,
             cachebust: true,
             compile_sass: true,
-            inline_extensions: Vec::new(),
             external_links_new_tab: false,
             external_links_no_follow: false,
             external_links_no_referrer: false,
@@ -68,118 +55,21 @@ pub struct Render {
     pub highlight_code: bool,
     pub highlight_theme: Option<String>,
     pub render_emoji: bool,
-    pub render_katex: bool,
-    pub file_inclusion: bool,
     pub minify_html: bool,
     pub minify_css: bool,
 }
 
 impl Config {
-    /// Returns an immutable reference to the global FTL [`Config`].
-    /// Panics if the containing [`OnceCell`] hasn't been initialized by [`Config::init()`].
-    pub fn global() -> &'static Config {
-        CONFIG_CELL
-            .get()
-            .expect("Config cell has not been initialized!")
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let toml_raw = match path.exists() {
+            true => {
+                std::fs::read_to_string(path)
+                    .wrap_err("Could not read in configuration file.")
+                    .suggestion("The configuration file was found, but couldn't be read - try checking your file permissions.")?
+            },
+            false => bail!("Configuration file not found.")
+        };
+
+        Ok(toml::from_str(&toml_raw)?)
     }
-
-    /// Returns an immutable reference to the global FTL [`Cli`].
-    /// Panics if the containing [`OnceCell`] hasn't been initialized by [`Config::init()`].
-    pub fn args() -> &'static Cli {
-        ARGS_CELL
-            .get()
-            .expect("Arguments cell has not been initialized!")
-    }
-
-    /// Attempts to build instances of [`Config`] and [`Cli`] and insert them into their respective cells.
-    /// Panics if [`CONFIG_CELL`] and/or [`ARGS_CELL`] has already been initialized.
-    pub fn init() -> Result<()> {
-        if ARGS_CELL.get().is_some() {
-            panic!("Args cell has already been initialized!")
-        }
-        if CONFIG_CELL.get().is_some() {
-            panic!("Config cell has already been initialized!")
-        }
-
-        init_args();
-        init_config()?;
-
-        Ok(())
-    }
-}
-
-fn init_args() {
-    let args = Cli::parse();
-    ARGS_CELL
-        .set(args)
-        .expect("Failed to initialize Args cell.");
-}
-
-fn init_config() -> Result<()> {
-    let dir = env::current_dir()?.join("test_site/");
-    env::set_current_dir(&dir)?;
-
-    let config_file = try_locate_config(&dir);
-
-    let toml_raw = match config_file {
-        Some(file) => {
-            std::fs::read_to_string(file)
-                .wrap_err("Could not read in configuration file.")
-                .suggestion("The configuration file was found, but couldn't be read - try checking your file permissions.")?
-        },
-        None => bail!("Configuration file not found.")
-    };
-
-    let config: Config = toml::from_str(&toml_raw)?;
-    CONFIG_CELL
-        .set(config)
-        .expect("Failed to initialize Config cell.");
-
-    Ok(())
-}
-
-fn try_locate_config(start: &Path) -> Option<PathBuf> {
-    let mut path: PathBuf = start.into();
-    let target = Path::new(CONFIG_FILENAME);
-
-    loop {
-        path.push(target);
-
-        if path.is_file() {
-            break Some(path);
-        }
-
-        if !(path.pop() && path.pop()) {
-            break None;
-        }
-    }
-}
-
-#[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Cli {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum Commands {
-    Init,
-    Build(BuildCmd),
-    Serve(Serve),
-    #[command(subcommand)]
-    Db(Db),
-}
-
-#[derive(Debug, Args)]
-pub struct BuildCmd {}
-
-#[derive(Debug, Args)]
-pub struct Serve {}
-
-#[derive(Debug, Subcommand)]
-pub enum Db {
-    Stat,
-    Compress,
-    Clear,
 }

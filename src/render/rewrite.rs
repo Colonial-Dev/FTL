@@ -54,7 +54,8 @@ const NO_REFERRER: &str = "noreferrer";
 /// - If `external_links_no_follow` is true, then `rel="nofollow"`.
 /// - If `external_links_no_referrer` is true, then `rel="noreferrer"`.
 fn link_targets(source: &mut String) -> Result<()> {
-    let config = Config::global();
+    todo!();
+    /*let config = Config::global();
     let mut output = vec![];
     {
         let mut rewriter = HtmlRewriter::new(
@@ -88,5 +89,5 @@ fn link_targets(source: &mut String) -> Result<()> {
         rewriter.write(source.as_bytes())?;
     }
     *source = String::from_utf8(output)?;
-    Ok(())
+    Ok(())*/
 }

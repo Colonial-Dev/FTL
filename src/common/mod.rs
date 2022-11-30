@@ -1,32 +1,36 @@
+//! Types, functions, constants and other items that are globally relevant throughout the FTL codebase.
+
+mod args;
 mod config;
-mod consumer;
+mod state;
 
-use std::sync::Mutex;
-
+pub use args::*;
 pub use config::*;
-pub use consumer::Consumer;
+pub use state::*;
+
 use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 
-pub const SITE_SRC_DIRECTORY: &str = "src/";
-pub const SITE_ASSET_DIRECTORY: &str = "assets/";
-pub const SITE_CONTENT_DIRECTORY: &str = "content/";
-pub const SITE_TEMPLATE_DIRECTORY: &str = "templates/";
+/// Type alias for a `Result<Vec<T>>`, intended for use as a shorthand
+/// when collecting iterators over `Result`s.
+pub type MaybeVec<T> = Result<Vec<T>>;
 
-pub static ERROR_CONSUMER: Lazy<Consumer<Error>> = Lazy::new(|| {
-    Consumer::new(|error: Error| {
-        error!("Error sunk: {}", error);
-        Ok(())
-    })
-});
+pub const CONFIG_FILENAME: &str = "ftl.toml";
+pub const SITE_DB_PATH: &str = ".ftl/content.db";
+pub const SITE_CACHE_PATH: &str = ".ftl/cache";
+
+pub const SITE_SRC_PATH: &str = "src/";
+pub const SITE_ASSET_PATH: &str = "assets/";
+pub const SITE_CONTENT_PATH: &str = "content/";
+pub const SITE_TEMPLATE_PATH: &str = "templates/";
 
 /// The number of threads available on the system.
 /// *Defaults to 1 if the true value cannot be determined.*
-pub static THREADS: Lazy<u8> = Lazy::new(|| {
+pub static THREADS: Lazy<u16> = Lazy::new(|| {
     let threads = std::thread::available_parallelism();
     match threads {
-        Ok(num) => num.get() as u8,
+        Ok(num) => num.get() as u16,
         Err(e) => {
             warn!(
                 "Couldn't determine available parallelism (error: {e}) - defaulting to 1 thread."
@@ -36,32 +40,6 @@ pub static THREADS: Lazy<u8> = Lazy::new(|| {
     }
 });
 
-/// A wrapped Eyre report, used to smuggle reports through third-party error types
-/// such as MiniJinja's.
-#[derive(Debug)]
-pub struct WrappedReport(pub Mutex<Report>);
-
-impl WrappedReport {
-    /// Extracts the inner Report, replacing it with a dummy value.
-    pub fn extract(&self) -> Report {
-        let dummy = eyre!("N/A");
-        let mut inner = self.0.lock().unwrap();
-        std::mem::replace(&mut *inner, dummy)
-    }
-}
-
-impl std::fmt::Display for WrappedReport {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
-impl From<Report> for WrappedReport {
-    fn from(report: Report) -> Self {
-        Self(Mutex::new(report))
-    }
-}
-
-impl std::error::Error for WrappedReport {
-
-}
+/// The number of blocking threads available to the program in an asynchronous context.
+/// Evaluates to `THREADS * 64` or `512`, whichever is larger.
+pub static BLOCKING_THREADS: Lazy<u16> = Lazy::new(|| std::cmp::max(*THREADS * 64, 512));

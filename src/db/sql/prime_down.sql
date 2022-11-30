@@ -1,7 +1,5 @@
-DROP TABLE IF EXISTS revision_files;
-DROP TABLE IF EXISTS page_attributes;
+DROP TABLE IF EXISTS attributes;
 DROP TABLE IF EXISTS routes;
-DROP TABLE IF EXISTS templates;
 DROP TABLE IF EXISTS dependencies;
 DROP TABLE IF EXISTS output;
 
@@ -10,4 +8,7 @@ DROP TABLE IF EXISTS output;
 -- errors will be generated.
 DROP TABLE IF EXISTS pages;
 DROP TABLE IF EXISTS revisions;
+DROP TABLE IF EXISTS revision_files;
 DROP TABLE IF EXISTS input_files;
+
+VACUUM;

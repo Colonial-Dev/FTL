@@ -1,12 +1,16 @@
 <head>
-<title>{{ page.title }}</title>
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" href="{{ sass_link }}">
 </head>
+
 <body>
 <h1> {{ page.title }} </h1>
 <h5> Date: {{ page.date }}<br><i>{{ page.summary }}</i></h5>
 {{ page | render }}
-{{ link("image.png") }}
+
 {% include "footer.html" %}
+
+Cachebusted image: {{ link("@/java.png") }}
 
 {% set files | query %}
 SELECT * FROM input_files

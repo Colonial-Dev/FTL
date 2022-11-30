@@ -1,4 +1,4 @@
-use axum::{extract::Path, response::IntoResponse, routing::get, Router};
+use axum::{extract::Path, response::{IntoResponse, Response}, routing::get, Router};
 
 use crate::prelude::*;
 
@@ -22,7 +22,7 @@ async fn _serve() -> Result<()> {
     Ok(())
 }
 
-async fn resource(Path(path): Path<String>) -> axum::response::Response {
+async fn resource(Path(path): Path<String>) -> Response {
     debug!("{path:?}");
     let path = path.trim_start_matches('/');
     let conn = crate::db::make_connection().unwrap();
@@ -33,6 +33,12 @@ async fn resource(Path(path): Path<String>) -> axum::response::Response {
     } else if path == "image.png" {
         let bytes = std::fs::read(".ftl/cache/8445f4dbc24b4507").unwrap();
         return bytes.into_response();
+    } else if path == "style.9813baff8c2660ad.css" {
+        return "body {
+            background-color: #222222;
+            color: lightgray;
+            font-size: 18px;
+          }".into_response()
     }
 
     let mut stmt = conn
@@ -53,4 +59,8 @@ async fn resource(Path(path): Path<String>) -> axum::response::Response {
     debug!("{contents:?}");
     let contents: axum::response::Html<String> = contents.unwrap().into();
     contents.into_response()
+}
+
+fn fetch_resource() {
+
 }

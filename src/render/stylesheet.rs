@@ -63,7 +63,7 @@ fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
         )
     }
 
-    let style_file = temp_dir.join("src/assets/sass/style.scss");
+    let style_file = temp_dir.join("src/sass/style.scss");
 
     if !style_file.exists() {
         warn!("Trying to build SCSS but style file does not exist - skipping.");

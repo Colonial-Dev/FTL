@@ -1,15 +1,15 @@
 #![warn(clippy::perf, clippy::style, warnings)]
+#![allow(dead_code)]
 
 mod common;
 mod db;
 mod parse;
-mod prepare;
 mod render;
-mod serve;
+//mod serve;
 
 mod prelude {
     pub use color_eyre::{
-        eyre::{bail, ensure, eyre, Context, ContextCompat, Error},
+        eyre::{bail, ensure, eyre, Context, ContextCompat},
         Report, Result, Section,
     };
     pub use indoc::indoc;
@@ -22,16 +22,10 @@ use prelude::*;
 
 fn main() -> Result<()> {
     install_logging();
-    Config::init()?;
-    let mut conn = db::make_connection()?;
-
-    db::try_clear(&mut conn)?;
-    let rev_id = prepare::walk_src(&mut conn)?;
-    prepare::parse_frontmatters(&conn, &rev_id)?;
-    prepare::create_static_asset_routes(&conn, &rev_id)?;
-    prepare::create_page_routes(&conn, &rev_id)?;
-    prepare::create_alias_routes(&conn, &rev_id)?;
-    render::render(&mut conn, &rev_id)?;
+    
+    let state = InnerState::init()?;
+    state.db.reinitialize()?;
+    render::prepare(&state)?;
 
     Ok(())
 }
