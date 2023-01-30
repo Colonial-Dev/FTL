@@ -1,5 +1,10 @@
-# FTL - A sorta-static site generator
-**🚧🚧 Warning - Things are still very much Under Construction™! 🚧🚧**
+<h1 align="center">FTL - A sorta-static site generator</h1>
+<h3 align="center">🚧🚧 Warning - Things are still very much Under Construction™ 🚧🚧</h3>
+
+<p align="center">
+<img src="https://img.shields.io/github/actions/workflow/status/SomewhereOutInSpace/FTL/rust.yml">
+<img src="https://img.shields.io/github/license/SomewhereOutInSpace/FTL">
+</p>
 
 FTL is a static site generator (and server) with a twist: instead of being a largely stateless Markdown-in, HTML-out pipeline, it leans on an *embedded [SQLite](https://www.sqlite.org/index.html) database* to track your site's past and efficiently reason about the future, enabling incremental and atomic builds.
 

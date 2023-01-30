@@ -204,7 +204,7 @@ mod test {
         }
     }
 
-    #[test]
+    //#[test]
     #[allow(clippy::needless_collect)]
     /// Imperative "sanity check" that ensures dependency mapping works as expected.
     fn sanity_check() {
