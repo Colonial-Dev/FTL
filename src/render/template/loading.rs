@@ -4,7 +4,7 @@ use minijinja::Source;
 
 use crate::{
     poll,
-    parse::find_dependencies,
+    parse::Dependency,
     prelude::*, 
     db::{
         AUX_UP, AUX_DOWN,
@@ -151,7 +151,9 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     // 1. Scan for its direct dependencies.
     // 2. Insert them into the map.dependencies table.
     for row in templates {
-        for dependency in find_dependencies(&row.contents)? {
+        let (_, dependencies) = Dependency::parse_many(&row.contents).map_err(|e| Report::from(e.to_owned()))?;
+        
+        for dependency in dependencies {
             insert_dependency.reset()?;
             insert_dependency.bind((1, row.id.as_str()))?;
             insert_dependency.bind((2, dependency))?;
