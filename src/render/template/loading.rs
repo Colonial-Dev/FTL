@@ -93,7 +93,7 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     //
     // We *could* differentiate them based on revision, but that would
     // be pointless since we only care about the current one.
-    conn.execute("DELETE FROM templates;")?;
+    conn.execute("DELETE FROM dependencies WHERE relation = 1;")?;
 
     // Prepare all the necessary statements for dependency mapping.
     let insert_template = "
@@ -123,8 +123,8 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
                 WHERE id = ?1
             )
 
-        INSERT OR IGNORE INTO templates
-        SELECT template_name.name, transitives.id
+        INSERT OR IGNORE INTO dependencies
+        SELECT NULL, 1, template_name.name, transitives.id
         FROM template_name, transitives;
     ";
 
@@ -204,7 +204,7 @@ mod test {
         }
     }
 
-    //#[test]
+    #[test]
     #[allow(clippy::needless_collect)]
     /// Imperative "sanity check" that ensures dependency mapping works as expected.
     fn sanity_check() {
@@ -226,21 +226,22 @@ mod test {
         let gamma_row = Row {
             id: "GAMMA_ID".to_string(),
             path: "gamma.html".to_string(),
-            contents: String::new(),
+            contents: String::new()
         };
 
         let delta_row = Row {
             id: "DELTA_ID".to_string(),
             path: "delta.html".to_string(),
-            contents: String::new(),
+            contents: String::new()
         };
 
         let rows = vec![alpha_row, beta_row, gamma_row, delta_row];
         compute_dependencies(&conn, &rows).unwrap();
 
         let query = "
-            SELECT * FROM templates
-            WHERE name = ?1
+            SELECT parent AS name, child AS id FROM dependencies
+            WHERE parent = ?1
+            AND relation = 1
         ";
 
         let alpha_deps: Vec<Template> = conn.prepare_reader(query, (1, rows[0].path.as_str()))

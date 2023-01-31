@@ -28,8 +28,6 @@ pub enum Dependency<'i> {
 
 impl<'i> Dependency<'i> {
     pub fn parse_many(input: Input<'i>) -> EyreResult<impl Iterator<Item = &'i str>> {
-        let (input, _) = Self::skip_ignored(input).map_err(to_report)?;
-
         separated_list0(
             Self::skip_ignored,
             Self::parse_dep
@@ -141,7 +139,7 @@ mod test {
     fn parse_include() {
         let mut parser = Dependency::parse_by_keyword("include");
 
-        let input_a = r#"{% include 'header.html' %}"#;
+        let input_a = r#"{% include "header.html" %}"#;
         let input_b = r#"{% include 'customization.html' ignore missing %}"#;
         let input_c = r#"{% include ['page_detailed.html', 'page.html'] %}"#;
         let input_d = r#"{% include ['special_sidebar.html', 'sidebar.html'] ignore missing %}"#;
@@ -186,8 +184,6 @@ mod test {
     #[test]
     fn parse_many() {
         let test_template = indoc::indoc! {r#"
-            This is a test template!
-
             {% extends "base.html" %}
             {% include 'header.html' %}
             {% include 'customization.html' ignore missing %}

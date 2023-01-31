@@ -29,6 +29,12 @@ pub struct Renderer {
     // rewriter??
 }
 
+impl Renderer {
+    pub fn new() -> Arc<Self> {
+        todo!()
+    }
+}
+
 pub fn prepare(state: &State) -> Result<()> {
     prepare::prepare(state)
 }

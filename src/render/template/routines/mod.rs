@@ -5,8 +5,6 @@ use minijinja::{
     State as MJState
 };
 
-use crate::parse::Content;
-
 use super::{*, error::MJResult};
 
 pub fn register(state: &State, env: &mut Environment<'_>) -> Result<()> {
@@ -29,15 +27,6 @@ fn eval(state: &MJState, template: String) -> MJResult {
         &template,
         context!(page => state.lookup("page"))
     ).map(Value::from_safe_string)
-}
-
-fn render() {
-
-}
-
-fn expand_content(target: &mut String, data: Content) {
-    use Content::*;
-    todo!()
 }
 
 fn eval_shortcode(state: &MJState, name: &str, args: Value) -> Result<Value> {
