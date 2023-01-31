@@ -139,13 +139,16 @@ impl PoolConnection {
 
     /// Creates a "reader" - an iterator that lazily deserializes instances of a [`Queryable`] type 
     /// from the results of a database query.
-    pub fn prepare_reader<T, Q, P>(&self, query: Q, parameters: P) -> Result<impl Iterator<Item = Result<T>> + '_> where
+    pub fn prepare_reader<T, Q, P>(&self, query: Q, parameters: Option<P>) -> Result<impl Iterator<Item = Result<T>> + '_> where
         T: Queryable,
         Q: AsRef<str>,
         P: Bindable
     {
         let mut stmt = self.prepare(query)?;
-        stmt.bind(parameters)?;
+        
+        if let Some(parameters) = parameters {
+            stmt.bind(parameters)?;
+        }
 
         let iterator = std::iter::from_fn(move || {
             use sqlite::State::*;

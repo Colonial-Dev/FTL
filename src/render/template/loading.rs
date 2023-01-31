@@ -47,7 +47,7 @@ pub fn setup_source(state: &State) -> Result<Source> {
         AND input_files.extension = 'html'
         AND input_files.contents NOT NULL;
     ";
-    let params = (1, rev_id.as_str());
+    let params = Some((1, rev_id.as_str()));
 
     let rows = conn
         .prepare_reader(query, params)?
@@ -244,7 +244,7 @@ mod test {
             AND relation = 1
         ";
 
-        let alpha_deps: Vec<Template> = conn.prepare_reader(query, (1, rows[0].path.as_str()))
+        let alpha_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[0].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -256,7 +256,7 @@ mod test {
         assert_eq!(alpha_deps[2].id, "DELTA_ID");
         assert_eq!(alpha_deps[3].id, "GAMMA_ID");
 
-        let beta_deps: Vec<Template> = conn.prepare_reader(query, (1, rows[1].path.as_str()))
+        let beta_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[1].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -267,7 +267,7 @@ mod test {
         assert_eq!(beta_deps[1].id, "DELTA_ID");
         assert_eq!(beta_deps[2].id, "GAMMA_ID");
 
-        let gamma_deps: Vec<Template> = conn.prepare_reader(query, (1, rows[2].path.as_str()))
+        let gamma_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[2].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -276,7 +276,7 @@ mod test {
         assert_eq!(gamma_deps[0].id, "GAMMA_ID");
         assert_eq!(gamma_deps[0].name, "gamma.html");
 
-        let delta_deps: Vec<Template> = conn.prepare_reader(query, (1, rows[3].path.as_str()))
+        let delta_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[3].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();

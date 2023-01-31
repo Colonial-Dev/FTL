@@ -125,7 +125,7 @@ pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
         AND input_files.extension = 'md';
     ";
 
-    let params = (1, rev_id);
+    let params = (1, rev_id).into();
     let txn = conn.open_transaction()?;
 
     let mut insert_page = conn.prepare_writer(None::<&str>, None::<&[()]>)?;

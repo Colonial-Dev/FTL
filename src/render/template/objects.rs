@@ -5,22 +5,27 @@ use std::{
 
 use crossbeam::queue::SegQueue;
 use minijinja::{
+    context,
     value::*,
     State as MJState
 };
 use serde::Serialize;
+use sqlite::{Bindable, Value as SQLValue};
 
 use crate::{
     prelude::*, 
     db::{
-        Page, Relation,
+        Pool, Page, Relation, NO_PARAMS,
         Queryable, Statement, StatementExt
     },
-    render::Renderer
+    render::Renderer,
+    parse::{Content, Shortcode}
 };
 
 use super::error::{
     MJResult,
+    MJError,
+    MJErrorKind,
     WrappedReport as Wrap
 };
 
@@ -70,8 +75,65 @@ impl Ticket {
         }
     }
 
-    fn render(&self) -> Result<Value> {
-        todo!()
+    fn render(&self, state: &MJState) -> Result<Value> {
+        use Content::*;
+        use pulldown_cmark::{Parser, Options, html};
+
+        let mut buffer = String::with_capacity(self.original.0.len());
+
+        for fragment in Content::parse_many(&self.original.0)? {
+            match fragment {
+                Plaintext(text) => buffer += text,
+                Emojicode(code) => {
+                    match gh_emoji::get(code) {
+                        Some(emoji) => buffer += emoji,
+                        None => {
+                            buffer.push(':');
+                            buffer.push_str(code);
+                            buffer.push(':');
+                        }
+                    }
+                },
+                Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
+                Codeblock(block) => buffer += &self.renderer.hili.highlight(block)?,
+                Header(header) => {
+                    let mut new = "#".repeat(header.level as usize);
+
+                    new += " ";
+                    new += header.title;
+                    new += " ";
+
+                    // TODO: Actually handle anchors and classes
+                    buffer += &new;
+                }
+            }
+        }
+
+        let options = Options::all();
+        let parser = Parser::new_ext(&buffer, options);
+
+        let mut html_buffer = String::with_capacity(buffer.len());
+        html::push_html(&mut html_buffer, parser);
+
+        Ok(Value::from_safe_string(html_buffer))
+    }
+
+    fn eval_shortcode(&self, state: &MJState, code: Shortcode) -> Result<String> {
+        let name = format!("{}.html", code.ident.0);
+
+        let Ok(template) = state.env().get_template(&name) else {
+            let err = eyre!(
+                "Page {} contains a shortcode invoking template \"{}\", which does not exist.",
+                self.original.1.id,
+                code.ident.0
+            )
+            .note("This error occurred because a shortcode referenced a template that FTL couldn't find at build time.")
+            .suggestion("Double check the shortcode invocation for spelling and path mistakes, and make sure the template is where you think it is.");
+    
+            bail!(err);
+        };
+    
+        Ok(template.render(context!(code => code))?)
     }
 
     fn toc(&self) -> Result<Value> {
@@ -90,9 +152,10 @@ impl Object for Ticket {
         ObjectKind::Struct(self)
     }
     
-    fn call_method(&self, state: &MJState, name: &str, args: &[Value]) -> MJResult {
+    fn call_method(&self, state: &MJState, name: &str, _args: &[Value]) -> MJResult {
         match name {
-            "render" => self.render(),
+            "render" => self.render(state),
+            "toc" => self.toc(),
             _ => Err(eyre!("object has no method named {name}"))
         }.map_err(Wrap::wrap)
     }
@@ -126,7 +189,123 @@ pub struct Resource {
     contents: Option<String>
 }
 
-/// Minijinja dynamic object wrapper around a [`HashMap<String, Value>`], necessary to obey the orphan rule.
+/// Dynamic object wrapper around a database connection pool.
+/// Used to enable access to a database from within templates.
+#[derive(Debug)]
+pub struct DbHandle(Arc<Pool>);
+
+impl DbHandle {
+    pub fn new(state: &State) -> Self {
+        Self(Arc::clone(&state.db.ro_pool))
+    }
+
+    fn query(&self, sql: String, params: Option<Value>) -> MJResult {
+        match params {
+            Some(params) => self.query_with_params(sql, params),
+            None => self.query_core(sql, NO_PARAMS)
+        }.map_err(Wrap::wrap)
+    }
+
+    fn query_with_params(&self, sql: String, params: Value) -> Result<Value> {
+        match params.kind() {
+            ValueKind::Seq => {
+                let parameters = params
+                    .try_iter()?
+                    .map(Self::map_value)
+                    .enumerate()
+                    .try_fold(Vec::new(), |mut acc, (i, param)| -> Result<_> {
+                        acc.push((i, param?));
+                        Ok(acc)
+                    })?;
+    
+                self.query_core(sql, Some(&parameters[..]))
+            },
+            ValueKind::Map => {
+                if params.try_iter()?.any(|key| !matches!(key.kind(), ValueKind::String)) {
+                    bail!("When using a map for SQL parameters, all keys must be strings.");
+                }
+                
+                let len = params.len().unwrap();
+                let mut parameters = Vec::with_capacity(len);
+    
+                for key in params.try_iter()? {
+                    let param = params.get_item(&key)?;
+                    let key = String::try_from(key).unwrap();
+                    parameters.push((key, Self::map_value(param)?))
+                }
+    
+                let params_bindable: Vec<_> = parameters
+                    .iter()
+                    .map(|(key, val)| (key.as_str(), val))
+                    .collect();
+    
+                self.query_core(sql, Some(&params_bindable[..]))
+            }
+            _ => bail!(
+                "SQL parameters mut be passed as a sequence or a string-keyed map. (Received {} instead.)",
+                params.kind()
+            )
+        }
+    }
+    
+    fn query_core(&self, sql: String, params: Option<impl Bindable>) -> Result<Value> {
+        self.0.get()?.prepare_reader(sql, params)?
+            .try_fold(Vec::new(), |mut acc, map| -> Result<_> {
+                let map: ValueMap = map?;
+                acc.push(Value::from_struct_object(map));
+                Ok(acc)
+            })
+            .map(Value::from)
+    }
+    
+    fn map_value(value: Value) -> Result<SQLValue> {
+        match value.kind() {
+            ValueKind::Number => {
+                Ok(SQLValue::Float(
+                    f64::try_from(value)?
+                ))
+            }
+            ValueKind::String => {
+                Ok(SQLValue::String(
+                    String::try_from(value)?
+                ))
+            },
+            ValueKind::Bool => {
+                Ok(SQLValue::Integer(
+                    bool::try_from(value)? as i64
+                ))
+            },
+            ValueKind::None | ValueKind::Undefined => Ok(SQLValue::Null),
+            _ => bail!(
+                "Unsupported SQL parameter type ({}) - only strings, booleans, numbers and NULL are supported.",
+                value.kind()
+            )
+        }
+    }
+}
+
+impl std::fmt::Display for DbHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "<Database Handle Object>")
+    }
+}
+
+impl Object for DbHandle {
+    fn call_method(&self, _: &MJState, name: &str, args: &[Value]) -> MJResult {
+        match name {
+            "query" => {
+                let (sql, params) = from_args(args)?;
+                self.query(sql, params)
+            },
+            _ => Err(MJError::new(
+                MJErrorKind::UnknownMethod,
+                format!("object has no method named {name}")
+            ))
+        }
+    }
+}
+
+/// Dynamic object wrapper around a [`HashMap<String, Value>`], necessary to obey the orphan rule.
 /// Used to store database query results, skipping the potentially expensive serialization step.
 #[derive(Debug)]
 pub struct ValueMap(HashMap<String, Value>);
@@ -153,9 +332,8 @@ impl StructObject for ValueMap {
 
 impl Queryable for ValueMap {
     fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        use sqlite::Value as SQLValue;
         let mut map = HashMap::with_capacity(stmt.column_count());
-        
+
         for column in stmt.column_names() {
             let value = match stmt.read_value(column)? {
                 SQLValue::Binary(bytes) => Value::from(bytes),

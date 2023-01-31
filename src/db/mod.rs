@@ -33,12 +33,13 @@ pub const PRIME_DOWN: &str = include_str!("sql/prime_down.sql");
 pub const PRIME_UP: &str = include_str!("sql/prime_up.sql");
 pub const IN_MEMORY: &str = ":memory:";
 
+pub const NO_PARAMS: Option<&[()]> = None;
 
 #[derive(Debug)]
 pub struct Database {
     pub path: PathBuf,
-    rw_pool: Arc<Pool>,
-    ro_pool: Arc<Pool>,
+    pub rw_pool: Arc<Pool>,
+    pub ro_pool: Arc<Pool>,
     write_lock: Mutex<()>
 }
 

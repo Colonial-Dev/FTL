@@ -26,15 +26,17 @@ use nom::sequence::{
     tuple
 };
 
+use serde::Serialize;
+
 use super::{Input, Result, EyreResult, trim, to_report};
 
 pub type Kwargs<'i> = Vec<Kwarg<'i>>;
 pub type Literals<'i> = Vec<Literal<'i>>;
 
-#[derive(Debug, PartialEq)]
-pub struct Ident<'i>(&'i str);
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Ident<'i>(pub &'i str);
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Literal<'i> {
     Integer(i64),
     Float(f64),
@@ -43,26 +45,26 @@ pub enum Literal<'i> {
     Vector(Literals<'i>)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Kwarg<'i> {
     pub ident: Ident<'i>,
     pub value: Literal<'i>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Shortcode<'i> {
     pub ident: Ident<'i>,
     pub body: Option<&'i str>,
     pub args: Kwargs<'i>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Codeblock<'i> {
     pub token: Option<&'i str>,
     pub body: &'i str
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Header<'i> {
     pub level: u8,
     pub title: &'i str,

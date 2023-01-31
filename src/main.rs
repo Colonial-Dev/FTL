@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     
     let state = InnerState::init()?;
     state.db.reinitialize()?;
-    render::prepare(&state)?;
+    let _ = render::Renderer::new(&state)?;
 
     Ok(())
 }

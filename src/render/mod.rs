@@ -25,16 +25,37 @@ pub struct Renderer {
     pub hili: Highlighter,
     pub weak: Weak<Self>,
     pub state: State,
-    // highlighter
-    // rewriter??
 }
 
 impl Renderer {
-    pub fn new() -> Arc<Self> {
-        todo!()
-    }
-}
+    pub fn new(state: &State) -> Result<Arc<Self>> {
+        prepare::prepare(state)?;
+        
+        let env = template::setup_environment(state)?;
+        let hili = Highlighter::new(state)?;
 
-pub fn prepare(state: &State) -> Result<()> {
-    prepare::prepare(state)
+        let arc = Arc::new_cyclic(move |weak| Self {
+            env,
+            hili,
+            weak: Weak::clone(weak),
+            state: Arc::clone(state)
+        });
+
+        let test = indoc!{"
+            {% set query = \"SELECT * FROM input_files\" %}
+            {% set query = DB.query(query) %}
+            
+            {% for row in query %}
+            - File with id {{ row.id }} is at path {{ row.path }}.
+            {% endfor %}
+
+            {% set template = '{{ 2 + 2 }}' %}
+            
+            {{ template | eval }}
+        "};
+
+        let test = arc.env.render_str(test, ()).unwrap();
+        println!("{test}");
+        Ok(arc)
+    }
 }

@@ -6,6 +6,7 @@ use syntect::{
 };
 
 use crate::prelude::*;
+use crate::parse::Codeblock;
 
 const HIGHLIGHTER_DUMP_PATH: &str = ".ftl/cache/highlighter.bin";
 
@@ -22,11 +23,13 @@ impl Highlighter {
             bail!("Syntax highlighting is enabled, but no theme has been specified.")
         };
 
+        debug!("Loading highlighting syntaxes and themes...");
+
         let mut syntax_builder = SyntaxSet::load_defaults_newlines().into_builder();
-        syntax_builder.add_from_folder("src/cfg/highlighting/", true)?;
+        syntax_builder.add_from_folder("src/config/highlighting/", true)?;
 
         let mut theme_set = ThemeSet::load_defaults();
-        theme_set.add_from_folder("src/cfg/highlighting/")?;
+        theme_set.add_from_folder("src/config/highlighting/")?;
 
         let theme = match theme_set.themes.remove(theme_name) {
             Some(theme) => theme,
@@ -37,9 +40,10 @@ impl Highlighter {
                 bail!(err)
             }
         };
+        debug!("Themes loaded.");
+
         let syntaxes = syntax_builder.build();
-    
-        debug!("Highlighting syntaxes and themes loaded.");
+        debug!("Syntaxes loaded.");
 
         Ok(Self {
             syntaxes,
@@ -47,8 +51,8 @@ impl Highlighter {
         })
     }
 
-    pub fn highlight(&self, token: Option<&str>, body: &str) -> Result<String> {
-        let syntax = match token {
+    pub fn highlight(&self, block: Codeblock) -> Result<String> {
+        let syntax = match block.token {
             Some(token) => match self.syntaxes.find_syntax_by_token(token) {
                 Some(syntax) => syntax,
                 None => {
@@ -61,7 +65,7 @@ impl Highlighter {
         };
 
         higlight_html(
-            body,
+            block.body,
             &self.syntaxes,
             syntax,
             &self.theme

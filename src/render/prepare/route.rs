@@ -56,7 +56,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
         AND attributes.kind = 'aliases'
     ";
 
-    let params = (1, rev_id);
+    let params = (1, rev_id).into();
 
     let static_routes = conn.prepare_reader(query_static, params)?
         .map(|row| -> Result<_> {
