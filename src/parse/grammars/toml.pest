@@ -1,5 +1,0 @@
-WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
-
-toml_fence = { "+"{3} }
-toml_body = { (!(toml_fence) ~ ANY)+ }
-toml_block = { toml_fence ~ toml_body ~ toml_fence }

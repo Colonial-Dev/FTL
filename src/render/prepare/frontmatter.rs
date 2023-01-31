@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use regex::Regex;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -10,9 +12,12 @@ use crate::{
         Statement,
         StatementExt
     },
-    parse::find_toml,
     prelude::*,
 };
+
+static TOML_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap()
+});
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Frontmatter {
@@ -149,10 +154,17 @@ pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
 fn extract_frontmatter(item: Row) -> Result<Page> {
     debug!("Extracting frontmatter for page {}...", item.id);
 
-    let (range, body) = find_toml(&item.contents)
+    let capture = TOML_REGEX.captures(&item.contents)
         .with_context(||
             format!("Could not find frontmatter in page at \"{}\".", item.path)
-        )?;
+        )?
+        .get(0).unwrap();
+    
+    let range = capture.range();
+    let body = capture
+        .as_str()
+        .trim_start_matches("+++")
+        .trim_end_matches("+++");
 
     let mut fm = toml::from_str::<Frontmatter>(body)
         .with_context(||

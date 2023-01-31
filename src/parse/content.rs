@@ -24,7 +24,7 @@ use nom::sequence::{
     tuple
 };
 
-use super::{Input, Result, trim};
+use super::{Input, Result, EyreResult, trim, to_report};
 
 pub type Kwargs<'i> = Vec<Kwarg<'i>>;
 pub type Literals<'i> = Vec<Literal<'i>>;
@@ -267,15 +267,17 @@ impl<'i> Codeblock<'i> {
 }
 
 impl<'i> Content<'i> {
-    pub fn parse(input: Input<'i>) -> Result<Self> {
+    pub fn parse_many(input: Input<'i>) -> EyreResult<Vec<Self>> {
+        many1(Self::parse_one)(input)   
+            .map(|(_, o)| o)
+            .map_err(to_report)
+    }
+
+    fn parse_one(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_structure,
             Self::parse_plaintext
         ))(input)
-    }
-
-    pub fn parse_many(input: Input<'i>) -> Result<Vec<Self>> {
-        many1(Self::parse)(input)
     }
 
     fn parse_structure(input: Input<'i>) -> Result<Self> {
@@ -527,9 +529,7 @@ mod test_content {
             body: "panic!(\"oh no\");"
         };
 
-        let (out, page) = Content::parse_many(page).unwrap();
-
-        assert!(out.is_empty());
+        let page = Content::parse_many(page).unwrap();
 
         assert_eq!(page.len(), 9);
         assert_eq!(page[0], Content::Plaintext("Some plaintext here...\n\n"));

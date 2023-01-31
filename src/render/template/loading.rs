@@ -151,9 +151,7 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     // 1. Scan for its direct dependencies.
     // 2. Insert them into the map.dependencies table.
     for row in templates {
-        let (_, dependencies) = Dependency::parse_many(&row.contents).map_err(|e| Report::from(e.to_owned()))?;
-        
-        for dependency in dependencies {
+        for dependency in Dependency::parse_many(&row.contents)? {
             insert_dependency.reset()?;
             insert_dependency.bind((1, row.id.as_str()))?;
             insert_dependency.bind((2, dependency))?;

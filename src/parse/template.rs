@@ -18,44 +18,62 @@ use nom::sequence::{
     tuple
 };
 
-use super::{Input, Result, trim};
-
-pub type Paths<'i> = Vec<Dependency<'i>>;
+use super::{Input, Result, EyreResult, trim, to_report};
 
 #[derive(Debug, PartialEq)]
 pub enum Dependency<'i> {
     Single(&'i str),
-    Vector(Paths<'i>)
+    Vector(Vec<&'i str>)
 }
 
 impl<'i> Dependency<'i> {
-    pub fn parse_many(_input: Input<'i>) -> Result<Vec<&'i str>> {
-        todo!()
+    pub fn parse_many(input: Input<'i>) -> EyreResult<impl Iterator<Item = &'i str>> {
+        let (input, _) = Self::skip_ignored(input).map_err(to_report)?;
+
+        separated_list0(
+            Self::skip_ignored,
+            Self::parse_dep
+        )(input)
+        .map(|(_, o)| {
+            o.into_iter()
+                .flat_map(|dep| match dep {
+                    Self::Single(path) => vec![path].into_iter(),
+                    Self::Vector(vec) => vec.into_iter()
+                })
+        })
+        .map_err(to_report)
     }
 
-    fn parse_path(input: Input<'i>) -> Result<Self> {
+    fn parse_dep(input: Input<'i>) -> Result<Self> {
         alt((
-            Self::parse_vector,
-            Self::parse_single
+            Self::parse_by_keyword("extends"),
+            Self::parse_by_keyword("include"),
+            Self::parse_by_keyword("import"),
+            Self::parse_by_keyword("from")
         ))(input)
     }
 
-    fn parse_single(input: Input<'i>) -> Result<Self> {
+    fn parse_single(input: Input<'i>) -> Result<&'i str> {
         alt((
             delimited(
                 tag("\""),
-                escaped(is_not(r#"\""#), '\\', one_of(r#"""#)),
+                escaped(
+                    is_not(r#"\""#),
+                    '\\',
+                    one_of(r#"""#)
+                ),
             tag("\"")
             ),
             delimited(
                 tag("'"),
-                escaped(is_not(r#"\'"#), '\\', one_of(r#"'"#)),
+                escaped(
+                    is_not(r#"\'"#),
+                    '\\',
+                    one_of(r#"'"#)
+                ),
                 tag("'")
             )
         ))(input)
-        .map(|(i, o)| {
-            (i, Self::Single(o))
-        })
     }
 
     fn parse_vector(input: Input<'i>) -> Result<Self> {
@@ -69,20 +87,11 @@ impl<'i> Dependency<'i> {
         })
     }
 
-    fn parse_dep(input: Input<'i>) -> Result<Self> {
-        alt((
-            Self::parse_by_keyword("extends"),
-            Self::parse_by_keyword("include"),
-            Self::parse_by_keyword("import"),
-            Self::parse_by_keyword("from")
-        ))(input)
-    }
-
     fn skip_ignored(input: Input<'i>) -> Result<()> {
         let munch_plain = tuple((
             anychar,
             not(alt((
-                |i| Self::parse_path(i).map(|(i, _)| (i, "")),
+                |i| Self::parse_dep(i).map(|(i, _)| (i, "")),
                 eof
             )))
         ));
@@ -98,7 +107,10 @@ impl<'i> Dependency<'i> {
         move |i| {
             delimited(
                 pair(trim(tag("{%")), trim(tag(kw))),
-                Self::parse_path,
+                alt((
+                    Self::parse_vector,
+                    |i| Self::parse_single(i).map(|(i, o)| (i, Self::Single(o)))
+                )),
                 rest
             )(i)
         }
@@ -139,8 +151,8 @@ mod test {
         let (_, out_c) = parser(input_c).unwrap();
         let (_, out_d) = parser(input_d).unwrap();
 
-        let cmp_c = vec![Dependency::Single("page_detailed.html"), Dependency::Single("page.html")];
-        let cmp_d = vec![Dependency::Single("special_sidebar.html"), Dependency::Single("sidebar.html")];
+        let cmp_c = vec!["page_detailed.html", "page.html"];
+        let cmp_d = vec!["special_sidebar.html", "sidebar.html"];
 
         assert_eq!(out_a, Dependency::Single("header.html"));
         assert_eq!(out_b, Dependency::Single("customization.html"));
@@ -169,5 +181,40 @@ mod test {
         let (_, o) = Dependency::parse_by_keyword("import")(input).unwrap();
 
         assert_eq!(o, Dependency::Single("my_template.html"));
-   }
+    }
+
+    #[test]
+    fn parse_many() {
+        let test_template = indoc::indoc! {r#"
+            This is a test template!
+
+            {% extends "base.html" %}
+            {% include 'header.html' %}
+            {% include 'customization.html' ignore missing %}
+
+            ... Some other template stuff we don't care about ...
+
+            {% include ['page_detailed.html', 'page.html'] %}
+            {% include ['special_sidebar.html', 'sidebar.html'] ignore missing %}
+            {% from "my_template.html" import my_macro, my_variable %}
+
+            ... Some more template stuff we just skip over ...
+
+            {% from "my_template.html" import my_macro as other_name %}
+            {% import "my_template.html" as helpers %}
+        "#};
+
+        let found: Vec<_> = Dependency::parse_many(test_template).unwrap().collect();
+
+        assert_eq!("base.html", found[0]);
+        assert_eq!("header.html", found[1]);
+        assert_eq!("customization.html", found[2]);
+        assert_eq!("page_detailed.html", found[3]);
+        assert_eq!("page.html", found[4]);
+        assert_eq!("special_sidebar.html", found[5]);
+        assert_eq!("sidebar.html", found[6]);
+        assert_eq!("my_template.html", found[7]);
+        assert_eq!("my_template.html", found[8]);
+        assert_eq!("my_template.html", found[9]);
+    }
 }
