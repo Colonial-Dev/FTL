@@ -3,7 +3,7 @@
 
 use nom::{
     branch::alt,
-    combinator::{recognize, not, eof},
+    combinator::{recognize, not, eof, opt},
     number::complete::double,
     character::is_alphanumeric,
 };
@@ -14,13 +14,15 @@ use nom::character::complete::*;
 use nom::multi::{
     many0_count,
     separated_list0,
-    many1
+    many1,
+    many_m_n
 };
 
 use nom::sequence::{
     pair,
     delimited,
     terminated,
+    preceded,
     tuple
 };
 
@@ -63,6 +65,7 @@ pub struct Codeblock<'i> {
 #[derive(Debug, PartialEq)]
 pub struct Header<'i> {
     pub level: u8,
+    pub title: &'i str,
     pub ident: Option<&'i str>,
     pub classes: Vec<&'i str>
 }
@@ -266,6 +269,74 @@ impl<'i> Codeblock<'i> {
     }
 }
 
+impl<'i> Header<'i> {
+    pub fn parse(input: Input<'i>) -> Result<Self> {
+        tuple((
+            Self::parse_level,
+            Self::parse_title,
+            opt(Self::parse_extra)
+        ))(input)
+        .map(|(i, (level, title, extra))| {
+            (i, match extra {
+                Some((ident, classes)) => Self {
+                    level,
+                    title,
+                    ident,
+                    classes: classes.unwrap_or_default()
+                },
+                None => Self {
+                    level,
+                    title,
+                    ident: None,
+                    classes: Vec::new()
+                }
+            })
+        })
+    }
+
+    fn parse_level(input: Input<'i>) -> Result<u8> {
+        many_m_n(1, 6, char('#'))(input)
+            .map(|(i, o)| {
+                (i, o.len() as u8)
+            })
+    }
+
+    fn parse_title(input: Input<'i>) -> Result<&'i str> {
+        let munch_plain = tuple((
+            anychar,
+            not(alt((
+                |i| Self::parse_extra(i).map(|(i, _)| (i, "")),
+                is_a("\r\n"),
+                eof
+            )))
+        ));
+        
+        let (_, count) = many0_count(munch_plain)(input)?;
+
+        take(count + 1)(input).map(|(i, o)| (i, o.trim()))
+    }
+
+    fn parse_extra(input: Input<'i>) -> Result<(Option<&'i str>, Option<Vec<&'i str>>)> {
+        delimited(
+            tag("{"),
+            pair(
+                opt(preceded(
+                    char('#'),
+                    is_not("}.")
+                )),
+                opt(preceded(
+                    char('.'),
+                    separated_list0(char('.'), trim(is_not("}. ")))
+                ))
+            ),
+            tag("}")
+        )(input)
+        .map(|(i, (ident, classes))| {
+            (i, (ident.map(str::trim), classes))
+        })
+    }
+}
+
 impl<'i> Content<'i> {
     pub fn parse_many(input: Input<'i>) -> EyreResult<Vec<Self>> {
         many1(Self::parse_one)(input)   
@@ -285,7 +356,7 @@ impl<'i> Content<'i> {
             Self::parse_emojicode,
             |i| Shortcode::parse(i).map(|(i, o)| (i, Self::Shortcode(o))),
             |i| Codeblock::parse(i).map(|(i, o)| (i, Self::Codeblock(o))),
-            //|i| Header::parse(i).map(|(i, o)| (i, Self::Header(o))),
+            |i| Header::parse(i).map(|(i, o)| (i, Self::Header(o))),
         ))(input)
     }
 
@@ -477,6 +548,39 @@ mod test_codeblocks {
 }
 
 #[cfg(test)]
+mod test_headers {
+    use super::*;
+
+    #[test]
+    fn simple() {
+        let input = "## I'm a header!";
+
+        let (_, output) = Header::parse(input).unwrap();
+
+        assert_eq!(output, Header {
+            level: 2,
+            title: "I'm a header!",
+            ident: None,
+            classes: Vec::new()
+        })
+    }
+
+    #[test]
+    fn complex() {
+        let input = "# I'm a header! {#header .blue .bold}";
+
+        let (_, output) = Header::parse(input).unwrap();
+
+        assert_eq!(output, Header {
+            level: 1,
+            title: "I'm a header!",
+            ident: Some("header"),
+            classes: vec!["blue", "bold"]
+        })
+    }
+}
+
+#[cfg(test)]
 mod test_content {
     use super::*;
 
@@ -494,6 +598,8 @@ mod test_content {
     #[test]
     fn exhaustive() {
         let page = indoc::indoc! {"
+            ## Let's exhaust the possibilities! {#exhaust .some_class .another_class}
+        
             Some plaintext here...
 
             {{ invoke(answer = 42) }}
@@ -511,6 +617,13 @@ mod test_content {
 
             An emoji - :eagle:
         "};
+
+        let header = Header {
+            level: 2,
+            title: "Let's exhaust the possibilities!",
+            ident: Some("exhaust"),
+            classes: vec!["some_class", "another_class"]
+        };
 
         let inline_sc = Shortcode {
             ident: Ident("invoke"),
@@ -531,15 +644,16 @@ mod test_content {
 
         let page = Content::parse_many(page).unwrap();
 
-        assert_eq!(page.len(), 9);
-        assert_eq!(page[0], Content::Plaintext("Some plaintext here...\n\n"));
-        assert_eq!(page[1], Content::Shortcode(inline_sc));
-        assert_eq!(page[2], Content::Plaintext("\n\nSome more plaintext here...\n\n"));
-        assert_eq!(page[3], Content::Shortcode(block_sc));
-        assert_eq!(page[4], Content::Plaintext("\n\nA codeblock:\n"));
-        assert_eq!(page[5], Content::Codeblock(codeblock));
-        assert_eq!(page[6], Content::Plaintext("\n\nAn emoji - "));
-        assert_eq!(page[7], Content::Emojicode("eagle"));
-        assert_eq!(page[8], Content::Plaintext("\n"));
+        assert_eq!(page.len(), 10);
+        assert_eq!(page[0], Content::Header(header));
+        assert_eq!(page[1], Content::Plaintext("\n\nSome plaintext here...\n\n"));
+        assert_eq!(page[2], Content::Shortcode(inline_sc));
+        assert_eq!(page[3], Content::Plaintext("\n\nSome more plaintext here...\n\n"));
+        assert_eq!(page[4], Content::Shortcode(block_sc));
+        assert_eq!(page[5], Content::Plaintext("\n\nA codeblock:\n"));
+        assert_eq!(page[6], Content::Codeblock(codeblock));
+        assert_eq!(page[7], Content::Plaintext("\n\nAn emoji - "));
+        assert_eq!(page[8], Content::Emojicode("eagle"));
+        assert_eq!(page[9], Content::Plaintext("\n"));
     }
 }

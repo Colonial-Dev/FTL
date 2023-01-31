@@ -73,6 +73,10 @@ impl Ticket {
     fn render(&self) -> Result<Value> {
         todo!()
     }
+
+    fn toc(&self) -> Result<Value> {
+        todo!()
+    }
 }
 
 impl std::fmt::Display for Ticket {
