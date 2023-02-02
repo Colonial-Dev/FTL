@@ -15,7 +15,7 @@ use sqlite::{Bindable, Value as SQLValue};
 use crate::{
     prelude::*, 
     db::{
-        Pool, Page, Relation, NO_PARAMS,
+        Pool, Page, Relation, InputFile, NO_PARAMS,
         Queryable, Statement, StatementExt
     },
     render::Renderer,
@@ -97,14 +97,15 @@ impl Ticket {
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => buffer += &self.renderer.hili.highlight(block)?,
                 Header(header) => {
-                    let mut new = "#".repeat(header.level as usize);
+                    for _ in 0..header.level {
+                        buffer.push('#')
+                    }
 
-                    new += " ";
-                    new += header.title;
-                    new += " ";
+                    buffer += " ";
+                    buffer += header.title;
+                    buffer += " ";
 
                     // TODO: Actually handle anchors and classes
-                    buffer += &new;
                 }
             }
         }
@@ -184,9 +185,46 @@ impl StructObject for Ticket {
 /// gated behind method calls that lazily compute and cache the result.
 #[derive(Debug)]
 pub struct Resource {
-    id: String,
-    inline: bool,
-    contents: Option<String>
+    pub base: InputFile,
+    pub inner: Value,
+    pub state: State,
+}
+
+impl Resource {
+    // permalink
+    // bustedlink
+    // MIME (full/top/sub)
+    // contents
+    // base64?
+}
+
+impl std::fmt::Display for Resource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl Object for Resource {
+    fn kind(&self) -> ObjectKind<'_> {
+        ObjectKind::Struct(self)
+    }
+}
+
+impl StructObject for Resource {
+    fn get_field(&self, name: &str) -> Option<Value> {
+        self.inner.get_attr(name).ok()
+    }
+
+    fn static_fields(&self) -> Option<&'static [&'static str]> {
+        Some(&[
+            "id",
+            "hash",
+            "path",
+            "extension",
+            "contents",
+            "inline"
+        ])
+    }
 }
 
 /// Dynamic object wrapper around a database connection pool.

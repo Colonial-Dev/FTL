@@ -1,101 +1,128 @@
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::io;
 
-use rusqlite::params;
-use serde::Deserialize;
-use serde_rusqlite::from_rows;
+use ahash::AHashMap;
+use itertools::Itertools;
+use grass::{Fs, Options};
 
-use crate::{
-    db::{
-        data::{Route, RouteIn, RouteKind, Stylesheet, StylesheetIn},
-        Connection,
-    },
-    prelude::*,
+use crate::db::{
+    Queryable, StatementExt, DEFAULT_QUERY, NO_PARAMS,
+    Route, RouteKind, Output, OutputKind
 };
+use crate::prelude::*;
 
-/// Compile the stylesheet for this revision from `src/sass/style.scss`.
-/// Dumps all Sass files to a temporary directory so partials can be resolved.
-pub fn compile_stylesheet(conn: &Connection, rev_id: &str) -> Result<()> {
-    let temp_dir = PathBuf::from(".ftl/cache/").join(format!("sass-tmp-{}", &rev_id));
-
-    let result = compile(conn, rev_id, &temp_dir);
-
-    if let Err(e) = std::fs::remove_dir_all(temp_dir) {
-        warn!("Failed to drop SASS temporary directory: {e}");
-    } else {
-        debug!("SASS temporary directory dropped.")
-    }
-
-    result
+/// Filesystem override for [`grass`] that preloads all known stylesheets and their paths into a hashmap.
+#[derive(Debug)]
+struct MapFs {
+    map: AHashMap<PathBuf, Vec<u8>>
 }
 
-fn compile(conn: &Connection, rev_id: &str, temp_dir: &Path) -> Result<()> {
-    #[derive(Deserialize, Debug)]
-    struct Row {
-        path: String,
-        contents: String,
+#[derive(Debug)]
+struct Row {
+    path: PathBuf,
+    contents: String
+}
+
+impl Queryable for Row {
+    fn read_query(stmt: &sqlite::Statement<'_>) -> Result<Self> {
+        Ok(Self {
+            path: stmt.read_string("path").map(PathBuf::from)?,
+            contents: stmt.read_string("contents")?
+        })
+    }
+}
+
+impl MapFs {
+    pub fn load(state: &State) -> Result<Self> {
+        let conn = state.db.get_ro()?;
+        let rev_id = state.get_working_rev();
+
+        let query = "
+            SELECT path, contents FROM input_files
+            JOIN revision_files ON revision_files.id = input_files.id
+            WHERE revision_files.revision = ?1
+            AND path LIKE 'src/assets/sass/%'
+            AND extension IN ('sass', 'scss');
+        ";
+        let params = (1, rev_id.as_str()).into();
+
+        let map: AHashMap<_, _> = conn.prepare_reader(query, params)?
+            .map(|row| -> Result<_> {
+                let row: Row = row?;
+                
+                // Shave off the 'src/assets/sass/' component of the path.
+                let path = row.path.iter().skip(3).collect();
+                let bytes = row.contents.into_bytes();
+
+                Ok((path, bytes))
+            })
+            .try_collect()?;
+        
+        Ok(Self { map })
+    }
+}
+
+impl Fs for MapFs {
+    fn is_dir(&self, path: &Path) -> bool {
+        false
     }
 
-    let mut stmt = conn.prepare(
-        "
-        SELECT path, contents FROM input_files
-        JOIN revision_files ON revision_files.id = input_files.id
-        WHERE revision_files.revision = ?1
-        AND extension IN ('sass', 'scss')
-    ",
-    )?;
+    fn is_file(&self, path: &Path) -> bool {
+        self.map.contains_key(path)
+    }
 
-    let rows = from_rows::<Row>(stmt.query(params![&rev_id])?);
-    for row in rows {
-        let row = row?;
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        use io::{Error, ErrorKind::NotFound};
 
-        let mut target = temp_dir.to_path_buf();
-        for chunk in row.path.split('/') {
-            target.push(chunk);
+        match self.map.get(path) {
+            Some(vector) => Ok(vector.to_owned()),
+            None => Err(Error::new(
+                NotFound,
+                format!("file not found ({path:?})")
+            ))
         }
+    }
+}
 
-        std::fs::create_dir_all(target.parent().unwrap())?;
-        std::fs::write(&target, &row.contents)?;
+pub fn compile(state: &State) -> Result<String> {
+    let fs = MapFs::load(state)?;
+    let options = Options::default().fs(&fs);
+    let path = Path::new("style.scss");
 
-        debug!(
-            "Wrote temporary SASS file {:?} to disk (full path: {:?}).",
-            target.file_name(),
-            target
-        )
+    if !fs.is_file(path) {
+        let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
+        let err = err.note("SASS compilation expects the root file to be at 'src/assets/sass/style.scss'.");
+        bail!(err)
     }
 
-    let style_file = temp_dir.join("src/sass/style.scss");
+    let output = grass::from_path(path, &options)?;
 
-    if !style_file.exists() {
-        warn!("Trying to build SCSS but style file does not exist - skipping.");
-        return Ok(());
+    let conn = state.db.get_rw()?;
+    let rev_id = state.get_working_rev();
+
+    let mut hasher = seahash::SeaHasher::new();
+    for value in fs.map.values() {
+        value.hash(&mut hasher);
     }
 
-    let style_file = style_file.to_string_lossy();
+    let hash = format!("{:016x}", hasher.finish());
+    let route = format!("static/style.{hash}.css");
 
-    let output = grass::from_path(&style_file, &grass::Options::default())?;
-
-    let mut insert_sheet = Stylesheet::prepare_insert(conn, rev_id)?;
-    insert_sheet(&StylesheetIn {
-        revision: rev_id,
-        content: &output,
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Output{
+        id: hash.clone().into(),
+        kind: OutputKind::Stylesheet,
+        content: output
     })?;
 
-    let mut insert_route = Route::prepare_insert(conn)?;
-    insert_route(&RouteIn {
-        revision: rev_id,
-        id: None,
-        route: "style.css",
-        parent_route: None,
-        kind: RouteKind::Stylesheet,
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
+        id: hash.into(),
+        revision: (*rev_id).to_owned(),
+        route: route.to_owned(),
+        kind: RouteKind::Stylesheet
     })?;
 
-    insert_route(&RouteIn {
-        revision: rev_id,
-        id: None,
-        route: &format!("style.{}.css", rev_id),
-        parent_route: None,
-        kind: RouteKind::Redirect,
-    })?;
+    //TODO: Stylesheet dependency tracking
 
-    Ok(())
+    Ok(route)
 }

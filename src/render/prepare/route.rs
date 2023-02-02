@@ -136,14 +136,6 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn to_parent_path(route_path: &str) -> String {
-    route_path
-        .split_once('/')
-        .unwrap_or(("", ""))
-        .0
-        .to_string()
-}
-
 static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
 
 fn to_route(path: &str) -> String {

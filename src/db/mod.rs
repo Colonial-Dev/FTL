@@ -34,6 +34,7 @@ pub const PRIME_UP: &str = include_str!("sql/prime_up.sql");
 pub const IN_MEMORY: &str = ":memory:";
 
 pub const NO_PARAMS: Option<&[()]> = None;
+pub const DEFAULT_QUERY: Option<&str> = None;
 
 #[derive(Debug)]
 pub struct Database {

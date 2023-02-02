@@ -1,5 +1,4 @@
-#![warn(clippy::perf, clippy::style, warnings)]
-#![allow(dead_code)]
+#![warn(clippy::all)]
 
 mod common;
 mod db;

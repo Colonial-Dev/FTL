@@ -10,6 +10,7 @@
 mod highlight;
 mod prepare;
 mod template;
+mod stylesheet;
 
 use std::sync::{Arc, Weak};
 
@@ -42,20 +43,16 @@ impl Renderer {
         });
 
         let test = indoc!{"
-            {% set query = \"SELECT * FROM input_files\" %}
-            {% set query = DB.query(query) %}
-            
+            {% set query = DB.query('SELECT * FROM input_files') %}
+
             {% for row in query %}
             - File with id {{ row.id }} is at path {{ row.path }}.
             {% endfor %}
-
-            {% set template = '{{ 2 + 2 }}' %}
-            
-            {{ template | eval }}
         "};
 
-        let test = arc.env.render_str(test, ()).unwrap();
-        println!("{test}");
+        println!("{}", arc.env.render_str(test, ())?);
+        stylesheet::compile(state).unwrap();
+
         Ok(arc)
     }
 }

@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
+use serde::Serialize;
 use sqlite::Statement;
 
 use super::*;
 
 /// Represents a file discovered by FTL's walking algorithm.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InputFile {
     /// The file's ID value.
     /// Computed as the hash of the file's `hash` and `path` concatenated together,
