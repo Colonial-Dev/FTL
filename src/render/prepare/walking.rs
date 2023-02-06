@@ -4,6 +4,7 @@ use std::{
 };
 
 use crossbeam::channel::Receiver;
+use itertools::Itertools;
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
@@ -26,13 +27,15 @@ pub fn walk(state: &State) -> Result<String> {
 
     WalkDir::new(SITE_SRC_PATH)
         .into_iter()
+        .filter_ok(|entry| {
+            entry.file_type().is_file() || entry.file_type().is_symlink()
+        })
         .par_bridge()
         .map(|entry| {
             entry
                 .map_err(Report::from)
                 .map(process_entry)?
         })
-        .filter_map(Result::transpose)
         .for_each_with(tx,|tx, entry| {
             let _ = tx.send(entry);
         });
@@ -42,12 +45,7 @@ pub fn walk(state: &State) -> Result<String> {
         .expect("Database consumer thread should not panic.")
 }
 
-fn process_entry(entry: DirEntry) -> Result<Option<(InputFile, u64)>> {
-    // Directories and symbolic links are ignored.
-    if !entry.file_type().is_file() {
-        return Ok(None)
-    }
-    
+fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     let Some(path) = entry.path().to_str() else {
         let err = eyre!("Encountered a non-UTF-8 path ({:?}).", entry.path())
             .suggestion("FTL only supports UTF-8 paths; make sure your directories and filenames are valid UTF-8.");
@@ -55,6 +53,7 @@ fn process_entry(entry: DirEntry) -> Result<Option<(InputFile, u64)>> {
     };
 
     debug!("Walk found item at {path}");
+    // Note: we filter out directories before calling this function.
     let mut contents = std::fs::read(path)?;
     
     let extension = match entry.path().extension() {
@@ -101,9 +100,7 @@ fn process_entry(entry: DirEntry) -> Result<Option<(InputFile, u64)>> {
         inline
     };
 
-    Ok(
-        Some((file, int_id))
-    )
+    Ok((file, int_id))
 }
 
 fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -> Result<String> {
@@ -137,7 +134,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -
         hash ^= id;
     }
 
-    let rev_id = format!("{:016x}", hash);
+    let rev_id = format!("{hash:016x}");
     info!("Computed revision ID \"{}\".", rev_id);
 
     conn.prepare_writer(None::<&str>, None::<&[()]>)?(
@@ -172,7 +169,7 @@ fn is_inline(ext: &Option<String>) -> bool {
     match ext {
         Some(ext) => matches!(
             ext.as_str(),
-            "md" | "in" | "html" | "scss" | "json"
+            "md" | "in" | "html" | "scss" | "json" | "sublime-syntax" | "tmTheme"
         ),
         _ => false,
     }

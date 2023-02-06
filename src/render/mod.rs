@@ -42,17 +42,6 @@ impl Renderer {
             state: Arc::clone(state)
         });
 
-        let test = indoc!{"
-            {% set query = DB.query('SELECT * FROM input_files') %}
-
-            {% for row in query %}
-            - File with id {{ row.id }} is at path {{ row.path }}.
-            {% endfor %}
-        "};
-
-        println!("{}", arc.env.render_str(test, ())?);
-        stylesheet::compile(state).unwrap();
-
         Ok(arc)
     }
 }

@@ -46,8 +46,9 @@ pub enum Metadata {
 #[derive(Debug)]
 pub struct Ticket {
     pub metadata: SegQueue<Metadata>,
-    pub original: (String, Page),
     pub renderer: Arc<Renderer>,
+    pub source: String,
+    pub page: Page,
     inner: Value,
 }
 
@@ -69,8 +70,9 @@ impl Ticket {
 
         Self {
             metadata: SegQueue::new(),
-            original: (source, page),
             renderer: Arc::clone(renderer),
+            source,
+            page,
             inner,
         }
     }
@@ -79,9 +81,9 @@ impl Ticket {
         use Content::*;
         use pulldown_cmark::{Parser, Options, html};
 
-        let mut buffer = String::with_capacity(self.original.0.len());
+        let mut buffer = String::with_capacity(self.source.len());
 
-        for fragment in Content::parse_many(&self.original.0)? {
+        for fragment in Content::parse_many(&self.source)? {
             match fragment {
                 Plaintext(text) => buffer += text,
                 Emojicode(code) => {
@@ -125,7 +127,7 @@ impl Ticket {
         let Ok(template) = state.env().get_template(&name) else {
             let err = eyre!(
                 "Page {} contains a shortcode invoking template \"{}\", which does not exist.",
-                self.original.1.id,
+                self.page.id,
                 code.ident.0
             )
             .note("This error occurred because a shortcode referenced a template that FTL couldn't find at build time.")

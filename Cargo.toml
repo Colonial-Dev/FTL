@@ -59,3 +59,4 @@ clap = { version = "4", features = ["derive"] }
 seahash = "4.1"
 ahash = { version = "0.8.2", features = ["serde"] }
 itertools = "0.10.5"
+new_mime_guess = "4.0.1"

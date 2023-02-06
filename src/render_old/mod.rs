@@ -260,6 +260,25 @@ fn query_tickets(conn: &Connection, rev_id: &str) -> Result<Vec<Ticket>> {
     ",
     )?;
 
+    let _ = "
+        SELECT pages.* FROM pages
+        JOIN revision_files ON revision_files.id = pages.id
+        WHERE revision_files.revision = ?1
+        AND NOT EXISTS (
+            SELECT 1 FROM output, dependencies
+            WHERE output.id = pages.id
+            OR dependencies.parent = pages.id
+        )
+        OR EXISTS (
+            SELECT 1 FROM dependencies
+            WHERE dependencies.parent = pages.id
+            AND dependencies.child NOT IN (
+                SELECT id FROM revision_files
+                WHERE revision = ?1
+            )
+        )
+    ";
+
     let mut get_source_stmt = conn.prepare(
         "
         SELECT contents FROM input_files
