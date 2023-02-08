@@ -71,32 +71,22 @@ impl Deref for InnerState {
 
 #[derive(Debug)]
 pub struct Swap {
-    pub working_rev: ArcSwap<String>,
-    pub serving_rev: ArcSwap<String>,
+    pub rev: ArcSwap<String>,
 }
 
 impl Swap {
     pub fn new() -> Self {
         Self {
-            working_rev: Self::new_unset_id().into(),
-            serving_rev: Self::new_unset_id().into(),
+            rev: Self::new_unset_id().into(),
         }
     }
 
-    pub fn get_working_rev(&self) -> Arc<String> {
-        self.working_rev.load_full()
+    pub fn get_rev(&self) -> Arc<String> {
+        self.rev.load_full()
     }
 
-    pub fn set_working_rev(&self, id: impl Into<String>) {
-        self.working_rev.store(Arc::new(id.into()))
-    }
-
-    pub fn get_serving_rev(&self) -> Arc<String> {
-        self.serving_rev.load_full()
-    }
-
-    pub fn set_serving_rev(&self, id: impl Into<String>) {
-        self.serving_rev.store(Arc::new(id.into()))
+    pub fn set_rev(&self, id: impl Into<String>) {
+        self.rev.store(Arc::new(id.into()))
     }
 
     fn new_unset_id() -> Arc<String> {

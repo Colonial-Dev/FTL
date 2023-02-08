@@ -12,7 +12,7 @@ use crate::{
         RouteKind,
         Queryable,
         Statement,
-        StatementExt
+        StatementExt, DEFAULT_QUERY, NO_PARAMS
     },
     prelude::*,
 };
@@ -121,7 +121,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
         });
 
     let txn = conn.open_transaction()?;
-    let mut insert_route = conn.prepare_writer(None::<&str>, None::<&[()]>)?;
+    let mut insert_route = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
     
     static_routes
         .chain(cachebust_routes)

@@ -1,3 +1,5 @@
+use std::io::Cursor;
+use std::ffi::OsStr;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
@@ -18,28 +20,20 @@ const HIGHLIGHTER_DUMP_PATH: &str = ".ftl/cache/highlighter.bin";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Highlighter {
     syntaxes: SyntaxSet,
-    theme: Theme,
+    theme_set: ThemeSet,
+    curr_theme: Theme,
     hash: u64,
 }
 
 impl Highlighter {
     pub fn new(state: &State) -> Result<Self> {
+        // If there's a highlighter dump on the disk, we load it and check its hash against the current revision.
+        // If it matches, then we skip the expensive build step and just use the loaded dump.
+        // If it doesn't match, or if a dump doesn't exist, we take the slow path and build a new one from scratch,
+        // dumping the result to disk when finished.
         match Path::new(HIGHLIGHTER_DUMP_PATH).exists() {
             false => Self::load_new(state),
-            true => {
-                debug!("Highlighter dump exists, attempting to load...");
-
-                let old = Self::load_from_disk()?;
-                let hash = load_hash(state)?;
-
-                if old.hash == hash {
-                    debug!("Hashes matched, using prebuilt highlighter!");
-                    Ok(old)
-                } else {
-                    debug!("Hashes did NOT match, building new highlighter.");
-                    Self::load_new(state)
-                }
-            }
+            true => Self::load_from_disk(state)
         }
     }
 
@@ -49,7 +43,8 @@ impl Highlighter {
                 Some(syntax) => syntax,
                 None => {
                     let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching syntax definition.")
-                    .suggestion("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.");
+                    .note("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.")
+                    .suggestion("Provide a valid language token, or remove it to format the block as plain text.");
                     bail!(err)
                 }
             },
@@ -60,7 +55,7 @@ impl Highlighter {
             block.body,
             &self.syntaxes,
             syntax,
-            &self.theme
+            &self.curr_theme
         ).wrap_err("An error occurred in the syntax highlighting engine.")
     }
 
@@ -72,35 +67,38 @@ impl Highlighter {
         Ok(())
     }
 
-    fn load_from_disk() -> Result<Self> {
+    fn load_from_disk(state: &State) -> Result<Self> {
+        debug!("Loading highlighter dump from disk...");
+
         let bytes = std::fs::read(HIGHLIGHTER_DUMP_PATH)?;
-        Ok(bincode::deserialize(&bytes)?)
+        let mut loaded: Self = bincode::deserialize(&bytes)?;
+        let hash = load_hash(state)?;
+
+        if loaded.hash == hash {
+            debug!("Hashes matched, using prebuilt highlighter.");
+            loaded.curr_theme = Self::get_theme(state, &loaded.theme_set)?;
+            Ok(loaded)
+        } else {
+            debug!("Hashes did NOT match, building new highlighter.");
+            Self::load_new(state)
+        }
     }
 
     fn load_new(state: &State) -> Result<Self> {
         warn!("Building syntax and theme sets from scratch - this might take a hot second!");
 
         let syntaxes = load_syntaxes(state)?;
+        info!("New syntax set loaded.");
         let theme_set = load_themes(state)?;
+        info!("New theme set loaded.");
+        
         let hash = load_hash(state)?;
-
-        let Some(theme_name) = &state.config.render.highlight_theme else {
-            bail!("Syntax highlighting is enabled, but no theme has been specified.")
-        };
-
-        let theme = match theme_set.themes.get(theme_name) {
-            Some(theme) => theme.to_owned(),
-            None => {
-                let err = eyre!("Syntax highlighting theme \"{theme_name}\" does not exist.")
-                    .note("This error occurred because FTL could not resolve your specified syntax highlighting theme from its name.")
-                    .suggestion("Make sure your theme name is spelled correctly, and double-check that the corresponding theme file exists.");
-                bail!(err)
-            }
-        };
+        let curr_theme = Self::get_theme(state, &theme_set)?;
         
         let new = Self {
             syntaxes,
-            theme,
+            theme_set,
+            curr_theme,
             hash
         };
 
@@ -108,11 +106,27 @@ impl Highlighter {
         new.dump_to_disk()?;
         Ok(new)
     }
+
+    fn get_theme(state: &State, set: &ThemeSet) -> Result<Theme> {
+        let Some(theme_name) = &state.config.render.highlight_theme else {
+            bail!("Syntax highlighting is enabled, but no theme has been specified.")
+        };
+
+        match set.themes.get(theme_name) {
+            Some(theme) => Ok(theme.to_owned()),
+            None => {
+                let err = eyre!("Syntax highlighting theme \"{theme_name}\" does not exist.")
+                    .note("This error occurred because FTL could not resolve your specified syntax highlighting theme from its name.")
+                    .suggestion("Make sure your theme name is spelled correctly, and double-check that the corresponding theme file exists.");
+                bail!(err)
+            }
+        }
+    }
 }
 
 fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
     let conn = state.db.get_ro()?;
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
 
     let query = "
         SELECT input_files.* FROM input_files
@@ -138,11 +152,8 @@ fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
 }
 
 fn load_themes(state: &State) -> Result<ThemeSet> {
-    use std::io::Cursor;
-    use std::ffi::OsStr;
-
     let conn = state.db.get_ro()?;
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
 
     let query = "
         SELECT input_files.* FROM input_files
@@ -155,8 +166,8 @@ fn load_themes(state: &State) -> Result<ThemeSet> {
 
     let mut set = ThemeSet::load_defaults();
 
-    for theme in conn.prepare_reader::<InputFile, _, _>(query, params)? {
-        let theme = theme?;
+    for theme in conn.prepare_reader(query, params)? {
+        let theme: InputFile = theme?;
 
         let bytes = theme.contents
             .expect("Theme contents should be Some.")
@@ -188,7 +199,7 @@ impl Queryable for Row {
 
 fn load_hash(state: &State) -> Result<u64> {
     let conn = state.db.get_ro()?;
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
 
     let query = "
         SELECT input_files.id FROM input_files
@@ -196,6 +207,7 @@ fn load_hash(state: &State) -> Result<u64> {
         WHERE revision_files.revision = ?1
         AND path LIKE 'src/config/highlighting/%'
         AND extension IN ('sublime-syntax', 'tmTheme')
+        ORDER BY input_files.id
     ";
     let params = (1, rev_id.as_str()).into();
 

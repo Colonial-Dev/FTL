@@ -10,7 +10,7 @@ use crate::{
         TomlMap,
         Queryable,
         Statement,
-        StatementExt
+        StatementExt, DEFAULT_QUERY, NO_PARAMS
     },
     prelude::*,
 };
@@ -128,8 +128,8 @@ pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
     let params = (1, rev_id).into();
     let txn = conn.open_transaction()?;
 
-    let mut insert_page = conn.prepare_writer(None::<&str>, None::<&[()]>)?;
-    let mut insert_attr = conn.prepare_writer(None::<&str>, None::<&[()]>)?;
+    let mut insert_page = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
+    let mut insert_attr = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 
     conn.prepare_reader(query, params)?
         .into_iter()

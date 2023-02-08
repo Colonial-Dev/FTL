@@ -36,7 +36,7 @@ impl Queryable for Row {
 impl MapFs {
     pub fn load(state: &State) -> Result<Self> {
         let conn = state.db.get_ro()?;
-        let rev_id = state.get_working_rev();
+        let rev_id = state.get_rev();
 
         let query = "
             SELECT path, contents FROM input_files
@@ -64,7 +64,7 @@ impl MapFs {
 }
 
 impl Fs for MapFs {
-    fn is_dir(&self, path: &Path) -> bool {
+    fn is_dir(&self, _: &Path) -> bool {
         false
     }
 
@@ -99,7 +99,7 @@ pub fn compile(state: &State) -> Result<String> {
     let output = grass::from_path(path, &options)?;
 
     let conn = state.db.get_rw()?;
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
 
     let mut hasher = seahash::SeaHasher::new();
     for value in fs.map.values() {
@@ -123,6 +123,10 @@ pub fn compile(state: &State) -> Result<String> {
     })?;
 
     //TODO: Stylesheet dependency tracking
+    // - Before compilation, load and hash all stylesheets, check if we already have an output of that ID
+    // - If yes, great, just insert a new route for this revision
+    // - If not, continue as usual
+    // Make sure to use ORDER BY when doing a hash query!
 
     Ok(route)
 }

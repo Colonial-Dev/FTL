@@ -38,7 +38,7 @@ impl Queryable for Row {
 /// Loads all user-provided and builtin templates into a [`Source`]
 pub fn setup_source(state: &State) -> Result<Source> {
     let conn = state.db.get_rw()?;
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
 
     let query = "
         SELECT input_files.id, path, contents FROM input_files

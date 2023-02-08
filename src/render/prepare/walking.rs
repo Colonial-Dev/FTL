@@ -12,7 +12,7 @@ use crate::{
     db::{
         InputFile,
         RevisionFile,
-        Connection, Revision,
+        Connection, Revision, DEFAULT_QUERY, NO_PARAMS,
     },
     prelude::*,
 };
@@ -106,7 +106,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
 fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -> Result<String> {
     let txn = conn.open_transaction()?;
 
-    let mut insert_file = conn.prepare_writer(None::<&str>, None::<&[()]>)?;
+    let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
     let mut ids = Vec::new();
     let mut hash = 0_u64;
 
@@ -135,9 +135,9 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -
     }
 
     let rev_id = format!("{hash:016x}");
-    info!("Computed revision ID \"{}\".", rev_id);
+    info!("Computed revision ID {rev_id}.");
 
-    conn.prepare_writer(None::<&str>, None::<&[()]>)?(
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(
         &Revision {
             id: rev_id.to_owned(),
             name: None,
@@ -147,7 +147,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -
         }
     )?;
 
-    let mut insert_file = conn.prepare_writer(None::<&str>, None::<&[()]>)?;
+    let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 
     for id in ids {
         insert_file(&RevisionFile {

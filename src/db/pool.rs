@@ -16,6 +16,7 @@ use sqlite::{
     OpenFlags, 
     Connection,
     Bindable,
+    State
 };
 
 use crate::prelude::*;
@@ -204,6 +205,25 @@ impl PoolConnection {
         });
 
         (handle, tx)
+    }
+
+    /// Given a query and an optional set of parameters, returns `true` if it returns
+    /// one or more rows.
+    pub fn exists<Q, P>(&self, query: Q, parameters: Option<P>) -> Result<bool> where
+        Q: AsRef<str>,
+        P: Bindable
+    {
+        let mut stmt = self.prepare(query)?;
+        
+        if let Some(parameters) = parameters {
+            stmt.bind(parameters)?;
+        }
+
+        if let State::Row = stmt.next()? {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Open a new transaction on the connection, yielding a [`Transaction`] token

@@ -183,8 +183,8 @@ impl StructObject for Ticket {
 
 /// A resource known to FTL, such as an image or page.
 /// 
-/// Stores relatively little state when first created, with more complex information being 
-/// gated behind method calls that lazily compute and cache the result.
+/// Stores relatively little state, with more complex information being 
+/// gated behind method calls that lazily compute the result.
 #[derive(Debug)]
 pub struct Resource {
     pub base: InputFile,
@@ -193,6 +193,16 @@ pub struct Resource {
 }
 
 impl Resource {
+    // Given a path, look in the following places (in order) to try and resolve it to an input file:
+    // - If a page is in scope, its directory.
+    // - The assets directory.
+    // - The content directory.
+    // - Attempt to resolve it exactly as provided.
+    // Special sigils?:
+    // - '.' (only look in the page directory)
+    // - '@' (only look in the assets directory)
+    // - '~' (only look in the content directory)
+    // 
     // permalink
     // bustedlink
     // MIME (full/top/sub)

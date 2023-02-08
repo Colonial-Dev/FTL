@@ -15,7 +15,7 @@ use objects::*;
 use crate::prelude::*;
 
 pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
-    let rev_id = state.get_working_rev();
+    let rev_id = state.get_rev();
     let stylesheet = format!("{rev_id}/style.css");
     let handle = DbHandle::new(state);
 
@@ -32,7 +32,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     Ok(env)
 }
 
-pub fn register_routines(_state: &State, env: &mut Environment<'_>) -> Result<()> {
+pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()> {
     env.add_function("eval", eval);
 
     env.add_filter("eval", eval);

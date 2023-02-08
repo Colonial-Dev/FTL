@@ -9,6 +9,6 @@ pub fn prepare(state: &State) -> Result<()> {
     frontmatter::parse_frontmatters(state, &rev_id)?;
     route::create_routes(state, &rev_id)?;
 
-    state.set_working_rev(rev_id);
+    state.set_rev(rev_id);
     Ok(())
 }
