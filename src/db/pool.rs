@@ -110,6 +110,7 @@ impl PoolConnection {
     /// 
     /// Connections opened in this manner have no parent pool, and as such will be closed
     /// when dropped.
+    #[allow(dead_code)]
     pub fn open<P>(path: P) -> Result<Self> where 
         P: AsRef<Path>
     {   
@@ -126,6 +127,7 @@ impl PoolConnection {
     /// 
     /// Connections opened in this manner have no parent pool, and as such will be closed
     /// when dropped.
+    #[allow(dead_code)]
     pub fn open_with_flags<P>(path: P, flags: OpenFlags) -> Result<Self> where
         P: AsRef<Path>
     {

@@ -99,7 +99,7 @@ impl Ticket {
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => buffer += {
                     &state.env().render_str(
-                        "{{ body | higlight(token) }}",
+                        "{{ body | highlight(token) }}",
                         context!(
                             body => block.body,
                             token => block.token
@@ -144,7 +144,10 @@ impl Ticket {
             bail!(err);
         };
     
-        Ok(template.render(context!(code => code))?)
+        Ok(template.render(context!(
+            code => code,
+            page => state.lookup("page")
+        ))?)
     }
 
     fn toc(&self) -> Result<Value> {

@@ -55,10 +55,6 @@ impl InnerState {
 
         Ok(Arc::new(state))
     }
-
-    pub fn clone(self: &State) -> State {
-        Arc::clone(self)
-    }
 }
 
 impl Deref for InnerState {

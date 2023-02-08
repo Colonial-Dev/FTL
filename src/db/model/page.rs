@@ -63,8 +63,8 @@ impl Insertable for Page {
         stmt.bind((":offset", self.offset))?;
         stmt.bind((":draft", self.draft as i64))?;
 
-        let attributes = bincode::serialize(&self.attributes)?;
-        let extra = bincode::serialize(&self.extra)?;
+        let attributes = serde_cbor::to_vec(&self.attributes)?;
+        let extra = serde_cbor::to_vec(&self.extra)?;
 
         stmt.bind((":attributes", &attributes[..]))?;
         stmt.bind((":extra", &extra[..]))?;
@@ -82,11 +82,11 @@ impl Queryable for Page {
             draft: stmt.read_bool("draft")?,
             attributes: {
                 let bytes = stmt.read_bytes("attributes")?;
-                bincode::deserialize(&bytes)
+                serde_cbor::from_slice(&bytes)
             }?,
             extra: {
                 let bytes = stmt.read_bytes("extra")?;
-                bincode::deserialize(&bytes)
+                serde_cbor::from_slice(&bytes)
             }?
         })
     }

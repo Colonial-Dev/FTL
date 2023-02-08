@@ -13,7 +13,6 @@ use syntect::{
 
 use crate::db::{InputFile, Queryable, Statement, StatementExt};
 use crate::prelude::*;
-use crate::parse::Codeblock;
 
 const HIGHLIGHTER_DUMP_PATH: &str = ".ftl/cache/highlighter.bin";
 
@@ -62,7 +61,7 @@ impl Highlighter {
     fn dump_to_disk(&self) -> Result<()> {
         std::fs::write(
             HIGHLIGHTER_DUMP_PATH,
-            bincode::serialize(self)?
+            serde_cbor::to_vec(self)?
         )?;
         Ok(())
     }
@@ -71,7 +70,7 @@ impl Highlighter {
         debug!("Loading highlighter dump from disk...");
 
         let bytes = std::fs::read(HIGHLIGHTER_DUMP_PATH)?;
-        let mut loaded: Self = bincode::deserialize(&bytes)?;
+        let mut loaded: Self = serde_cbor::from_slice(&bytes)?;
         let hash = load_hash(state)?;
 
         if loaded.hash == hash {

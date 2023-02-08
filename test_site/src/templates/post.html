@@ -1,24 +1,12 @@
 <head>
     <title>{{ page.title }}</title>
-    <link rel="stylesheet" href="{{ sass_link }}">
+    <link rel="stylesheet" href="{{ STYLESHEET }}">
 </head>
 
 <body>
-<h1> {{ page.title }} </h1>
-<h5> Date: {{ page.date }}<br><i>{{ page.summary }}</i></h5>
-{{ page | render }}
+<h1> {{ page.attributes.title }} </h1>
+<h5> Date: {{ page.attributes.date }}<br><i>{{ page.attributes.summary }}</i></h5>
+{{ page.render() }}
 
 {% include "footer.html" %}
-
-Cachebusted image: {{ link("@/java.png") }}
-
-{% set files | query %}
-SELECT * FROM input_files
-{% endset %}
-
-<ul>
-{% for file in files %}
-    <li>{{ file.path }} has an id of {{ file.id }}</li>
-{% endfor %}
-</ul>
 </body>

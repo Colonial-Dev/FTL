@@ -39,6 +39,12 @@ pub trait Queryable: Sized {
     fn read_query(stmt: &Statement<'_>) -> Result<Self>;
 }
 
+impl Queryable for String {
+    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
+        Ok(stmt.read(0)?)
+    }
+}
+
 pub trait StatementExt {
     fn read_value(&self, column: &str) -> Result<Value>;
     fn read_string(&self, column: &str) -> Result<String>;

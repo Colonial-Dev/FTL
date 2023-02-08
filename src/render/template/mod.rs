@@ -2,6 +2,9 @@ mod error;
 mod loading;
 mod objects;
 
+pub use error::*;
+pub use objects::*;
+
 use minijinja::{
     context,
     Environment, 
