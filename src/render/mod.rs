@@ -18,12 +18,9 @@ use minijinja::Environment;
 
 use crate::prelude::*;
 
-use highlight::Highlighter;
-
 #[derive(Debug)]
 pub struct Renderer {
     pub env: Environment<'static>,
-    pub hili: Highlighter,
     pub weak: Weak<Self>,
     pub state: State,
 }
@@ -33,11 +30,9 @@ impl Renderer {
         prepare::prepare(state)?;
         
         let env = template::setup_environment(state)?;
-        let hili = Highlighter::new(state)?;
 
         let arc = Arc::new_cyclic(move |weak| Self {
             env,
-            hili,
             weak: Weak::clone(weak),
             state: Arc::clone(state)
         });

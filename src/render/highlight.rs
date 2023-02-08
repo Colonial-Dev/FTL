@@ -37,9 +37,9 @@ impl Highlighter {
         }
     }
 
-    pub fn highlight(&self, block: Codeblock) -> Result<String> {
-        let syntax = match block.token {
-            Some(token) => match self.syntaxes.find_syntax_by_token(token) {
+    pub fn highlight(&self, body: String, token: Option<String>) -> Result<String> {
+        let syntax = match token {
+            Some(token) => match self.syntaxes.find_syntax_by_token(&token) {
                 Some(syntax) => syntax,
                 None => {
                     let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching syntax definition.")
@@ -52,7 +52,7 @@ impl Highlighter {
         };
 
         higlight_html(
-            block.body,
+            &body,
             &self.syntaxes,
             syntax,
             &self.curr_theme
@@ -91,7 +91,7 @@ impl Highlighter {
         info!("New syntax set loaded.");
         let theme_set = load_themes(state)?;
         info!("New theme set loaded.");
-        
+
         let hash = load_hash(state)?;
         let curr_theme = Self::get_theme(state, &theme_set)?;
         

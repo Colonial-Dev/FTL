@@ -9,9 +9,10 @@ use minijinja::{
     State as MJState
 };
 
-use error::MJResult;
+use error::{MJResult, WrappedReport as Wrap};
 use objects::*;
 
+use super::highlight::Highlighter;
 use crate::prelude::*;
 
 pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
@@ -37,6 +38,13 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
 
     env.add_filter("eval", eval);
     env.add_filter("slug", slug::slugify::<String>);
+
+    let hili = Highlighter::new(state)?;
+    env.add_filter("highlight", move |body, token| {
+        hili.highlight(body, token)
+            .map(Value::from)
+            .map_err(Wrap::wrap)
+    });
 
     Ok(())
 }

@@ -46,7 +46,7 @@ pub enum Metadata {
 #[derive(Debug)]
 pub struct Ticket {
     pub metadata: SegQueue<Metadata>,
-    pub renderer: Arc<Renderer>,
+    pub state: State,
     pub source: String,
     pub page: Page,
     inner: Value,
@@ -60,7 +60,7 @@ struct SerTicket<'a> {
 }
 
 impl Ticket {
-    pub fn new(renderer: &Arc<Renderer>, page: Page, source: &str) -> Self {
+    pub fn new(state: &State, page: Page, source: &str) -> Self {
         // Slice off the page's frontmatter.
         let source = source[page.offset as usize..].to_string();
         let inner = Value::from_serializable(&SerTicket {
@@ -70,7 +70,7 @@ impl Ticket {
 
         Self {
             metadata: SegQueue::new(),
-            renderer: Arc::clone(renderer),
+            state: Arc::clone(state),
             source,
             page,
             inner,
@@ -97,7 +97,15 @@ impl Ticket {
                     }
                 },
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
-                Codeblock(block) => buffer += &self.renderer.hili.highlight(block)?,
+                Codeblock(block) => buffer += {
+                    &state.env().render_str(
+                        "{{ body | higlight(token) }}",
+                        context!(
+                            body => block.body,
+                            token => block.token
+                        )
+                    )?
+                },
                 Header(header) => {
                     for _ in 0..header.level {
                         buffer.push('#')

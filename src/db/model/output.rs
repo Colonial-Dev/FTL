@@ -7,6 +7,7 @@ use super::*;
 pub enum Relation {
     Unknown = 0,
     Intertemplate = 1,
+    PageAsset = 2,
 }
 
 impl From<i64> for Relation {
@@ -14,8 +15,9 @@ impl From<i64> for Relation {
         use Relation::*;
         match value {
             1 => Intertemplate,
+            2 => PageAsset,
             _ => {
-                warn!("Encountered an unknown Relation discriminant ({value}).");
+                error!("Encountered an unknown Relation discriminant ({value}).");
                 Unknown
             }
         }
@@ -75,7 +77,7 @@ impl From<i64> for OutputKind {
             1 => Page,
             2 => Stylesheet,
             _ => {
-                warn!("Encountered an unknown OutputKind discriminant ({value}).");
+                error!("Encountered an unknown OutputKind discriminant ({value}).");
                 Unknown
             }
         }
