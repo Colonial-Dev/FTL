@@ -48,14 +48,11 @@ impl MapFs {
         let params = (1, rev_id.as_str()).into();
 
         let map: AHashMap<_, _> = conn.prepare_reader(query, params)?
-            .map(|row| -> Result<_> {
-                let row: Row = row?;
-                
+            .map_ok(|row: Row| {
                 // Shave off the 'src/assets/sass/' component of the path.
-                let path = row.path.iter().skip(3).collect();
+                let path: PathBuf = row.path.iter().skip(3).collect();
                 let bytes = row.contents.into_bytes();
-
-                Ok((path, bytes))
+                (path, bytes)
             })
             .try_collect()?;
         
@@ -86,6 +83,32 @@ impl Fs for MapFs {
 }
 
 pub fn compile(state: &State) -> Result<String> {
+    info!("Starting SASS compilation...");
+    
+    let conn = state.db.get_rw()?;
+    let rev_id = state.get_rev();
+
+    let hash = load_hash(state)?;
+    let route = format!("static/style.{hash}.css");
+
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
+        id: hash.clone().into(),
+        revision: (*rev_id).to_owned(),
+        route: route.clone(),
+        kind: RouteKind::Stylesheet
+    })?;
+
+    let query = "
+        SELECT NULL FROM output
+        WHERE id = ?1
+    ";
+    let params = (1, hash.as_str()).into();
+
+    if conn.exists(query, params)? {
+        info!("Stylesheet output already exists, skipping rebuild.");
+        return Ok(route)
+    }
+    
     let fs = MapFs::load(state)?;
     let options = Options::default().fs(&fs);
     let path = Path::new("style.scss");
@@ -98,35 +121,35 @@ pub fn compile(state: &State) -> Result<String> {
 
     let output = grass::from_path(path, &options)?;
 
-    let conn = state.db.get_rw()?;
-    let rev_id = state.get_rev();
-
-    let mut hasher = seahash::SeaHasher::new();
-    for value in fs.map.values() {
-        value.hash(&mut hasher);
-    }
-
-    let hash = format!("{:016x}", hasher.finish());
-    let route = format!("static/style.{hash}.css");
-
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Output{
-        id: hash.clone().into(),
+        id: hash.into(),
         kind: OutputKind::Stylesheet,
         content: output
     })?;
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
-        id: hash.into(),
-        revision: (*rev_id).to_owned(),
-        route: route.to_owned(),
-        kind: RouteKind::Stylesheet
-    })?;
-
-    //TODO: Stylesheet dependency tracking
-    // - Before compilation, load and hash all stylesheets, check if we already have an output of that ID
-    // - If yes, great, just insert a new route for this revision
-    // - If not, continue as usual
-    // Make sure to use ORDER BY when doing a hash query!
-
     Ok(route)
+}
+
+fn load_hash(state: &State) -> Result<String> {
+    let conn = state.db.get_ro()?;
+    let rev_id = state.get_rev();
+    
+    let query = "
+        SELECT input_files.id FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+        AND path LIKE 'src/assets/sass/%'
+        AND extension IN ('sass', 'scss');
+        ORDER BY input_files.id
+    ";
+    let params = (1, rev_id.as_str()).into();
+
+    let hash = conn.prepare_reader(query, params)?
+        .fold_ok(seahash::SeaHasher::new(), |mut hasher, id: String| {
+            id.hash(&mut hasher);
+            hasher
+        })?
+        .finish();
+
+    Ok(format!("{hash:016x}"))
 }
