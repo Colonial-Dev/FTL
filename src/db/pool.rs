@@ -276,6 +276,7 @@ impl<'a> Transaction<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn rollback(mut self) -> Result<()> {
         self.parent.execute("ROLLBACK;")?;
         self.complete = true;

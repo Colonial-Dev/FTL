@@ -18,7 +18,6 @@ use crate::{
         Pool, Page, Relation, InputFile, NO_PARAMS,
         Queryable, Statement, StatementExt
     },
-    render::Renderer,
     parse::{Content, Shortcode}
 };
 

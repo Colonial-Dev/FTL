@@ -104,7 +104,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
             Ok(Route {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
-                route: to_route(&row.path),
+                route: slug::slugify(to_route(&row.path)),
                 kind: RouteKind::Page
             })
         });

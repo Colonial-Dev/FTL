@@ -31,7 +31,7 @@ The result of 2 + 2 is: {{ 2 + 2 }}
 Wanna query the database? Do it in the templates!
 {% set query = DB.query("SELECT * FROM input_files") %}
 {% for row in query %}
-File at path {{ row.path }} has id {{ row.id }}
+- File at path {{ row.path }} has id {{ row.id }}
 {% endfor %}
 </code>
 {% end %}

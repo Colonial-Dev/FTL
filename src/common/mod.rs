@@ -18,7 +18,6 @@ pub type MaybeVec<T> = Result<Vec<T>>;
 
 pub const CONFIG_FILENAME: &str = "ftl.toml";
 pub const SITE_DB_PATH: &str = ".ftl/content.db";
-pub const SITE_CACHE_PATH: &str = ".ftl/cache";
 
 pub const SITE_SRC_PATH: &str = "src/";
 pub const SITE_ASSET_PATH: &str = "assets/";

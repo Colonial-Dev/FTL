@@ -1,7 +1,7 @@
 mod error;
 mod loading;
 mod objects;
-
+    
 pub use error::*;
 pub use objects::*;
 
@@ -13,7 +13,6 @@ use minijinja::{
 };
 
 use error::{MJResult, WrappedReport as Wrap};
-use objects::*;
 
 use super::highlight::Highlighter;
 use crate::prelude::*;
@@ -53,8 +52,7 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
 }
 
 fn eval(state: &MJState, template: String) -> MJResult {
-    state.env().render_named_str(
-        "eval.html",
+    state.env().render_str(
         &template,
         context!(page => state.lookup("page"))
     ).map(Value::from_safe_string)

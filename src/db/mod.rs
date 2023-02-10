@@ -31,6 +31,8 @@ pub const AUX_DOWN: &str = "DETACH DATABASE map;";
 pub const PRAGMAS: &str = include_str!("sql/pragmas.sql");
 pub const PRIME_DOWN: &str = include_str!("sql/prime_down.sql");
 pub const PRIME_UP: &str = include_str!("sql/prime_up.sql");
+
+#[cfg(test)]
 pub const IN_MEMORY: &str = ":memory:";
 
 pub const NO_PARAMS: Option<&[()]> = None;
