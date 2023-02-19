@@ -1,3 +1,5 @@
+//! This module contains a `nom` parser for a small subset of the Minijinja language, designed to extract dependency filenames.
+
 use nom::{
     branch::alt,
     combinator::{not, eof},
@@ -21,12 +23,14 @@ use nom::sequence::{
 use super::{Input, Result, EyreResult, trim, to_report};
 
 #[derive(Debug, PartialEq)]
+/// One or many dependencies parsed from a Minijinja template.
 pub enum Dependency<'i> {
     Single(&'i str),
     Vector(Vec<&'i str>)
 }
 
 impl<'i> Dependency<'i> {
+    /// Attempts to parse dependencies from the provided input until exhaustion.
     pub fn parse_many(input: Input<'i>) -> EyreResult<impl Iterator<Item = &'i str>> {
         separated_list0(
             Self::skip_ignored,
@@ -42,6 +46,7 @@ impl<'i> Dependency<'i> {
         .map_err(to_report)
     }
 
+    /// Attempts to parse a single dependency from the provided input.
     fn parse_dep(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_by_keyword("extends"),
@@ -51,6 +56,9 @@ impl<'i> Dependency<'i> {
         ))(input)
     }
 
+    /// Attempts to parse a stand-alone dependency filename from the provided input.
+    /// 
+    /// Example: `"footer.html"`.
     fn parse_single(input: Input<'i>) -> Result<&'i str> {
         alt((
             delimited(
@@ -74,6 +82,9 @@ impl<'i> Dependency<'i> {
         ))(input)
     }
 
+    /// Attempts to parse an array/set of dependency filenames from the provided input.
+    /// 
+    /// Example: `["a.html", "b.html", "c.html"]`.
     fn parse_vector(input: Input<'i>) -> Result<Self> {
         delimited(
             tag("["),
@@ -85,6 +96,7 @@ impl<'i> Dependency<'i> {
         })
     }
 
+    /// Attempts to skip over any text that does not contain a dependency.
     fn skip_ignored(input: Input<'i>) -> Result<()> {
         let munch_plain = tuple((
             anychar,
@@ -101,6 +113,11 @@ impl<'i> Dependency<'i> {
         })
     }
 
+    /// Higher-order parser for Minijinja statements.
+    /// 
+    /// Because all the statements we're looking to parse share a lot of syntax in common (like delimiters),
+    /// we can just pass in the keyword we're looking for and share all that logic, rather than 
+    /// duplicating it for each statement.
     fn parse_by_keyword(kw: &'static str) -> impl FnMut(Input<'i>) -> Result<Dependency<'i>> {
         move |i| {
             delimited(
@@ -115,6 +132,8 @@ impl<'i> Dependency<'i> {
     }
 }
 
+/// Attempt to take from the provided input until the end of a Minijinja statement is reached
+/// (indicated by `%}`.)
 fn rest(input: Input<'_>) -> Result<&str> {
     preceded(
         take_until("%}"),

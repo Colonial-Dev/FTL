@@ -11,11 +11,15 @@ use crate::prelude::*;
 /// Type alias for a Minijinja-compatible [`Result`].
 pub type MJResult = Result<Value, MJError>;
 
-/// Newtype used to smuggle [`eyre::Report`]s through MiniJinja.
+/// Newtype used to smuggle [`Report`]s through MiniJinja.
 #[derive(Debug, Clone)]
 pub struct WrappedReport(Arc<Report>);
 
 impl WrappedReport {
+    /// Attempt to extract the wrapped report.
+    /// 
+    /// This fails if more than one strong reference exists to the inner [`Arc`],
+    /// which is handled by returning an opaque "internal error handling failure" report.
     pub fn extract(self) -> Report {
         match Arc::try_unwrap(self.0) {
             Ok(report) => report,
@@ -28,6 +32,8 @@ impl WrappedReport {
         }
     }
 
+    /// Wrap anything that implements [`Into<Report>`] inside of a Minijinja error.
+    /// This wrapped data can later be retrieved by [`WrappedReport::flatten`].
     pub fn wrap(error: impl Into<Report>) -> MJError {
         let report = WrappedReport::from(error.into());
 
@@ -37,6 +43,10 @@ impl WrappedReport {
         ).with_source(report)
     }
 
+    /// "Flattens" a Minijinja error, recursively downcasting it in pursuit of a [`WrappedReport`].
+    /// 
+    /// If one is found, it is extracted and returned. If instead the recursion bottoms out, we
+    /// convert the provided Minijinja error into a fresh report.
     pub fn flatten(root: MJError) -> Report {
         let mut root_err = &root as &dyn::std::error::Error;
 

@@ -1,5 +1,4 @@
-//! This module contains a nom parser for page content, such as shortcodes and codeblocks.
-// TODO: Document everything here.
+//! This module contains a `nom` parser for page content, such as shortcodes and codeblocks.
 
 use ahash::AHashMap;
 
@@ -32,15 +31,22 @@ use serde::Serialize;
 
 use super::{Input, Result, EyreResult, trim, to_report};
 
+/// Type alias for a collection of (flattened) [`Kwarg`]s.
 pub type Kwargs<'i> = AHashMap<&'i str, Literal<'i>>;
+
+/// Type alias for a vector of [`Literal`]s.
 pub type Literals<'i> = Vec<Literal<'i>>;
 
 #[derive(Debug, PartialEq, Serialize)]
+/// An identifier for kwargs.
+/// Conforms to the same rules as Rust identifiers.
 pub struct Ident<'i>(pub &'i str);
 
 #[derive(Debug, PartialEq, Serialize)]
 // Tags show up in templating output!
 #[serde(untagged)]
+/// A literal value - found in shortcode invocations,
+/// used as the arg half of kwargs.
 pub enum Literal<'i> {
     Integer(i64),
     Float(f64),
@@ -50,38 +56,64 @@ pub enum Literal<'i> {
 }
 
 #[derive(Debug, PartialEq, Serialize)]
+/// A keyword argument. Consists of an identifier and a literal value.
 pub struct Kwarg<'i> {
     pub ident: Ident<'i>,
     pub value: Literal<'i>
 }
 
 #[derive(Debug, PartialEq, Serialize)]
+/// A parsed shortcode invocation, including name, body and arguments.
 pub struct Shortcode<'i> {
+    /// The name of the shortcode.
     pub ident: Ident<'i>,
+    /// The body of the shortcode - only present for block invocations.
     pub body: Option<&'i str>,
+    /// The keyword arguments provided in the invocation, if any.
     pub args: Kwargs<'i>
 }
 
 #[derive(Debug, PartialEq, Serialize)]
+/// A parsed Markdown codeblock, including language token and body.
 pub struct Codeblock<'i> {
+    /// The codeblock's language token, if any. 
+    /// (Example: ```rs)
     pub token: Option<&'i str>,
+    /// The codeblock's body.
     pub body: &'i str
 }
 
 #[derive(Debug, PartialEq, Serialize)]
+/// A parsed Markdown header, including level, title, anchor ident and CSS classes.
 pub struct Header<'i> {
+    /// The header level, 1-6.
     pub level: u8,
+    /// The title of the header.
+    /// 
+    /// Example: `### Hello, World` - the title is "Hello, World".
     pub title: &'i str,
+    /// The user-provided anchor identifier, if any.
+    /// 
+    /// Example: `# Foo {#foo_header}` - the identifier is "foo_header".
     pub ident: Option<&'i str>,
+    /// The user-provided CSS class(es), if any.
+    /// 
+    /// Example: `# Bar {#bar .italic .xl}` - the classes are "italic" and "xl".
     pub classes: Vec<&'i str>
 }
 
 #[derive(Debug, PartialEq)]
+/// Enum representing the different content/"structures" parsed from a page.
 pub enum Content<'i> {
+    /// Regular Markdown text, with no special features. Captured as-is.
     Plaintext(&'i str),
+    /// An emoji shortcode, such as `:smile:`.
     Emojicode(&'i str),
+    /// A parsed shortcode invocation.
     Shortcode(Shortcode<'i>),
+    /// A parsed Markdown codeblock.
     Codeblock(Codeblock<'i>),
+    /// A parsed Markdown header.
     Header(Header<'i>)
 }
 
@@ -114,6 +146,7 @@ impl std::fmt::Display for Ident<'_> {
 }
 
 impl<'i> Literal<'i> {
+    /// Attempts to parse a single literal from the provided input.
     pub fn parse(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_number,
@@ -123,6 +156,10 @@ impl<'i> Literal<'i> {
         ))(input)
     }
 
+    /// Attempts to parse a numeric literal from the provided input.
+    /// 
+    /// Numeric literals are always parsed as double-precision floats.
+    /// Literals with no fractional component are demoted to integers post-hoc.
     fn parse_number(input: Input<'i>) -> Result<Self> {
         double(input).map(|(i, o)| {
             if o.fract() == 0.0 {
@@ -133,6 +170,10 @@ impl<'i> Literal<'i> {
         })
     }
 
+    /// Attempts to parse a boolean literal from the provided input.
+    /// 
+    /// This parser is quite strict - it only accepts the literal strings
+    /// "true" and "false".
     fn parse_boolean(input: Input<'i>) -> Result<Self> {
         alt((
             tag("true"),
@@ -147,6 +188,10 @@ impl<'i> Literal<'i> {
         })
     }
 
+    /// Attempts to parse a string literal from the provided input.
+    /// 
+    /// String literals are delimited with single or double quotes.
+    /// Delimiter escaping is supported.
     fn parse_string(input: Input<'i>) -> Result<Self> {
         alt((
             delimited(
@@ -165,6 +210,11 @@ impl<'i> Literal<'i> {
         })
     }
 
+    /// Attempts to parse a vector of literals from the provided input.
+    /// 
+    /// Vectors take the form of `[value, value, value]`. This parser will
+    /// parse any literal as part of a vector - they need not be homogenous.
+    /// Nested vectors are also supported.
     fn parse_vector(input: Input<'i>) -> Result<Self> {
         delimited(
             tag("["),
@@ -178,6 +228,9 @@ impl<'i> Literal<'i> {
 }
 
 impl<'i> Kwarg<'i> {
+    /// Attempts to parse a kwarg from the provided input.
+    /// 
+    /// Kwargs take the form of `ident = literal` (whitespace-insensitive.)
     pub fn parse(input: Input<'i>) -> Result<Self> {
         tuple((
             Ident::parse,
@@ -189,6 +242,12 @@ impl<'i> Kwarg<'i> {
         })
     }
 
+    /// Attempts to parse many kwargs from the provided input.
+    /// 
+    /// Kwarg sets take the form of `kwarg, kwarg, kwarg` (whitespace-insensitive.)
+    /// 
+    /// This parser does not directly return a collection of [`Kwarg`]s, but instead
+    /// flattens their data into a hashmap.
     pub fn parse_many(input: Input<'i>) -> Result<Kwargs> {
         separated_list0(
             tag(","),
@@ -204,6 +263,11 @@ impl<'i> Kwarg<'i> {
 }
 
 impl<'i> Shortcode<'i> {
+    /// Attempts to parse a single shortcode (inline or block) from the provided input.
+    /// 
+    /// Inline shortcodes take the form of `{{ ident(kwargs) }}`.
+    /// 
+    /// Block shortcodes take the form of `{% ident(kwargs) %} /* ... body ... */ {% end %}`.
     pub fn parse(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_inline,
@@ -211,6 +275,10 @@ impl<'i> Shortcode<'i> {
         ))(input)
     }
 
+    /// Attempts to parse a shortcode invocation from the provided input.
+    /// 
+    /// Invocations are where the name and arguments are specified; they do not include
+    /// delimiters like `{{`.
     fn parse_invocation(input: Input<'i>) -> Result<(Ident, Kwargs)> {
         tuple((
             Ident::parse,
@@ -222,6 +290,9 @@ impl<'i> Shortcode<'i> {
         ))(input)
     }
 
+    /// Attempts to parse a single inline shortcode from the provided input.
+    /// 
+    /// See [`Shortcode::parse`].
     fn parse_inline(input: Input<'i>) -> Result<Self> {
         delimited(
             tag("{{"),
@@ -240,6 +311,9 @@ impl<'i> Shortcode<'i> {
         })
     }
 
+    /// Attempts to parse a single block shortcode from the provided input.
+    /// 
+    /// See [`Shortcode::parse`].
     fn parse_block(input: Input<'i>) -> Result<Self> {
         tuple((
             delimited(
@@ -266,6 +340,7 @@ impl<'i> Shortcode<'i> {
 }
 
 impl<'i> Codeblock<'i> {
+    /// Attempts to parse a single Markdown codeblock from the provided input.
     pub fn parse(input: Input<'i>) -> Result<Self> {
         delimited(
             tag("```"),
@@ -291,6 +366,7 @@ impl<'i> Codeblock<'i> {
 }
 
 impl<'i> Header<'i> {
+    /// Attempts to parse a single Markdown header from the provided input.
     pub fn parse(input: Input<'i>) -> Result<Self> {
         tuple((
             Self::parse_level,
@@ -315,6 +391,9 @@ impl<'i> Header<'i> {
         })
     }
 
+    /// Attempts to parse the "level" of a Markdown header from the provided input.
+    /// 
+    /// This is simply how many pound signs are used - between one and six.
     fn parse_level(input: Input<'i>) -> Result<u8> {
         many_m_n(1, 6, char('#'))(input)
             .map(|(i, o)| {
@@ -322,6 +401,7 @@ impl<'i> Header<'i> {
             })
     }
 
+    /// Attempts to parse the title of a Markdown header from the provided input.
     fn parse_title(input: Input<'i>) -> Result<&'i str> {
         let munch_plain = tuple((
             anychar,
@@ -337,6 +417,7 @@ impl<'i> Header<'i> {
         take(count + 1)(input).map(|(i, o)| (i, o.trim()))
     }
 
+    /// Attempts to parse "extra" details from a Markdown header, such as its anchor ident and/or classes.
     fn parse_extra(input: Input<'i>) -> Result<(Option<&'i str>, Option<Vec<&'i str>>)> {
         delimited(
             tag("{"),
@@ -359,12 +440,14 @@ impl<'i> Header<'i> {
 }
 
 impl<'i> Content<'i> {
+    /// Attempts to parse content from the provided input until it is exhausted.
     pub fn parse_many(input: Input<'i>) -> EyreResult<Vec<Self>> {
         many1(Self::parse_one)(input)   
             .map(|(_, o)| o)
             .map_err(to_report)
     }
 
+    /// Attempts to parse a single piece of content from the provided input.
     fn parse_one(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_structure,
@@ -372,6 +455,8 @@ impl<'i> Content<'i> {
         ))(input)
     }
 
+    /// Attempts to parse a "structure" from the provided input, such as a shortcode
+    /// invocation or codeblock.
     fn parse_structure(input: Input<'i>) -> Result<Self> {
         alt((
             Self::parse_emojicode,
@@ -381,6 +466,9 @@ impl<'i> Content<'i> {
         ))(input)
     }
 
+    /// Attempts to parse (really, capture) "plaintext" from the provided input.
+    /// 
+    /// Plaintext is just regular Markdown text, with nothing of particular note in it.
     fn parse_plaintext(input: Input<'i>) -> Result<Self> {
         let munch_plain = tuple((
             anychar,
@@ -397,6 +485,7 @@ impl<'i> Content<'i> {
         })
     }
 
+    /// Attempts to parse an emoji shortcode from the provided input.
     fn parse_emojicode(input: Input<'i>) -> Result<Self> {
         delimited(
             tag(":"),
