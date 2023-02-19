@@ -14,7 +14,7 @@ use minijinja::{
 
 use error::{MJResult, WrappedReport as Wrap};
 
-use super::highlight::Highlighter;
+use objects::Highlighter;
 use crate::prelude::*;
 
 pub fn setup_environment(state: &State) -> Result<Environment<'static>> {

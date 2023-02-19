@@ -66,7 +66,7 @@ pub struct Kwarg<'i> {
 /// A parsed shortcode invocation, including name, body and arguments.
 pub struct Shortcode<'i> {
     /// The name of the shortcode.
-    pub ident: Ident<'i>,
+    pub name: &'i str,
     /// The body of the shortcode - only present for block invocations.
     pub body: Option<&'i str>,
     /// The keyword arguments provided in the invocation, if any.
@@ -279,9 +279,9 @@ impl<'i> Shortcode<'i> {
     /// 
     /// Invocations are where the name and arguments are specified; they do not include
     /// delimiters like `{{`.
-    fn parse_invocation(input: Input<'i>) -> Result<(Ident, Kwargs)> {
+    fn parse_invocation(input: Input<'i>) -> Result<(&'i str, Kwargs)> {
         tuple((
-            Ident::parse,
+            take_until("("),
             delimited(
                 trim(tag("(")),
                 Kwarg::parse_many,
@@ -303,7 +303,7 @@ impl<'i> Shortcode<'i> {
             (
                 i,
                 Self {
-                    ident: o.0,
+                    name: o.0,
                     body: None,
                     args: o.1
                 }
@@ -330,7 +330,7 @@ impl<'i> Shortcode<'i> {
             (
                 i,
                 Self {
-                    ident: invocation.0,
+                    name: invocation.0,
                     body: Some(body),
                     args: invocation.1
                 }
@@ -598,7 +598,7 @@ mod test_shortcodes {
 
         let (_, code) = Shortcode::parse(code).unwrap();
 
-        assert_eq!(code.ident.0, "invoke");
+        assert_eq!(code.name, "invoke");
         assert_eq!(code.body,  None);
         assert_eq!(code.args["answer"], Literal::Integer(42));
         assert_eq!(code.args["text"], Literal::String("Hello!"));
@@ -614,7 +614,7 @@ mod test_shortcodes {
 
         let (_, code) = Shortcode::parse(code).unwrap();
 
-        assert_eq!(code.ident.0, "invoke");
+        assert_eq!(code.name, "invoke");
         assert_eq!(code.body, Some("Block shortcode body text."));
         assert_eq!(code.args["answer"], Literal::Integer(42));
     }
@@ -728,13 +728,13 @@ mod test_content {
         };
 
         let inline_sc = Shortcode {
-            ident: Ident("invoke"),
+            name: "invoke",
             body: None,
             args: AHashMap::from([("answer", Literal::Integer(42))])
         };
 
         let block_sc = Shortcode {
-            ident: Ident("invoke"),
+            name: "invoke",
             body: Some("Block shortcode body."),
             args: AHashMap::from([("block", Literal::Boolean(true))])
         };

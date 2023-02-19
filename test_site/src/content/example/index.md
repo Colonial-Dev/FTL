@@ -24,12 +24,12 @@ It's also possible (using the `eval()` filter) to inject templating code directl
 
 {% eval() %}
 <code>
-The title of this page is: "{{ page.attributes.title }}".
+The title of this page is: "{{ page.attrs.title }}".
 
 The result of 2 + 2 is: {{ 2 + 2 }}
 
 Wanna query the database? Do it in the templates!
-{% set query = DB.query("SELECT * FROM input_files") %}
+{% set query = DB.query("SELECT * FROM input_files WHERE extension = ?1", "html") %}
 {% for row in query %}
 - File at path {{ row.path }} has id {{ row.id }}
 {% endfor %}

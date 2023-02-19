@@ -8,6 +8,7 @@ pub enum Relation {
     Unknown = 0,
     Intertemplate = 1,
     PageAsset = 2,
+    PageTemplate = 3,
 }
 
 impl From<i64> for Relation {
@@ -16,6 +17,7 @@ impl From<i64> for Relation {
         match value {
             1 => Intertemplate,
             2 => PageAsset,
+            3 => PageTemplate,
             _ => {
                 error!("Encountered an unknown Relation discriminant ({value}).");
                 Unknown

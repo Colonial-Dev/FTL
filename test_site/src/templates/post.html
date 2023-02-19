@@ -4,8 +4,8 @@
 </head>
 
 <body>
-<h1> {{ page.attributes.title }} </h1>
-<h5> Date: {{ page.attributes.date }}<br><i>{{ page.attributes.summary }}</i></h5>
+<h1> {{ page.attrs.title }} </h1>
+<h5> Date: {{ page.attrs.date }}<br><i>{{ page.attrs.summary }}</i></h5>
 {{ page.render() }}
 
 {% include "footer.html" %}

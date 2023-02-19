@@ -7,7 +7,6 @@
 // A module for post-render rewriting
 // A module for stylesheet compilation
 
-mod highlight;
 mod prepare;
 mod template;
 mod stylesheet;
@@ -124,7 +123,7 @@ impl Renderer {
             let out = template.render(minijinja::context!(page => page))
                 .map_err(Wrap::flatten)?;
 
-            println!("{out}")
+            println!("{out}");
         }
 
         stylesheet::compile(&self.state)?;
