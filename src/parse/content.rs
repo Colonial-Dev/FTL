@@ -1,6 +1,8 @@
 //! This module contains a nom parser for page content, such as shortcodes and codeblocks.
 // TODO: Document everything here.
 
+use ahash::AHashMap;
+
 use nom::{
     branch::alt,
     combinator::{recognize, not, eof, opt},
@@ -30,13 +32,15 @@ use serde::Serialize;
 
 use super::{Input, Result, EyreResult, trim, to_report};
 
-pub type Kwargs<'i> = Vec<Kwarg<'i>>;
+pub type Kwargs<'i> = AHashMap<&'i str, Literal<'i>>;
 pub type Literals<'i> = Vec<Literal<'i>>;
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Ident<'i>(pub &'i str);
 
 #[derive(Debug, PartialEq, Serialize)]
+// Tags show up in templating output!
+#[serde(untagged)]
 pub enum Literal<'i> {
     Integer(i64),
     Float(f64),
@@ -100,6 +104,12 @@ impl<'i> Ident<'i> {
         .map(|(i, o)| {
             (i, Self(o))
         })
+    }
+}
+
+impl std::fmt::Display for Ident<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -180,7 +190,16 @@ impl<'i> Kwarg<'i> {
     }
 
     pub fn parse_many(input: Input<'i>) -> Result<Kwargs> {
-        separated_list0(tag(","), trim(Self::parse))(input)
+        separated_list0(
+            tag(","),
+            trim(Self::parse)
+        )(input)
+        .map(|(i, o)| {
+            (
+                i,
+                o.into_iter().map(|kwarg| (kwarg.ident.0, kwarg.value)).collect()
+            )
+        })
     }
 }
 
@@ -474,14 +493,9 @@ mod test_kwargs {
 
         let (_, kwargs) = Kwarg::parse_many(kwargs).unwrap();
 
-        assert_eq!(kwargs[0].ident.0, "answer");
-        assert_eq!(kwargs[0].value, Literal::Integer(42));
-
-        assert_eq!(kwargs[1].ident.0, "sky");
-        assert_eq!(kwargs[1].value, Literal::String("blue"));
-
-        assert_eq!(kwargs[2].ident.0, "arr");
-        assert_eq!(kwargs[2].value, Literal::Vector(vec![Literal::Integer(1), Literal::Integer(2)]));
+        assert_eq!(kwargs["answer"], Literal::Integer(42));
+        assert_eq!(kwargs["sky"], Literal::String("blue"));
+        assert_eq!(kwargs["arr"], Literal::Vector(vec![Literal::Integer(1), Literal::Integer(2)]));
     }
 }
 
@@ -497,10 +511,8 @@ mod test_shortcodes {
 
         assert_eq!(code.ident.0, "invoke");
         assert_eq!(code.body,  None);
-        assert_eq!(code.args[0].ident.0, "answer");
-        assert_eq!(code.args[0].value, Literal::Integer(42));
-        assert_eq!(code.args[1].ident.0, "text");
-        assert_eq!(code.args[1].value, Literal::String("Hello!"));
+        assert_eq!(code.args["answer"], Literal::Integer(42));
+        assert_eq!(code.args["text"], Literal::String("Hello!"));
     }
 
     #[test]
@@ -515,8 +527,7 @@ mod test_shortcodes {
 
         assert_eq!(code.ident.0, "invoke");
         assert_eq!(code.body, Some("Block shortcode body text."));
-        assert_eq!(code.args[0].ident.0, "answer");
-        assert_eq!(code.args[0].value, Literal::Integer(42));
+        assert_eq!(code.args["answer"], Literal::Integer(42));
     }
 }
 
@@ -630,13 +641,13 @@ mod test_content {
         let inline_sc = Shortcode {
             ident: Ident("invoke"),
             body: None,
-            args: vec![Kwarg { ident: Ident("answer"), value: Literal::Integer(42)}]
+            args: AHashMap::from([("answer", Literal::Integer(42))])
         };
 
         let block_sc = Shortcode {
             ident: Ident("invoke"),
             body: Some("Block shortcode body."),
-            args: vec![Kwarg { ident: Ident("block"), value: Literal::Boolean(true)}]
+            args: AHashMap::from([("block", Literal::Boolean(true))])
         };
 
         let codeblock = Codeblock {

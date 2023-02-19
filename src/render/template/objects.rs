@@ -129,7 +129,7 @@ impl Ticket {
     }
 
     fn eval_shortcode(&self, state: &MJState, code: Shortcode) -> Result<String> {
-        let name = format!("{}.html", code.ident.0);
+        let name = format!("{}.html", code.ident);
 
         let Ok(template) = state.env().get_template(&name) else {
             let err = eyre!(
@@ -142,7 +142,7 @@ impl Ticket {
     
             bail!(err);
         };
-    
+
         Ok(template.render(context!(
             code => code,
             page => state.lookup("page")
@@ -176,7 +176,11 @@ impl Object for Ticket {
 
 impl StructObject for Ticket {
     fn get_field(&self, name: &str) -> Option<Value> {
-        self.inner.get_attr(name).ok()
+        match name {
+            // Convenience shorthand for attributes.
+            "attrs" => self.inner.get_attr("attributes").ok(),
+            _ => self.inner.get_attr(name).ok()
+        }
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
