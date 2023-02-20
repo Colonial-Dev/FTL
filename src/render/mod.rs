@@ -16,6 +16,7 @@ use std::sync::{Arc, Weak};
 use itertools::Itertools;
 use minijinja::Environment;
 
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use template::{Ticket, WrappedReport as Wrap};
 use crate::db::Page;
 use crate::prelude::*;
@@ -101,30 +102,19 @@ impl Renderer {
             .map_ok(Arc::new)
             .try_collect()?;
         
-        for ticket in tickets {
-            let name = match &ticket.page.template {
-                Some(name) => name,
-                None => "ftl_default.html"
-            };
-    
-            let Ok(template) = self.env.get_template(name) else {
-                let error = eyre!(
-                    "Tried to resolve a nonexistent template (\"{}\").",
-                    name,
-                )
-                .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
-                .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
-    
-                bail!(error)
-            };
-    
-            let page = minijinja::value::Value::from_object(Arc::clone(&ticket));
+        tickets
+            .par_iter()
+            .try_for_each_with(&self.env, |env, ticket| -> Result<_> {
+                ticket.build(env)?;
 
-            let out = template.render(minijinja::context!(page => page))
-                .map_err(Wrap::flatten)?;
+                while let Some(md) = ticket.metadata.pop() {
+                    if let template::Metadata::Rendered(out) = md {
+                        println!("{out}")
+                    }
+                }
 
-            println!("{out}");
-        }
+                Ok(())
+            })?;
 
         stylesheet::compile(&self.state)?;
 

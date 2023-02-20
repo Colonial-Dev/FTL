@@ -16,10 +16,14 @@ use error::{MJResult, WrappedReport as Wrap};
 
 use objects::Highlighter;
 use crate::prelude::*;
+use super::stylesheet;
 
 pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     let rev_id = state.get_rev();
-    let stylesheet = format!("{rev_id}/style.css");
+    let stylesheet = format!(
+        "static/style.{}.css",
+        stylesheet::load_hash(state)?
+    );
     let handle = DbHandle::new(state);
 
     let mut env = Environment::new();
@@ -39,6 +43,7 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
     env.add_function("eval", eval);
 
     env.add_filter("eval", eval);
+    env.add_filter("timefmt", timefmt);
     env.add_filter("slug", slug::slugify::<String>);
 
     let hili = Highlighter::new(state)?;
@@ -48,6 +53,9 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
             .map_err(Wrap::wrap)
     });
 
+    // timefmt filter
+    // query filter (replaces DB)
+
     Ok(())
 }
 
@@ -56,4 +64,25 @@ fn eval(state: &MJState, template: String) -> MJResult {
         &template,
         context!(page => state.lookup("page"))
     ).map(Value::from_safe_string)
+}
+
+fn timefmt(input: String, format: String) -> MJResult {
+    use chrono::DateTime;
+
+    let datetime = DateTime::parse_from_rfc3339(&input)
+        .map_err(|err| eyre!("Datetime input parsing error: {err}"))
+        .map_err(Wrap::wrap)?;
+
+    // Workaround to avoid panicking when the user-provided format string is invalid.
+    // Will be obsolete once https://github.com/chronotope/chrono/pull/902 is merged.
+    std::panic::set_hook(Box::new(|_| ()));
+    let formatted = std::panic::catch_unwind(|| {
+        datetime.format(&format).to_string()
+    })
+    .map_err(|_| {
+        Wrap::wrap(eyre!("Invalid datetime format string ({format})"))
+    })?;
+    let _ = std::panic::take_hook();
+
+    Ok(Value::from(formatted))
 }

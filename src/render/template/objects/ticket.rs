@@ -4,7 +4,8 @@ use crossbeam::queue::SegQueue;
 use minijinja::{
     context,
     value::*,
-    State as MJState
+    State as MJState,
+    Environment
 };
 use serde::Serialize;
 
@@ -64,11 +65,37 @@ impl Ticket {
         }
     }
 
+    pub fn build(self: &Arc<Self>, env: &Environment) -> Result<()> {
+        let name = match &self.page.template {
+            Some(name) => name,
+            None => "ftl_default.html"
+        };
+
+        let Ok(template) = env.get_template(name) else {
+            let error = eyre!(
+                "Tried to build with a nonexistent template (\"{}\").",
+                name,
+            )
+            .note("This error occurred because a page had a template specified in its frontmatter that FTL couldn't find at build time.")
+            .suggestion("Double check the page's frontmatter for spelling and path mistakes, and make sure the template is where you think it is.");
+
+            bail!(error)
+        };
+
+        let out = template.render(context!(
+            page => Value::from_object(Arc::clone(self))
+        )).map_err(Wrap::flatten)?;
+
+        self.metadata.push(Metadata::Rendered(out));
+
+        Ok(())
+    }
+
     fn render(&self, state: &MJState) -> Result<Value> {
         use Content::*;
         use pulldown_cmark::{Parser, Options, html};
 
-        let mut buffer = String::with_capacity(self.source.len());
+        let mut buffer = String::new();
 
         for fragment in Content::parse_many(&self.source)? {
             match fragment {
@@ -110,7 +137,7 @@ impl Ticket {
         let options = Options::all();
         let parser = Parser::new_ext(&buffer, options);
 
-        let mut html_buffer = String::with_capacity(buffer.len());
+        let mut html_buffer = String::new();
         html::push_html(&mut html_buffer, parser);
 
         Ok(Value::from_safe_string(html_buffer))

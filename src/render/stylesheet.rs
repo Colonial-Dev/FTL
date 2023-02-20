@@ -82,7 +82,7 @@ impl Fs for MapFs {
     }
 }
 
-pub fn compile(state: &State) -> Result<String> {
+pub fn compile(state: &State) -> Result<()> {
     info!("Starting SASS compilation...");
     
     let conn = state.db.get_rw()?;
@@ -94,7 +94,7 @@ pub fn compile(state: &State) -> Result<String> {
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
         id: hash.clone().into(),
         revision: (*rev_id).to_owned(),
-        route: route.clone(),
+        route,
         kind: RouteKind::Stylesheet
     })?;
 
@@ -106,7 +106,7 @@ pub fn compile(state: &State) -> Result<String> {
 
     if conn.exists(query, params)? {
         info!("Stylesheet output already exists, skipping rebuild.");
-        return Ok(route)
+        return Ok(())
     }
     
     let fs = MapFs::load(state)?;
@@ -115,7 +115,7 @@ pub fn compile(state: &State) -> Result<String> {
 
     if !fs.is_file(path) {
         let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
-        let err = err.note("SASS compilation expects the root file to be at 'src/assets/sass/style.scss'.");
+        let err = err.note("SASS compilation expects the root file to be at \"src/assets/sass/style.scss\".");
         bail!(err)
     }
 
@@ -127,10 +127,10 @@ pub fn compile(state: &State) -> Result<String> {
         content: output
     })?;
 
-    Ok(route)
+    Ok(())
 }
 
-fn load_hash(state: &State) -> Result<String> {
+pub fn load_hash(state: &State) -> Result<String> {
     let conn = state.db.get_ro()?;
     let rev_id = state.get_rev();
     

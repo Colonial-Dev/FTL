@@ -5,7 +5,7 @@
 
 <body>
 <h1> {{ page.attrs.title }} </h1>
-<h5> Date: {{ page.attrs.date }}<br><i>{{ page.attrs.summary }}</i></h5>
+<h5> Date: {{ page.attrs.date | timefmt("%B %e, %Y") }}<br><i>{{ page.attrs.summary }}</i></h5>
 {{ page.render() }}
 
 {% include "footer.html" %}
