@@ -164,7 +164,8 @@ impl Ticket {
         });
 
         Ok(template.render(context!(
-            code => code,
+            args => code.args,
+            body => code.body,
             page => state.lookup("page")
         ))?)
     }

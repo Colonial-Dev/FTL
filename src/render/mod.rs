@@ -15,9 +15,9 @@ use std::sync::{Arc, Weak};
 
 use itertools::Itertools;
 use minijinja::Environment;
+use rayon::prelude::*;
+use template::Ticket;
 
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
-use template::{Ticket, WrappedReport as Wrap};
 use crate::db::Page;
 use crate::prelude::*;
 
@@ -104,8 +104,8 @@ impl Renderer {
         
         tickets
             .par_iter()
-            .try_for_each_with(&self.env, |env, ticket| -> Result<_> {
-                ticket.build(env)?;
+            .try_for_each(|ticket| -> Result<_> {
+                ticket.build(&self.env)?;
 
                 while let Some(md) = ticket.metadata.pop() {
                     if let template::Metadata::Rendered(out) = md {

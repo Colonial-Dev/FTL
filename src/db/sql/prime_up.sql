@@ -62,6 +62,8 @@ CREATE INDEX idx_rev_files_cfk ON revision_files(revision);
 CREATE TABLE pages (
     -- The page's file ID.
     id TEXT PRIMARY KEY,
+    -- The page's path.
+    path TEXT,
     -- The page's template.
     template TEXT,
     -- The byte offset at which the page's frontmatter ends.

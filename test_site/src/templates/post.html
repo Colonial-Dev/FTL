@@ -1,12 +1,12 @@
 <head>
-    <title>{{ page.title }}</title>
+    <title>{{ page.attrs.title }}</title>
     <link rel="stylesheet" href="{{ STYLESHEET }}">
 </head>
 
 <body>
 <h1> {{ page.attrs.title }} </h1>
 <h5> Date: {{ page.attrs.date | timefmt("%B %e, %Y") }}<br><i>{{ page.attrs.summary }}</i></h5>
+<hr>
 {{ page.render() }}
-
 {% include "footer.html" %}
 </body>

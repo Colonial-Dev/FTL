@@ -10,6 +10,7 @@ pub type TomlMap = AHashMap<String, toml::Value>;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Page {
     pub id: String,
+    pub path: String,
     pub template: Option<String>,
     pub offset: i64,
     pub draft: bool,
@@ -50,6 +51,7 @@ impl Insertable for Page {
     const TABLE_NAME: &'static str = "pages";
     const COLUMN_NAMES: &'static [&'static str] = &[
         "id",
+        "path",
         "template",
         "offset",
         "draft",
@@ -59,6 +61,7 @@ impl Insertable for Page {
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
+        stmt.bind((":path", self.path.as_str()))?;
         stmt.bind((":template", self.template.as_deref()))?;
         stmt.bind((":offset", self.offset))?;
         stmt.bind((":draft", self.draft as i64))?;
@@ -77,6 +80,7 @@ impl Queryable for Page {
     fn read_query(stmt: &Statement<'_>) -> Result<Self> {
         Ok(Self {
             id: stmt.read_string("id")?,
+            path: stmt.read_string("path")?,
             template: stmt.read_optional_str("template")?,
             offset: stmt.read_i64("offset")?,
             draft: stmt.read_bool("draft")?,

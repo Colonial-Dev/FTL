@@ -911,6 +911,7 @@ dependencies = [
  "memo-map",
  "self_cell",
  "serde",
+ "unicode-ident",
  "v_htmlescape",
 ]
 

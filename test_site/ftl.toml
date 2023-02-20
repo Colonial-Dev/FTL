@@ -18,7 +18,7 @@ target_dir = ""
 [render]
 smart_punctuation = false
 highlight_code = false
-highlight_theme = "Solarized (dark)"
+highlight_theme = "Halflife"
 render_emoji = false
 render_katex = false
 file_inclusion = false

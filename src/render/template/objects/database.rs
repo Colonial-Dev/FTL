@@ -28,7 +28,7 @@ impl DbHandle {
         Self(Arc::clone(&state.db.ro_pool))
     }
 
-    fn query(&self, sql: String, params: Option<Value>) -> MJResult {
+    pub fn query(&self, sql: String, params: Option<Value>) -> MJResult {
         match params {
             Some(params) => self.query_with_params(sql, params),
             None => self.query_core(sql, NO_PARAMS)
@@ -43,6 +43,7 @@ impl DbHandle {
                     .map(Self::map_value)
                     .enumerate()
                     .try_fold(Vec::new(), |mut acc, (i, param)| -> Result<_> {
+                        // SQLite parameters indices start at 1, not 0.
                         acc.push((i + 1, param?));
                         Ok(acc)
                     })?;

@@ -14,7 +14,7 @@ use minijinja::{
 
 use error::{MJResult, WrappedReport as Wrap};
 
-use objects::Highlighter;
+use objects::{Highlighter, DbHandle};
 use crate::prelude::*;
 use super::stylesheet;
 
@@ -24,7 +24,6 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
         "static/style.{}.css",
         stylesheet::load_hash(state)?
     );
-    let handle = DbHandle::new(state);
 
     let mut env = Environment::new();
     let source = loading::setup_source(state)?;
@@ -33,7 +32,6 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     env.add_global("CONFIG", Value::from_serializable(&state.config));
     env.add_global("REVISION_ID", Value::from_serializable(&*rev_id));
     env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));
-    env.add_global("DB", Value::from_object(handle));
     register_routines(state, &mut env)?;
     
     Ok(env)
@@ -49,12 +47,14 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
     let hili = Highlighter::new(state)?;
     env.add_filter("highlight", move |body, token| {
         hili.highlight(body, token)
-            .map(Value::from)
+            .map(Value::from_safe_string)
             .map_err(Wrap::wrap)
     });
 
-    // timefmt filter
-    // query filter (replaces DB)
+    let db = DbHandle::new(state);
+    env.add_filter("query", move |sql, params| {
+        db.query(sql, params)
+    });
 
     Ok(())
 }

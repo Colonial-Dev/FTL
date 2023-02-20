@@ -24,6 +24,8 @@ struct Frontmatter {
     #[serde(skip)]
     pub id: String,
     #[serde(skip)]
+    pub path: String,
+    #[serde(skip)]
     pub offset: i64,
     pub template: Option<String>,
     #[serde(default)]
@@ -80,6 +82,7 @@ impl Into<Page> for Frontmatter {
     fn into(self) -> Page {
         Page {
             id: self.id,
+            path: self.path,
             offset: self.offset,
             template: self.template,
             draft: self.draft,
@@ -174,6 +177,7 @@ fn extract_frontmatter(item: Row) -> Result<Page> {
     debug!("Parsed frontmatter for page at \"{}\".", item.path);
 
     fm.id = item.id;
+    fm.path = item.path;
     fm.offset = range.end as i64;
     fm.map_attrs()?;
     fm.map_extra();
