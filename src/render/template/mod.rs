@@ -39,6 +39,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
 
 pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()> {
     env.add_function("eval", eval);
+    env.add_function("get_resource", Resource::new_factory(state));
 
     env.add_filter("eval", eval);
     env.add_filter("timefmt", timefmt);

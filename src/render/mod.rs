@@ -18,7 +18,7 @@ use minijinja::Environment;
 use rayon::prelude::*;
 use template::Ticket;
 
-use crate::db::Page;
+use crate::db::{Page, Queryable};
 use crate::prelude::*;
 
 #[derive(Debug)]
@@ -79,13 +79,8 @@ impl Renderer {
             source_query.reset()?;
             source_query.bind((1, id))?;
             match source_query.next()? {
-                State::Row => {
-                    source_query.read::<String, _>("contents")
-                        .map_err(Report::from)
-                },
-                State::Done => {
-                    bail!("Could not find source for page with id {id}.")
-                }
+                State::Row => String::read_query(&source_query),
+                State::Done => bail!("Could not find source for page with id {id}.")
             }
         };
 

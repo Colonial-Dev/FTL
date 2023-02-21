@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use minijinja::{
     value::*,
@@ -8,7 +8,7 @@ use once_cell::sync::Lazy;
 
 use crate::{
     prelude::*, 
-    db::InputFile,
+    db::{InputFile, Queryable},
 };
 
 use super::*;
@@ -33,6 +33,15 @@ pub struct Resource {
 }
 
 impl Resource {
+    pub fn new_factory(state: &State) -> impl Fn(&MJState, String) -> MJResult {
+        let state = Arc::clone(state);
+        move |mj_state: &MJState, path: String| {
+            Self::new_from_path(&state, mj_state, path)
+                .map(Value::from_object)
+                .map_err(Wrap::wrap)
+        }
+    }
+
     fn new_from_path(ftl_state: &State, mj_state: &MJState, path: String) -> Result<Self> {
         let mut lookup_targets = Vec::with_capacity(4);
         let conn = ftl_state.db.get_ro()?;
@@ -53,13 +62,35 @@ impl Resource {
         ].into_iter());
 
         let query = "
-            SELECT input_files.id, path FROM input_files
+            SELECT input_files.* FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
             AND input_files.path = ?2
         ";
 
-        todo!()
+        let mut query = conn.prepare(query)?;
+        let mut get_source = move |path: &str| -> Result<_> {
+            use sqlite::State;
+            query.reset()?;
+            query.bind((1, rev_id.as_str()))?;
+            query.bind((2, path))?;
+            match query.next()? {
+                State::Row => Ok(Some(InputFile::read_query(&query)?)),
+                State::Done => Ok(None)
+            }
+        };
+
+        for target in lookup_targets {
+            if let Some(file) = get_source(target.to_str().unwrap())? {
+                return Ok(Self {
+                    inner: Value::from_serializable(&file),
+                    base: file,
+                    state: Arc::clone(ftl_state)
+                })
+            }
+        }
+
+        bail!("Could not resolve resource at path \"{path}\".")
     }
     // Given a path, look in the following places (in order) to try and resolve it to an input file:
     // - If a page is in scope, its directory.
