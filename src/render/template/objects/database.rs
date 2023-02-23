@@ -7,25 +7,44 @@ use minijinja::{
     value::*,
     State as MJState
 };
+
+use once_cell::sync::Lazy;
 use sqlite::{Bindable, Value as SQLValue};
 
 use crate::{
     prelude::*, 
     db::{
-        Pool, NO_PARAMS, Queryable, Statement, StatementExt
+        InputFile, Pool, NO_PARAMS, Queryable, Statement, StatementExt
     },
 };
 
 use super::*;
 
+static ASSETS_PATH: Lazy<String> = Lazy::new(|| {
+    format!("{SITE_SRC_PATH}{SITE_ASSET_PATH}")
+});
+
+static CONTENT_PATH: Lazy<String> = Lazy::new(|| {
+    format!("{SITE_SRC_PATH}{SITE_CONTENT_PATH}")
+});
+
 /// Dynamic object wrapper around a database connection pool.
 /// Used to enable access to a database from within templates.
 #[derive(Debug)]
-pub struct DbHandle(Arc<Pool>);
+pub struct DbHandle {
+    state: State,
+    pool: Arc<Pool>,
+    rev_id: Arc<String>
+}
 
+// Public methods, mainly those called from within the engine.
 impl DbHandle {
     pub fn new(state: &State) -> Self {
-        Self(Arc::clone(&state.db.ro_pool))
+        Self {
+            state: Arc::clone(state),
+            pool: Arc::clone(&state.db.ro_pool),
+            rev_id: state.get_rev()
+        }
     }
 
     pub fn query(&self, sql: String, params: Option<Value>) -> MJResult {
@@ -35,6 +54,71 @@ impl DbHandle {
         }.map_err(Wrap::wrap)
     }
 
+    pub fn get_resource(&self, state: &MJState, path: String) -> Result<Value> {
+        let conn = self.pool.get()?;
+        let rev_id = self.rev_id.as_str();
+        let mut lookup_targets = Vec::with_capacity(4);
+
+        if let Some(value) = state.lookup("page") {
+            if let Some(ticket) = value.downcast_object_ref::<Arc<Ticket>>() {
+                lookup_targets.push(
+                    format!(
+                        "{}{}",
+                        &ticket.page.path.trim_end_matches("index.md"),
+                        path
+                    )
+                )
+            }
+        }
+
+        lookup_targets.extend([
+            format!("{}{path}", &*ASSETS_PATH),
+            format!("{}{path}", &*CONTENT_PATH),
+            path.to_owned()
+        ].into_iter());
+
+        let query = "
+            SELECT input_files.* FROM input_files
+            JOIN revision_files ON revision_files.id = input_files.id
+            WHERE revision_files.revision = ?1
+            AND input_files.path = ?2
+        ";
+
+        let mut query = conn.prepare(query)?;
+        let mut get_source = move |path: &str| -> Result<_> {
+            use sqlite::State;
+            query.reset()?;
+            query.bind((1, rev_id))?;
+            query.bind((2, path))?;
+            match query.next()? {
+                State::Row => Ok(Some(InputFile::read_query(&query)?)),
+                State::Done => Ok(None)
+            }
+        };
+
+        for target in &lookup_targets {
+            dbg!(target);
+            if let Some(file) = get_source(target)? {
+                return Ok(Resource {
+                    inner: Value::from_serializable(&file),
+                    base: file,
+                    state: Arc::clone(&self.state)
+                }).map(Value::from_object)
+            }
+        }
+
+        bail!("Could not resolve resource at path \"{path}\".")
+    }
+}
+
+// Internal methods (kept separate for readability/organization.)
+impl DbHandle {
+    /// Query the database using the provided SQL and parameters.
+    /// 
+    /// Parameters must be of the following form:
+    /// - A sequence/array of valid types (see [`DbHandle::map_value`].)
+    /// - A string-keyed map of valid types.
+    /// - A single valid type (assumed to be bound to index 1.)
     fn query_with_params(&self, sql: String, params: Value) -> Result<Value> {
         match params.kind() {
             ValueKind::Seq => {
@@ -43,7 +127,7 @@ impl DbHandle {
                     .map(Self::map_value)
                     .enumerate()
                     .try_fold(Vec::new(), |mut acc, (i, param)| -> Result<_> {
-                        // SQLite parameters indices start at 1, not 0.
+                        // SQLite parameter indices start at 1, not 0.
                         acc.push((i + 1, param?));
                         Ok(acc)
                     })?;
@@ -78,8 +162,10 @@ impl DbHandle {
         }
     }
     
+    /// Query the database using the provided SQL and optional parameters, converting the resulting
+    /// rows into [`ValueMap`]s for use inside of Minijinja.
     fn query_core(&self, sql: String, params: Option<impl Bindable>) -> Result<Value> {
-        self.0.get()?.prepare_reader(sql, params)?
+        self.pool.get()?.prepare_reader(sql, params)?
             .try_fold(Vec::new(), |mut acc, map| -> Result<_> {
                 let map: ValueMap = map?;
                 acc.push(Value::from_struct_object(map));
@@ -88,6 +174,14 @@ impl DbHandle {
             .map(Value::from)
     }
     
+    /// Attempts to convert the provided Minijinja value into an SQLite value,
+    /// bailing with an error if an unsupported type is passed.
+    /// 
+    /// Currently only these mappings are supported:
+    /// - Integers/floats -> SQLite `REAL`s (f64s)
+    /// - Strings -> SQLite `TEXT`
+    /// - Booleans -> SQLite `INTEGER`s, 0 for false, 1 for true
+    /// - None/Undefined -> SQLite `NULL`
     fn map_value(value: Value) -> Result<SQLValue> {
         match value.kind() {
             ValueKind::Number => {
@@ -123,12 +217,16 @@ impl std::fmt::Display for DbHandle {
 }
 
 impl Object for DbHandle {
-    fn call_method(&self, _: &MJState, name: &str, args: &[Value]) -> MJResult {
+    fn call_method(&self, state: &MJState, name: &str, args: &[Value]) -> MJResult {
         match name {
             "query" => {
                 let (sql, params) = from_args(args)?;
                 self.query(sql, params)
             },
+            "get_resource" => {
+                let (path,) = from_args(args)?;
+                self.get_resource(state, path).map_err(Wrap::wrap)
+            }
             _ => Err(MJError::new(
                 MJErrorKind::UnknownMethod,
                 format!("object has no method named {name}")

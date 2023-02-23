@@ -36,9 +36,13 @@ pub fn walk(state: &State) -> Result<String> {
                 .map_err(Report::from)
                 .map(process_entry)?
         })
-        .for_each_with(tx,|tx, entry| {
-            let _ = tx.send(entry);
-        });
+        .try_for_each(|entry| -> Result<_> {
+            let _ = tx.send(entry?);
+            Ok(())
+        })?;
+    
+    // Deadlocking is generally regarded as undesirable.
+    drop(tx);
 
     handle
         .join()
@@ -103,7 +107,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     Ok((file, int_id))
 }
 
-fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -> Result<String> {
+fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result<String> {
     let txn = conn.open_transaction()?;
 
     let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
@@ -111,7 +115,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Result<(InputFile, u64)>>) -
     let mut hash = 0_u64;
 
     for message in rx.into_iter() {
-        let (file, id) = message?;
+        let (file, id) = message;
         insert_file(&file)?;
 
         if !file.inline {

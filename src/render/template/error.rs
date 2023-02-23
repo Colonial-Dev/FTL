@@ -38,7 +38,7 @@ impl WrappedReport {
         let report = WrappedReport::from(error.into());
 
         MJError::new(
-            MJErrorKind::UndefinedError,
+            MJErrorKind::InvalidOperation,
             "An error occurred in FTL code."
         ).with_source(report)
     }
@@ -53,7 +53,7 @@ impl WrappedReport {
         while let Some(next_err) = root_err.source() {
             if let Some(report) = next_err.downcast_ref::<WrappedReport>() {
                 let message = format!(
-                    "An error was encountered during template evaluation (in template file \"{}\" at line no. {}).",
+                    "Template evaluation failure (in template file \"{}\" at line no. {}).",
                     root.name().unwrap_or("?"),
                     root.line().unwrap_or(0)
                 );
@@ -68,7 +68,7 @@ impl WrappedReport {
         }
 
         Report::from(root)
-            .wrap_err("An error was encountered during template evaluation.")
+            .wrap_err("Template evaluation failure.")
     }
 }
 
@@ -108,7 +108,7 @@ mod test {
         let internal_flattened = WrappedReport::flatten(internal_error);
         let erased_flattened = WrappedReport::flatten(erased_error);
 
-        assert_eq!(internal_flattened.to_string(), "An error was encountered during template evaluation.");
-        assert_eq!(erased_flattened.to_string(), "An error was encountered during template evaluation (in template file \"?\" at line no. 0).");
+        assert_eq!(internal_flattened.to_string(), "Template evaluation failure.");
+        assert_eq!(erased_flattened.to_string(), "Template evaluation failure (in template file \"?\" at line no. 0).");
     }
 }

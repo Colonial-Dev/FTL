@@ -112,13 +112,14 @@ impl Ticket {
                 },
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => buffer += {
-                    &state.env().render_str(
-                        "{{ body | highlight(token) }}",
+                    &state.env().render_named_str(
+                        "<codeblock>",
+                        "<code> {{ body | highlight(token) }} </code>",
                         context!(
                             body => block.body,
                             token => block.token
                         )
-                    )?
+                    ).map_err(Wrap::flatten)?
                 },
                 Header(header) => {
                     for _ in 0..header.level {
@@ -163,11 +164,11 @@ impl Ticket {
             child: name
         });
 
-        Ok(template.render(context!(
+        template.render(context!(
             args => code.args,
             body => code.body,
             page => state.lookup("page")
-        ))?)
+        )).map_err(Wrap::flatten)
     }
 }
 

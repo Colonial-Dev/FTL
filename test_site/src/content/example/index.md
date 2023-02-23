@@ -40,7 +40,7 @@ SELECT * FROM input_files WHERE extension = ?1
 {% for row in rows %}
 - File at path {{ row.path }} has id {{ row.id }}
 {% endfor %}
-{% set java = get_resource("java.png") %}
+{% set java = DB.get_resource("image.png") %}
 {{ java }}
 </code>
 {% end %}

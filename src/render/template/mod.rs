@@ -24,6 +24,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
         "static/style.{}.css",
         stylesheet::load_hash(state)?
     );
+    let db = DbHandle::new(state);
 
     let mut env = Environment::new();
     let source = loading::setup_source(state)?;
@@ -32,6 +33,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     env.add_global("CONFIG", Value::from_serializable(&state.config));
     env.add_global("REVISION_ID", Value::from_serializable(&*rev_id));
     env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));
+    env.add_global("DB", Value::from_object(db));
     register_routines(state, &mut env)?;
     
     Ok(env)
@@ -39,7 +41,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
 
 pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()> {
     env.add_function("eval", eval);
-    env.add_function("get_resource", Resource::new_factory(state));
+    env.add_function("raise", raise);
 
     env.add_filter("eval", eval);
     env.add_filter("timefmt", timefmt);
@@ -61,10 +63,18 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
 }
 
 fn eval(state: &MJState, template: String) -> MJResult {
-    state.env().render_str(
+    state.env().render_named_str(
+        "<eval>",
         &template,
         context!(page => state.lookup("page"))
     ).map(Value::from_safe_string)
+}
+
+fn raise(message: String) -> MJResult {
+    Err(MJError::new(
+        MJErrorKind::InvalidOperation,
+        message
+    ))
 }
 
 fn timefmt(input: String, format: String) -> MJResult {
