@@ -34,8 +34,8 @@ pub enum Metadata {
 #[derive(Debug)]
 pub struct Ticket {
     pub metadata: SegQueue<Metadata>,
-    pub state: State,
     pub source: String,
+    pub state: State,
     pub page: Page,
     inner: Value,
 }
@@ -112,14 +112,15 @@ impl Ticket {
                 },
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => buffer += {
-                    &state.env().render_named_str(
-                        "<codeblock>",
-                        "<code> {{ body | highlight(token) }} </code>",
-                        context!(
+                    &state
+                        .env()
+                        .get_template("ftl_codeblock.html")
+                        .expect("Codeblock template should be built-in.")
+                        .render(context!(
                             body => block.body,
                             token => block.token
-                        )
-                    ).map_err(Wrap::flatten)?
+                        ))
+                        .map_err(Wrap::flatten)?
                 },
                 Header(header) => {
                     for _ in 0..header.level {

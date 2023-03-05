@@ -142,22 +142,24 @@ impl Queryable for RevisionFile {
 #[repr(u8)]
 pub enum RouteKind {
     Unknown = 0,
-    StaticAsset = 1,
+    Asset = 1,
     Hook = 2,
     Page = 3,
     Stylesheet = 4,
-    Redirect = 5,
+    RedirectPage = 5,
+    RedirectAsset = 6,
 }
 
 impl From<i64> for RouteKind {
     fn from(value: i64) -> Self {
         use RouteKind::*;
         match value {
-            1 => StaticAsset,
+            1 => Asset,
             2 => Hook,
             3 => Page,
             4 => Stylesheet,
-            5 => Redirect,
+            5 => RedirectPage,
+            6 => RedirectAsset,
             _ => {
                 warn!("Encountered an unknown RouteKind discriminant ({value}).");
                 Unknown

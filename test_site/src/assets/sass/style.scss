@@ -7,3 +7,14 @@ body {
   color: $textcolor;
   font-size: $fontsize;
 }
+
+body {
+  margin: 40px auto;
+  max-width: 700px;
+  line-height: 1.6;
+  padding: 0 10px
+}
+
+h1, h2, h3 {
+  line-height:1.2
+}

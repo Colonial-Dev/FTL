@@ -14,8 +14,9 @@ use crate::{
 };
 
 const BUILTINS: &[&str] = &[
-    include_str!("builtins/ftl_default.html"),
-    include_str!("builtins/eval.html")
+    include_str!("builtins/default.html"),
+    include_str!("builtins/eval.html"),
+    include_str!("builtins/codeblock.html"),
 ];
 
 #[derive(Debug)]

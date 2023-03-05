@@ -150,6 +150,7 @@ pub fn load_hash(state: &State) -> Result<String> {
             hasher
         })?
         .finish();
-
+    
+    info!("Stylesheet compilation complete.");
     Ok(format!("{hash:016x}"))
 }

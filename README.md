@@ -29,3 +29,8 @@ What still needs to be done:
 - A smattering of various features in the rendering subsystem, such as a "resource" API. (Additionally, some of the aformentioned features have old, poor implementations with replacements incubating in local branches.)
 - The server subsystem, which encompasses stuff like caching and the ability to add dynamic rendering "hooks" on top of simple `path -> hypertext`. (*Technically*, there's already an implementation of this in the source tree, but it was created purely for testing purposes and is currently excluded from compilation altogether.)
 - A proper command-line interface - one existed earlier in development (`clap` makes it pretty easy), but it quickly lagged behind the actual desired feature set and I eventually stripped it out.
+
+## Acknowledgements
+Credit where it's due: the inspiration for (and basic design of) FTL is shamelessly cribbed from Amos/`fasterthanlime`'s closed-source `futile`, via his blog post on its design [here](https://fasterthanli.me/articles/a-new-website-for-2020). The implementation is all mine, but the ideas were invaluable for getting this project to escape velocity. Check his stuff out!
+
+(The name, on the other hand, is only related by coincidence. I had settled on the name FTL back before I even knew Rust, when all I wanted to make was a Hugo-esque SSG in C#.)

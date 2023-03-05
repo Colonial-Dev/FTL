@@ -119,7 +119,7 @@ pub enum Content<'i> {
 
 impl<'i> Ident<'i> {
     /// Parses Rust-style identifiers; taken from the Nom recipes document.
-    /// https://github.com/rust-bakery/nom/blob/main/doc/nom_recipes.md
+    /// <https://github.com/rust-bakery/nom/blob/main/doc/nom_recipes.md>
     pub fn parse(input: Input<'i>) -> Result<Self> {
         recognize(
             pair(
@@ -172,12 +172,12 @@ impl<'i> Literal<'i> {
 
     /// Attempts to parse a boolean literal from the provided input.
     /// 
-    /// This parser is quite strict - it only accepts the literal strings
-    /// "true" and "false".
+    /// This parser is quite strict - it only accepts the (case-insensitive) 
+    /// literal strings "true" and "false".
     fn parse_boolean(input: Input<'i>) -> Result<Self> {
         alt((
-            tag("true"),
-            tag("false")
+            tag_no_case("true"),
+            tag_no_case("false")
         ))(input)
         .map(|(i, o)| {
             let boolean = o

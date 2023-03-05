@@ -59,21 +59,18 @@ impl DbHandle {
         let rev_id = self.rev_id.as_str();
         let mut lookup_targets = Vec::with_capacity(4);
 
-        if let Some(value) = state.lookup("page") {
-            if let Some(ticket) = value.downcast_object_ref::<Arc<Ticket>>() {
-                lookup_targets.push(
-                    format!(
-                        "{}{}",
-                        &ticket.page.path.trim_end_matches("index.md"),
-                        path
-                    )
-                )
-            }
-        }
+        try_with_page(state, |ticket| {
+            let target = format!(
+                "{}{}",
+                &ticket.page.path.trim_end_matches("index.md"),
+                path
+            );
+            lookup_targets.push(target);
+        });
 
         lookup_targets.extend([
-            format!("{}{path}", &*ASSETS_PATH),
-            format!("{}{path}", &*CONTENT_PATH),
+            format!("{}{path}", *ASSETS_PATH),
+            format!("{}{path}", *CONTENT_PATH),
             path.to_owned()
         ].into_iter());
 
@@ -97,7 +94,6 @@ impl DbHandle {
         };
 
         for target in &lookup_targets {
-            dbg!(target);
             if let Some(file) = get_source(target)? {
                 return Ok(Resource {
                     inner: Value::from_serializable(&file),
@@ -203,7 +199,7 @@ impl DbHandle {
             },
             ValueKind::None | ValueKind::Undefined => Ok(SQLValue::Null),
             _ => bail!(
-                "Unsupported SQL parameter type ({}) - only strings, booleans, numbers and null/undefined are supported.",
+                "Unsupported SQL parameter type ({}) - only strings, booleans, numbers and none/undefined are supported.",
                 value.kind()
             )
         }

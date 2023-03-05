@@ -1,5 +1,9 @@
 {% if args.highlight %}
+```{{ args.token }}
 {{ body | highlight(args.token) }}
+```
 {% else %}
-<code> {{ body }} </code>
+```{{ args.token }}
+{{ body }}
+```
 {% endif %}

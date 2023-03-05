@@ -39,7 +39,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
         SELECT input_files.id, path FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND input_files.extension NOT IN ('md', 'html', 'in', 'sass', 'scss')
+        AND input_files.inline = FALSE
     ";
 
     let query_pages = "
@@ -65,14 +65,13 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 .path
                 .trim_start_matches(SITE_SRC_PATH)
                 .trim_start_matches(SITE_ASSET_PATH)
-                .trim_start_matches(SITE_CONTENT_PATH)
-                .to_string();
+                .trim_start_matches(SITE_CONTENT_PATH);
 
             Ok(Route {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
-                route,
-                kind: RouteKind::StaticAsset
+                route: slug::slugify(route),
+                kind: RouteKind::Asset
             })
         });
 
@@ -94,7 +93,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
                 route,
-                kind: RouteKind::Redirect
+                kind: RouteKind::RedirectAsset
             })
         });
 
@@ -116,7 +115,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
                 route: row.path,
-                kind: RouteKind::Redirect
+                kind: RouteKind::RedirectPage
             })
         });
 

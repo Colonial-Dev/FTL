@@ -2,7 +2,6 @@ root_url = "https://ftl.rs"
 title = ""
 description = ""
 language = "en-US"
-on_non_fatal = "WARN"
 
 [build]
 incremental = true
@@ -12,23 +11,17 @@ inline_extensions = ["rs"]
 external_links_new_tab = false
 external_links_no_follow = false
 external_links_no_referrer = false
-target_disk = false
-target_dir = ""
 
 [render]
 smart_punctuation = false
 highlight_code = false
 highlight_theme = "Halflife"
 render_emoji = false
-render_katex = false
-file_inclusion = false
 minify_html = false
 minify_css = false
 
 [serve]
 address = "127.0.0.1"
 port = 8080
-
-[syndicate]
 
 [extra]

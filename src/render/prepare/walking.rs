@@ -78,13 +78,14 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
         (hex_hash, int_hash)
     };
 
-    // Optimization: drain data read from non-inline files.
+    // Drain data read from non-inline files.
     //
-    // This isn't technically necessary since we eagerly process
-    // the results of the walking process on the consumer thread,
-    // but it can't hurt.
+    // This isn't super necessary, but a few experiments
+    // showed it can help keep memory usage down, esp. if the
+    // consumer thread can't keep up.
     if !inline {
-        contents.drain(..);
+        contents.clear();
+        contents.shrink_to_fit();
     }
 
     let contents = String::from_utf8(contents)
@@ -134,7 +135,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
         // - We're already using a non-cryptographic hash function.
         // - We know there are no duplicates (so the hash won't accidentally be XORed to zero.)
         // - This is infinitely faster than the original approach of sorting a Vec of all id's
-        // and hashing that.
+        // and hashing that. 
         hash ^= id;
     }
 

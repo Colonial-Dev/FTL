@@ -11,7 +11,7 @@ mod prepare;
 mod template;
 mod stylesheet;
 
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use itertools::Itertools;
 use minijinja::Environment;
@@ -24,22 +24,20 @@ use crate::prelude::*;
 #[derive(Debug)]
 pub struct Renderer {
     pub env: Environment<'static>,
-    pub loopback: Weak<Self>,
     pub state: State,
 }
 
 impl Renderer {
-    pub fn new(state: &State) -> Result<Arc<Self>> {
+    pub fn new(state: &State) -> Result<Self> {
         prepare::prepare(state)?;
         
         let env = template::setup_environment(state)?;
         let state = Arc::clone(state);
 
-        Ok(Arc::new_cyclic(move |weak| Self {
+        Ok(Self {
             env,
-            loopback: Weak::clone(weak),
-            state,
-        }))
+            state
+        })
     }
 
     pub fn render_revision(&self) -> Result<()> {
