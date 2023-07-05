@@ -2,16 +2,10 @@
 
 use minijinja::Environment;
 
-use crate::{
-    poll,
-    parse::Dependency,
-    prelude::*, 
-    db::{
-        AUX_UP, AUX_DOWN,
-        Connection, Queryable,
-        Statement, StatementExt
-    }
-};
+use crate::db::{Connection, Queryable, Statement, StatementExt, AUX_DOWN, AUX_UP};
+use crate::parse::Dependency;
+use crate::poll;
+use crate::prelude::*;
 
 const BUILTINS: &[&str] = &[
     include_str!("builtins/ftl_default.html"),
@@ -31,7 +25,7 @@ impl Queryable for Row {
         Ok(Self {
             id: row.read_string("id")?,
             path: row.read_string("path")?,
-            contents: row.read_string("contents")?
+            contents: row.read_string("contents")?,
         })
     }
 }
@@ -53,36 +47,34 @@ pub fn setup_templates(state: &State, env: &mut Environment) -> Result<()> {
     let rows = conn
         .prepare_reader(query, params)?
         .collect::<MaybeVec<Row>>()?;
-    
+
     compute_dependencies(&conn, &rows)?;
 
-    rows
-        .into_iter()
+    rows.into_iter()
         .map(|row| {
             (
                 row.path
                     .trim_start_matches(SITE_SRC_PATH)
                     .trim_start_matches(SITE_TEMPLATE_PATH)
                     .to_owned(),
-                row.contents
+                row.contents,
             )
         })
         .chain(load_builtins())
-        .try_for_each(|(name, contents)| {
-            env.add_template_owned(name, contents)
-        })?;
-    
+        .try_for_each(|(name, contents)| env.add_template_owned(name, contents))?;
+
     Ok(())
 }
 
 fn load_builtins() -> impl Iterator<Item = (String, String)> {
-    BUILTINS.iter()
+    BUILTINS
+        .iter()
         .map(|template| {
-            template.split_once('\n').expect("FTL builtin should have content.")
+            template
+                .split_once('\n')
+                .expect("FTL builtin should have content.")
         })
-        .map(|(name, content)| {
-            (name.to_owned(), content.to_owned())
-        })
+        .map(|(name, content)| (name.to_owned(), content.to_owned()))
 }
 
 fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
@@ -201,7 +193,7 @@ mod test {
         fn read_query(row: &Statement<'_>) -> Result<Self> {
             Ok(Self {
                 name: row.read_string("name")?,
-                id: row.read_string("id")?
+                id: row.read_string("id")?,
             })
         }
     }
@@ -228,13 +220,13 @@ mod test {
         let gamma_row = Row {
             id: "GAMMA_ID".to_string(),
             path: "gamma.html".to_string(),
-            contents: String::new()
+            contents: String::new(),
         };
 
         let delta_row = Row {
             id: "DELTA_ID".to_string(),
             path: "delta.html".to_string(),
-            contents: String::new()
+            contents: String::new(),
         };
 
         let rows = vec![alpha_row, beta_row, gamma_row, delta_row];
@@ -246,7 +238,8 @@ mod test {
             AND relation = 1
         ";
 
-        let alpha_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[0].path.as_str())))
+        let alpha_deps: Vec<Template> = conn
+            .prepare_reader(query, Some((1, rows[0].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -258,7 +251,8 @@ mod test {
         assert_eq!(alpha_deps[2].id, "DELTA_ID");
         assert_eq!(alpha_deps[3].id, "GAMMA_ID");
 
-        let beta_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[1].path.as_str())))
+        let beta_deps: Vec<Template> = conn
+            .prepare_reader(query, Some((1, rows[1].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -269,7 +263,8 @@ mod test {
         assert_eq!(beta_deps[1].id, "DELTA_ID");
         assert_eq!(beta_deps[2].id, "GAMMA_ID");
 
-        let gamma_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[2].path.as_str())))
+        let gamma_deps: Vec<Template> = conn
+            .prepare_reader(query, Some((1, rows[2].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();
@@ -278,7 +273,8 @@ mod test {
         assert_eq!(gamma_deps[0].id, "GAMMA_ID");
         assert_eq!(gamma_deps[0].name, "gamma.html");
 
-        let delta_deps: Vec<Template> = conn.prepare_reader(query, Some((1, rows[3].path.as_str())))
+        let delta_deps: Vec<Template> = conn
+            .prepare_reader(query, Some((1, rows[3].path.as_str())))
             .unwrap()
             .map(Result::unwrap)
             .collect();

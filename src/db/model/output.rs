@@ -35,17 +35,13 @@ pub struct Dependency {
 
 impl Insertable for Dependency {
     const TABLE_NAME: &'static str = "dependencies";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "relation",
-        "parent",
-        "child"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["relation", "parent", "child"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":relation", self.relation as i64))?;
         stmt.bind((":parent", self.parent.as_str()))?;
         stmt.bind((":child", self.child.as_str()))?;
-        
+
         Ok(())
     }
 }
@@ -55,7 +51,7 @@ impl Queryable for Dependency {
         Ok(Self {
             relation: stmt.read_i64("relation").map(Relation::from)?,
             parent: stmt.read_string("parent")?,
-            child: stmt.read_string("child")?
+            child: stmt.read_string("child")?,
         })
     }
 }
@@ -65,7 +61,7 @@ impl Queryable for Dependency {
 pub enum OutputKind {
     Unknown = 0,
     Page = 1,
-    Stylesheet = 2
+    Stylesheet = 2,
 }
 
 impl From<i64> for OutputKind {
@@ -91,11 +87,7 @@ pub struct Output {
 
 impl Insertable for Output {
     const TABLE_NAME: &'static str = "output";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "id",
-        "kind",
-        "content"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["id", "kind", "content"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_deref()))?;
@@ -111,7 +103,7 @@ impl Queryable for Output {
         Ok(Self {
             id: stmt.read_optional_str("id")?,
             kind: stmt.read_i64("kind").map(OutputKind::from)?,
-            content: stmt.read_string("content")?
+            content: stmt.read_string("content")?,
         })
     }
 }

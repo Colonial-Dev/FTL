@@ -1,14 +1,13 @@
-mod page;
 mod output;
+mod page;
 mod revision;
 
+pub use output::*;
+pub use page::*;
+pub use revision::*;
 use sqlite::{Statement, Value};
 
 use crate::prelude::*;
-
-pub use page::*;
-pub use output::*;
-pub use revision::*;
 
 /// An interface for types that can be serialized and inserted into the database.
 pub trait Insertable {
@@ -24,12 +23,12 @@ pub trait Insertable {
         while let Some(column) = columns.next() {
             let value = match columns.peek() {
                 Some(_) => format!(":{column}, "),
-                None => format!(":{column});")
+                None => format!(":{column});"),
             };
 
             query.push_str(&value);
         }
-        
+
         query
     }
 }

@@ -1,21 +1,14 @@
-use std::{
-    sync::Arc,
-    path::{PathBuf, Path},
-    env, ops::Deref
-};
+use std::env;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use clap::Parser;
 
-use super::{
-    Arguments,
-    Config
-};
-
-use crate::{
-    prelude::*,
-    db::Database,
-};
+use super::{Arguments, Config};
+use crate::db::Database;
+use crate::prelude::*;
 
 /// Type alias for an atomically-refcounted instance of [`InnerState`].
 pub type State = Arc<InnerState>;
@@ -24,7 +17,7 @@ pub type State = Arc<InnerState>;
 pub const UNSET_ID: &str = "ID_NOT_SET";
 
 /// Inner representation of global program state.
-/// 
+///
 /// This is *mostly* immutable - the primary exceptions are the pools in `db` and
 /// the revision tracking fields.
 #[derive(Debug)]
@@ -50,7 +43,7 @@ impl InnerState {
             config,
             args,
             db,
-            swap: Swap::new()
+            swap: Swap::new(),
         };
 
         Ok(Arc::new(state))
@@ -92,12 +85,12 @@ impl Swap {
 
 /// Performs environment validation and setup - essentially, ensuring that everything is where and how it should be
 /// before the program executes any further. If nothing is amiss, it returns the path of the current directory.
-/// 
+///
 /// In no particular order, this function:
-/// - 
+/// -
 fn validate_env() -> Result<PathBuf> {
     let mut current_dir = env::current_dir()?;
-    
+
     if env::var("FTL_TEST_MODE").is_ok() {
         current_dir.push("test_site/");
         env::set_current_dir(&current_dir)?;
@@ -109,7 +102,7 @@ fn validate_env() -> Result<PathBuf> {
             env::set_current_dir(&path)?;
             Ok(path)
         }
-        None => bail!("Failed to locate FTL configuration.")
+        None => bail!("Failed to locate FTL configuration."),
     }
 }
 

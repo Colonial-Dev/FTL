@@ -28,14 +28,8 @@ pub struct InputFile {
 
 impl Insertable for InputFile {
     const TABLE_NAME: &'static str = "input_files";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "id",
-        "hash",
-        "path",
-        "extension",
-        "contents",
-        "inline"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] =
+        &["id", "hash", "path", "extension", "contents", "inline"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
@@ -57,7 +51,7 @@ impl Queryable for InputFile {
             path: stmt.read_string("path").map(PathBuf::from)?,
             extension: stmt.read_optional_str("extension")?,
             contents: stmt.read_optional_str("contents")?,
-            inline: stmt.read_bool("inline")?
+            inline: stmt.read_bool("inline")?,
         })
     }
 }
@@ -74,13 +68,7 @@ pub struct Revision {
 
 impl Insertable for Revision {
     const TABLE_NAME: &'static str = "revisions";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "id",
-        "name",
-        "time",
-        "pinned",
-        "stable"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["id", "name", "time", "pinned", "stable"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
@@ -100,7 +88,7 @@ impl Queryable for Revision {
             name: stmt.read_optional_str("name")?,
             time: stmt.read_optional_str("time")?,
             pinned: stmt.read_bool("pinned")?,
-            stable: stmt.read_bool("stable")?
+            stable: stmt.read_bool("stable")?,
         })
     }
 }
@@ -116,10 +104,7 @@ pub struct RevisionFile {
 
 impl Insertable for RevisionFile {
     const TABLE_NAME: &'static str = "revision_files";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "id",
-        "revision",
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["id", "revision"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
@@ -185,12 +170,7 @@ pub struct Route {
 
 impl Insertable for Route {
     const TABLE_NAME: &'static str = "routes";
-    const COLUMN_NAMES: &'static[&'static str] = &[
-        "id",
-        "revision",
-        "route",
-        "kind"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["id", "revision", "route", "kind"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_deref()))?;
@@ -208,7 +188,7 @@ impl Queryable for Route {
             id: stmt.read_optional_str("id")?,
             revision: stmt.read_string("revision")?,
             route: stmt.read_string("route")?,
-            kind: stmt.read_i64("kind").map(RouteKind::from)?
+            kind: stmt.read_i64("kind").map(RouteKind::from)?,
         })
     }
 }

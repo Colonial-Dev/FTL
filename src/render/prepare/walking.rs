@@ -1,46 +1,30 @@
-use std::{
-    hash::{Hash, Hasher},
-    path::PathBuf,
-};
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 use crossbeam::channel::Receiver;
 use itertools::Itertools;
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{
-    db::{
-        InputFile,
-        RevisionFile,
-        Connection, Revision, DEFAULT_QUERY, NO_PARAMS,
-    },
-    prelude::*,
-};
+use crate::db::{Connection, InputFile, Revision, RevisionFile, DEFAULT_QUERY, NO_PARAMS};
+use crate::prelude::*;
 
 /// Walks the site's `/src` directory for all valid content files.
 pub fn walk(state: &State) -> Result<String> {
     info!("Starting source directory walk...");
 
-    let (handle, tx) = state.db
-        .get_rw()?
-        .prepare_consumer(consumer_handler);
+    let (handle, tx) = state.db.get_rw()?.prepare_consumer(consumer_handler);
 
     WalkDir::new(SITE_SRC_PATH)
         .into_iter()
-        .filter_ok(|entry| {
-            entry.file_type().is_file() || entry.file_type().is_symlink()
-        })
+        .filter_ok(|entry| entry.file_type().is_file() || entry.file_type().is_symlink())
         .par_bridge()
-        .map(|entry| {
-            entry
-                .map_err(Report::from)
-                .map(process_entry)?
-        })
+        .map(|entry| entry.map_err(Report::from).map(process_entry)?)
         .try_for_each(|entry| -> Result<_> {
             let _ = tx.send(entry?);
             Ok(())
         })?;
-    
+
     // Deadlocking is generally regarded as undesirable.
     drop(tx);
 
@@ -59,7 +43,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     debug!("Walk found item at {path}");
     // Note: we filter out directories before calling this function.
     let mut contents = std::fs::read(path)?;
-    
+
     let extension = match entry.path().extension() {
         Some(ext) => ext.to_str().map(str::to_owned),
         None => None,
@@ -89,11 +73,13 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     }
 
     let contents = String::from_utf8(contents)
-        .with_context(|| format!("Encountered an inline file (path: {path}) that is not valid UTF-8."))
+        .with_context(|| {
+            format!("Encountered an inline file (path: {path}) that is not valid UTF-8.")
+        })
         .suggestion("FTL only supports UTF-8 text; check to make sure your file isn't corrupt.")
         .map(|str| match str.len() {
             0 => None,
-            _ => Some(str)
+            _ => Some(str),
         })?;
 
     let file = InputFile {
@@ -102,7 +88,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
         path: entry.into_path(),
         extension,
         contents,
-        inline
+        inline,
     };
 
     Ok((file, int_id))
@@ -120,9 +106,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
         insert_file(&file)?;
 
         if !file.inline {
-            let destination = PathBuf::from(
-                format!(".ftl/cache/{}", &file.hash)
-            );
+            let destination = PathBuf::from(format!(".ftl/cache/{}", &file.hash));
 
             if !destination.exists() {
                 debug!("Caching non-inline file {:#?}", &file.path);
@@ -135,22 +119,20 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
         // - We're already using a non-cryptographic hash function.
         // - We know there are no duplicates (so the hash won't accidentally be XORed to zero.)
         // - This is infinitely faster than the original approach of sorting a Vec of all id's
-        // and hashing that. 
+        // and hashing that.
         hash ^= id;
     }
 
     let rev_id = format!("{hash:016x}");
     info!("Computed revision ID {rev_id}.");
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(
-        &Revision {
-            id: rev_id.to_owned(),
-            name: None,
-            time: None,
-            pinned: false,
-            stable: false,
-        }
-    )?;
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Revision {
+        id: rev_id.to_owned(),
+        name: None,
+        time: None,
+        pinned: false,
+        stable: false,
+    })?;
 
     let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 

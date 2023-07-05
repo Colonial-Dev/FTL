@@ -1,34 +1,33 @@
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
 use std::io;
+use std::path::{Path, PathBuf};
 
 use ahash::AHashMap;
-use itertools::Itertools;
 use grass::{Fs, Options};
+use itertools::Itertools;
 
 use crate::db::{
-    Queryable, StatementExt, DEFAULT_QUERY, NO_PARAMS,
-    Route, RouteKind, Output, OutputKind
+    Output, OutputKind, Queryable, Route, RouteKind, StatementExt, DEFAULT_QUERY, NO_PARAMS,
 };
 use crate::prelude::*;
 
 /// Filesystem override for [`grass`] that preloads all known stylesheets and their paths into a hashmap.
 #[derive(Debug)]
 struct MapFs {
-    map: AHashMap<PathBuf, Vec<u8>>
+    map: AHashMap<PathBuf, Vec<u8>>,
 }
 
 #[derive(Debug)]
 struct Row {
     path: PathBuf,
-    contents: String
+    contents: String,
 }
 
 impl Queryable for Row {
     fn read_query(stmt: &sqlite::Statement<'_>) -> Result<Self> {
         Ok(Self {
             path: stmt.read_string("path").map(PathBuf::from)?,
-            contents: stmt.read_string("contents")?
+            contents: stmt.read_string("contents")?,
         })
     }
 }
@@ -47,7 +46,8 @@ impl MapFs {
         ";
         let params = (1, rev_id.as_str()).into();
 
-        let map: AHashMap<_, _> = conn.prepare_reader(query, params)?
+        let map: AHashMap<_, _> = conn
+            .prepare_reader(query, params)?
             .map_ok(|row: Row| {
                 // Shave off the 'src/assets/sass/' component of the path.
                 let path: PathBuf = row.path.iter().skip(3).collect();
@@ -55,7 +55,7 @@ impl MapFs {
                 (path, bytes)
             })
             .try_collect()?;
-        
+
         Ok(Self { map })
     }
 }
@@ -70,21 +70,19 @@ impl Fs for MapFs {
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
-        use io::{Error, ErrorKind::NotFound};
+        use io::Error;
+        use io::ErrorKind::NotFound;
 
         match self.map.get(path) {
             Some(vector) => Ok(vector.to_owned()),
-            None => Err(Error::new(
-                NotFound,
-                format!("file not found ({path:?})")
-            ))
+            None => Err(Error::new(NotFound, format!("file not found ({path:?})"))),
         }
     }
 }
 
 pub fn compile(state: &State) -> Result<()> {
     info!("Starting SASS compilation...");
-    
+
     let conn = state.db.get_rw()?;
     let rev_id = state.get_rev();
 
@@ -95,7 +93,7 @@ pub fn compile(state: &State) -> Result<()> {
         id: hash.clone().into(),
         revision: (*rev_id).to_owned(),
         route,
-        kind: RouteKind::Stylesheet
+        kind: RouteKind::Stylesheet,
     })?;
 
     let query = "
@@ -106,25 +104,27 @@ pub fn compile(state: &State) -> Result<()> {
 
     if conn.exists(query, params)? {
         info!("Stylesheet output already exists, skipping rebuild.");
-        return Ok(())
+        return Ok(());
     }
-    
+
     let fs = MapFs::load(state)?;
     let options = Options::default().fs(&fs);
     let path = Path::new("style.scss");
 
     if !fs.is_file(path) {
         let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
-        let err = err.note("SASS compilation expects the root file to be at \"src/assets/sass/style.scss\".");
+        let err = err.note(
+            "SASS compilation expects the root file to be at \"src/assets/sass/style.scss\".",
+        );
         bail!(err)
     }
 
     let output = grass::from_path(path, &options)?;
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Output{
+    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Output {
         id: hash.into(),
         kind: OutputKind::Stylesheet,
-        content: output
+        content: output,
     })?;
 
     Ok(())
@@ -133,7 +133,7 @@ pub fn compile(state: &State) -> Result<()> {
 pub fn load_hash(state: &State) -> Result<String> {
     let conn = state.db.get_ro()?;
     let rev_id = state.get_rev();
-    
+
     let query = "
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
@@ -144,13 +144,14 @@ pub fn load_hash(state: &State) -> Result<String> {
     ";
     let params = (1, rev_id.as_str()).into();
 
-    let hash = conn.prepare_reader(query, params)?
+    let hash = conn
+        .prepare_reader(query, params)?
         .fold_ok(seahash::SeaHasher::new(), |mut hasher, id: String| {
             id.hash(&mut hasher);
             hasher
         })?
         .finish();
-    
+
     info!("Stylesheet compilation complete.");
     Ok(format!("{hash:016x}"))
 }

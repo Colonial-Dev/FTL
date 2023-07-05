@@ -1,15 +1,13 @@
-use std::io::Cursor;
 use std::ffi::OsStr;
 use std::hash::{Hash, Hasher};
+use std::io::Cursor;
 use std::path::Path;
 
 use itertools::Itertools;
-use serde::{Serialize, Deserialize};
-use syntect::{
-    parsing::{SyntaxSet, SyntaxDefinition},
-    highlighting::{ThemeSet, Theme},
-    html::highlighted_html_for_string as higlight_html
-};
+use serde::{Deserialize, Serialize};
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::html::highlighted_html_for_string as higlight_html;
+use syntect::parsing::{SyntaxDefinition, SyntaxSet};
 
 use crate::db::{InputFile, Queryable, Statement, StatementExt};
 use crate::prelude::*;
@@ -32,7 +30,7 @@ impl Highlighter {
         // dumping the result to disk when finished.
         match Path::new(HIGHLIGHTER_DUMP_PATH).exists() {
             false => Self::load_new(state),
-            true => Self::load_from_disk(state)
+            true => Self::load_from_disk(state),
         }
     }
 
@@ -47,22 +45,15 @@ impl Highlighter {
                     bail!(err)
                 }
             },
-            None => self.syntaxes.find_syntax_plain_text()
+            None => self.syntaxes.find_syntax_plain_text(),
         };
 
-        higlight_html(
-            &body,
-            &self.syntaxes,
-            syntax,
-            &self.curr_theme
-        ).wrap_err("An error occurred in the syntax highlighting engine.")
+        higlight_html(&body, &self.syntaxes, syntax, &self.curr_theme)
+            .wrap_err("An error occurred in the syntax highlighting engine.")
     }
 
     fn dump_to_disk(&self) -> Result<()> {
-        std::fs::write(
-            HIGHLIGHTER_DUMP_PATH,
-            serde_cbor::to_vec(self)?
-        )?;
+        std::fs::write(HIGHLIGHTER_DUMP_PATH, serde_cbor::to_vec(self)?)?;
         Ok(())
     }
 
@@ -93,12 +84,12 @@ impl Highlighter {
 
         let hash = load_hash(state)?;
         let curr_theme = Self::get_theme(state, &theme_set)?;
-        
+
         let new = Self {
             syntaxes,
             theme_set,
             curr_theme,
-            hash
+            hash,
         };
 
         debug!("New higlighter created with id {hash:016x}.");
@@ -142,7 +133,7 @@ fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
         let def = SyntaxDefinition::load_from_str(
             &syntax?.contents.expect("Syntax contents should be Some."),
             true,
-            None
+            None,
         )?;
         syntax_builder.add(def);
     }
@@ -168,19 +159,21 @@ fn load_themes(state: &State) -> Result<ThemeSet> {
     for theme in conn.prepare_reader(query, params)? {
         let theme: InputFile = theme?;
 
-        let bytes = theme.contents
+        let bytes = theme
+            .contents
             .expect("Theme contents should be Some.")
             .into_bytes();
         let mut cursor = Cursor::new(bytes);
         let def = ThemeSet::load_from_reader(&mut cursor)?;
 
         set.themes.insert(
-            theme.path
+            theme
+                .path
                 .file_stem()
                 .and_then(OsStr::to_str)
                 .map(str::to_owned)
                 .expect("Theme path should be valid UTF-8."),
-            def
+            def,
         );
     }
 
@@ -210,11 +203,13 @@ fn load_hash(state: &State) -> Result<u64> {
     ";
     let params = (1, rev_id.as_str()).into();
 
-    let hash = conn.prepare_reader(query, params)?
+    let hash = conn
+        .prepare_reader(query, params)?
         .fold_ok(seahash::SeaHasher::new(), |mut hasher, row: Row| {
             row.hash(&mut hasher);
             hasher
-        })?.finish();
+        })?
+        .finish();
 
     Ok(hash)
 }

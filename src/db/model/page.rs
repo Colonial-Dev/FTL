@@ -1,5 +1,5 @@
 use ahash::AHashMap;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sqlite::Statement;
 
 use super::*;
@@ -15,7 +15,7 @@ pub struct Page {
     pub offset: i64,
     pub draft: bool,
     pub attributes: TomlMap,
-    pub extra: TomlMap
+    pub extra: TomlMap,
 }
 
 impl Page {
@@ -30,16 +30,18 @@ impl Page {
                 property: property
                     .as_str()
                     .map(String::from)
-                    .unwrap_or_else(|| property.to_string())
+                    .unwrap_or_else(|| property.to_string()),
             })
         };
 
         for (key, value) in self.attributes.iter() {
             match value {
-                Value::Array(arr) => for value in arr {
-                    push_attr(key, value)
-                },
-                _ => push_attr(key, value)
+                Value::Array(arr) => {
+                    for value in arr {
+                        push_attr(key, value)
+                    }
+                }
+                _ => push_attr(key, value),
             }
         }
 
@@ -56,7 +58,7 @@ impl Insertable for Page {
         "offset",
         "draft",
         "attributes",
-        "extra"
+        "extra",
     ];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
@@ -91,7 +93,7 @@ impl Queryable for Page {
             extra: {
                 let bytes = stmt.read_bytes("extra")?;
                 serde_cbor::from_slice(&bytes)
-            }?
+            }?,
         })
     }
 }
@@ -100,16 +102,12 @@ impl Queryable for Page {
 pub struct Attribute {
     pub id: String,
     pub kind: String,
-    pub property: String
+    pub property: String,
 }
 
 impl Insertable for Attribute {
     const TABLE_NAME: &'static str = "attributes";
-    const COLUMN_NAMES: &'static [&'static str] = &[
-        "id",
-        "kind",
-        "property"
-    ];
+    const COLUMN_NAMES: &'static [&'static str] = &["id", "kind", "property"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
@@ -125,7 +123,7 @@ impl Queryable for Attribute {
         Ok(Self {
             id: stmt.read_string("id")?,
             kind: stmt.read_string("kind")?,
-            property: stmt.read_string("property")?
+            property: stmt.read_string("property")?,
         })
     }
 }

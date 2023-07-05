@@ -1,23 +1,13 @@
 use itertools::Itertools;
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
-use crate::{
-    db::{
-        Page,
-        TomlMap,
-        Queryable,
-        Statement,
-        StatementExt, DEFAULT_QUERY, NO_PARAMS
-    },
-    prelude::*,
-};
+use crate::db::{Page, Queryable, Statement, StatementExt, TomlMap, DEFAULT_QUERY, NO_PARAMS};
+use crate::prelude::*;
 
-static TOML_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap()
-});
+static TOML_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap());
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Frontmatter {
@@ -33,23 +23,19 @@ struct Frontmatter {
     #[serde(default)]
     pub attributes: TomlMap,
     #[serde(default)]
-    pub extra: TomlMap
+    pub extra: TomlMap,
 }
 
 impl Frontmatter {
     pub fn map_attrs(&mut self) -> Result<()> {
         for value in self.attributes.values_mut() {
             match value {
-                Value::Array(arr) => {
-                    *arr = arr.iter()
-                        .map(Self::value_fmt)
-                        .collect()
-                },
+                Value::Array(arr) => *arr = arr.iter().map(Self::value_fmt).collect(),
                 Value::Datetime(dt) => *value = dt.to_string().into(),
                 Value::Table(_) => {
                     bail!("TOML tables within the [attributes] section are not supported.")
-                },
-                _ => *value = Self::value_fmt(value)
+                }
+                _ => *value = Self::value_fmt(value),
             }
         }
 
@@ -87,7 +73,7 @@ impl Into<Page> for Frontmatter {
             template: self.template,
             draft: self.draft,
             attributes: self.attributes,
-            extra: self.extra
+            extra: self.extra,
         }
     }
 }
@@ -96,7 +82,7 @@ impl Into<Page> for Frontmatter {
 struct Row {
     pub id: String,
     pub path: String,
-    pub contents: String
+    pub contents: String,
 }
 
 impl Queryable for Row {
@@ -104,7 +90,7 @@ impl Queryable for Row {
         Ok(Self {
             id: stmt.read_string("id")?,
             path: stmt.read_string("path")?,
-            contents: stmt.read_string("contents")?
+            contents: stmt.read_string("contents")?,
         })
     }
 }
@@ -156,12 +142,12 @@ pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
 fn extract_frontmatter(item: Row) -> Result<Page> {
     debug!("Extracting frontmatter for page {}...", item.id);
 
-    let capture = TOML_REGEX.captures(&item.contents)
-        .with_context(||
-            format!("Could not find frontmatter in page at \"{}\".", item.path)
-        )?
-        .get(0).unwrap();
-    
+    let capture = TOML_REGEX
+        .captures(&item.contents)
+        .with_context(|| format!("Could not find frontmatter in page at \"{}\".", item.path))?
+        .get(0)
+        .unwrap();
+
     let range = capture.range();
     let body = capture
         .as_str()
@@ -169,9 +155,7 @@ fn extract_frontmatter(item: Row) -> Result<Page> {
         .trim_end_matches("+++");
 
     let mut fm = toml::from_str::<Frontmatter>(body)
-        .with_context(||
-            format!("Failed to parse frontmatter for page at \"{}\".", item.path)
-        )?;
+        .with_context(|| format!("Failed to parse frontmatter for page at \"{}\".", item.path))?;
 
     debug!("Parsed frontmatter for page at \"{}\".", item.path);
 

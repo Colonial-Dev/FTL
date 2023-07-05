@@ -1,7 +1,5 @@
-use std::{
-    collections::HashMap,
-    path::Path,
-};
+use std::collections::HashMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 

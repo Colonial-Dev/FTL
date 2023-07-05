@@ -7,10 +7,8 @@ mod render;
 //mod serve;
 
 mod prelude {
-    pub use color_eyre::{
-        eyre::{bail, ensure, eyre, Context, ContextCompat},
-        Report, Result, Section,
-    };
+    pub use color_eyre::eyre::{bail, ensure, eyre, Context, ContextCompat};
+    pub use color_eyre::{Report, Result, Section};
     pub use indoc::indoc;
     pub use tracing::{debug, error, info, warn};
 
@@ -21,7 +19,7 @@ use prelude::*;
 
 fn main() -> Result<()> {
     install_logging();
-    
+
     let state = InnerState::init()?;
     //state.db.reinitialize()?;
     render::Renderer::new(&state)?.render_revision()?;
@@ -32,7 +30,8 @@ fn main() -> Result<()> {
 fn install_logging() {
     use color_eyre::config::HookBuilder;
     use tracing_error::ErrorLayer;
-    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::{fmt, EnvFilter};
 
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()

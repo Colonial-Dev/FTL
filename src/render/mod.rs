@@ -8,8 +8,8 @@
 // A module for stylesheet compilation
 
 mod prepare;
-mod template;
 mod stylesheet;
+mod template;
 
 use std::sync::Arc;
 
@@ -17,10 +17,12 @@ use crossbeam::channel::Receiver;
 use itertools::Itertools;
 use minijinja::Environment;
 use rayon::prelude::*;
-use template::{Ticket, Metadata};
+use template::{Metadata, Ticket};
 
+use crate::db::{
+    Connection, Dependency, Output, OutputKind, Page, Queryable, DEFAULT_QUERY, NO_PARAMS,
+};
 use crate::poll;
-use crate::db::{Connection, Page, Queryable, NO_PARAMS, Output, OutputKind, Relation, DEFAULT_QUERY, Dependency};
 use crate::prelude::*;
 
 #[derive(Debug)]
@@ -32,29 +34,24 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(state: &State) -> Result<Self> {
         prepare::prepare(state)?;
-        
+
         let env = template::setup_environment(state)?;
         let state = Arc::clone(state);
 
-        Ok(Self {
-            env,
-            state
-        })
+        Ok(Self { env, state })
     }
-    
+
     pub fn render_revision(&self) -> Result<()> {
         info!("Starting render for revision {}...", self.state.get_rev());
 
         let conn = self.state.db.get_rw()?;
         let tickets = self.get_tickets(&conn)?;
         let (handle, tx) = conn.prepare_consumer(consumer_handler);
-        
+
         tickets
             .into_par_iter()
             .try_for_each(|ticket| -> Result<_> {
-                tx.send(
-                    ticket.build(&self.env)?
-                )?;
+                tx.send(ticket.build(&self.env)?)?;
                 Ok(())
             })?;
 
@@ -96,7 +93,7 @@ impl Renderer {
 
         let rev_id = self.state.get_rev();
         let params = (1, rev_id.as_str()).into();
-        
+
         let mut source_query = conn.prepare(source_query)?;
         let mut get_source = move |id: &str| {
             use sqlite::State;
@@ -104,18 +101,15 @@ impl Renderer {
             source_query.bind((1, id))?;
             match source_query.next()? {
                 State::Row => String::read_query(&source_query),
-                State::Done => bail!("Could not find source for page with ID {id}.")
+                State::Done => bail!("Could not find source for page with ID {id}."),
             }
         };
 
-        let tickets: Vec<_> = conn.prepare_reader(page_query, params)?
+        let tickets: Vec<_> = conn
+            .prepare_reader(page_query, params)?
             .map_ok(|page: Page| -> Result<_> {
                 let source = get_source(&page.id)?;
-                Ok(Ticket::new(
-                    &self.state,
-                    page,
-                    &source
-                ))
+                Ok(Ticket::new(&self.state, page, &source))
             })
             .flatten()
             .try_collect()?;
@@ -129,10 +123,12 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Ticket>) -> Result<()> {
     let mut insert_output = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
     let mut insert_dep = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 
-    let mut remove_deps = conn.prepare("
+    let mut remove_deps = conn.prepare(
+        "
         DELETE FROM dependencies
         WHERE parent = ?1
-    ")?;
+    ",
+    )?;
     let mut remove_deps = move |id: &str| -> Result<_> {
         remove_deps.reset()?;
         remove_deps.bind((1, id))?;
@@ -151,17 +147,14 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Ticket>) -> Result<()> {
                     insert_output(&Output {
                         id: id.clone().into(),
                         kind: OutputKind::Page,
-                        content: output
+                        content: output,
                     })?
-                },
-                Metadata::Dependency { relation, child } => {
-                    println!("Relation: {relation:?} // Child: {child:?}");
-                    insert_dep(&Dependency {
-                        relation,
-                        parent: id.clone(),
-                        child
-                    }).unwrap()
                 }
+                Metadata::Dependency { relation, child } => insert_dep(&Dependency {
+                    relation,
+                    parent: id.clone(),
+                    child,
+                })?,
             }
         }
     }

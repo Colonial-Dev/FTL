@@ -1,16 +1,13 @@
 use minijinja::value::*;
 
-use crate::{
-    prelude::*, 
-    db::{InputFile, Insertable},
-};
-
 use super::*;
+use crate::db::{InputFile, Insertable};
+use crate::prelude::*;
 
 /// A resource known to FTL, such as an image or page. Acquire inside the engine
 /// through the [`DbHandle::get_resource`] method.
-/// 
-/// Stores relatively little data, with more complex information being 
+///
+/// Stores relatively little data, with more complex information being
 /// gated behind method calls that lazily compute the result.
 #[derive(Debug)]
 pub struct Resource {
@@ -20,13 +17,9 @@ pub struct Resource {
 }
 
 impl Resource {
-    fn permalink(&self, state: &MJState) {
-        
-    }
+    fn permalink(&self, state: &MJState) {}
 
-    fn cachebusted(&self, state: &MJState) {
-        
-    }
+    fn cachebusted(&self, state: &MJState) {}
     // permalink (the canonical route to the asset - excludes redirects)
     // cachebusted (only for non-inline, returns none or error for inline?)
     // MIME (full/top/sub)

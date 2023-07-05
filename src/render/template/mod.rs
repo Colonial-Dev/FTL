@@ -1,29 +1,20 @@
 mod error;
 mod loading;
 mod objects;
-    
+
 pub use error::*;
-pub use objects::*;
-
-use minijinja::{
-    context,
-    Environment, 
-    value::Value,
-    State as MJState
-};
-
 use error::{MJResult, WrappedReport as Wrap};
+use minijinja::value::Value;
+use minijinja::{context, Environment, State as MJState};
+pub use objects::*;
+use objects::{DbHandle, Highlighter};
 
-use objects::{Highlighter, DbHandle};
-use crate::prelude::*;
 use super::stylesheet;
+use crate::prelude::*;
 
 pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     let rev_id = state.get_rev();
-    let stylesheet = format!(
-        "static/style.{}.css",
-        stylesheet::load_hash(state)?
-    );
+    let stylesheet = format!("static/style.{}.css", stylesheet::load_hash(state)?);
     let db = DbHandle::new(state);
 
     let mut env = Environment::new();
@@ -34,7 +25,7 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));
     env.add_global("DB", Value::from_object(db));
     register_routines(state, &mut env)?;
-    
+
     Ok(env)
 }
 
@@ -54,26 +45,20 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
     });
 
     let db = DbHandle::new(state);
-    env.add_filter("query", move |sql, params| {
-        db.query(sql, params)
-    });
+    env.add_filter("query", move |sql, params| db.query(sql, params));
 
     Ok(())
 }
 
 fn eval(state: &MJState, template: String) -> MJResult {
-    state.env().render_named_str(
-        "<eval>",
-        &template,
-        context!(page => state.lookup("page"))
-    ).map(Value::from_safe_string)
+    state
+        .env()
+        .render_named_str("<eval>", &template, context!(page => state.lookup("page")))
+        .map(Value::from_safe_string)
 }
 
 fn raise(message: String) -> MJResult {
-    Err(MJError::new(
-        MJErrorKind::InvalidOperation,
-        message
-    ))
+    Err(MJError::new(MJErrorKind::InvalidOperation, message))
 }
 
 fn timefmt(input: String, format: String) -> MJResult {
@@ -86,12 +71,8 @@ fn timefmt(input: String, format: String) -> MJResult {
     // Workaround to avoid panicking when the user-provided format string is invalid.
     // Will be obsolete once https://github.com/chronotope/chrono/pull/902 is merged.
     std::panic::set_hook(Box::new(|_| ()));
-    let formatted = std::panic::catch_unwind(|| {
-        datetime.format(&format).to_string()
-    })
-    .map_err(|_| {
-        Wrap::wrap(eyre!("Invalid datetime format string ({format})"))
-    })?;
+    let formatted = std::panic::catch_unwind(|| datetime.format(&format).to_string())
+        .map_err(|_| Wrap::wrap(eyre!("Invalid datetime format string ({format})")))?;
     let _ = std::panic::take_hook();
 
     Ok(Value::from(formatted))

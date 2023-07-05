@@ -1,21 +1,11 @@
-use std::{
-    path::Path,
-    ffi::OsStr
-};
+use std::ffi::OsStr;
+use std::path::Path;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::{
-    db::{
-        Route,
-        RouteKind,
-        Queryable,
-        Statement,
-        StatementExt, DEFAULT_QUERY, NO_PARAMS
-    },
-    prelude::*,
-};
+use crate::db::{Queryable, Route, RouteKind, Statement, StatementExt, DEFAULT_QUERY, NO_PARAMS};
+use crate::prelude::*;
 
 #[derive(Debug)]
 struct Row {
@@ -58,7 +48,8 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
 
     let params = (1, rev_id).into();
 
-    let static_routes = conn.prepare_reader(query_static, params)?
+    let static_routes = conn
+        .prepare_reader(query_static, params)?
         .map(|row| -> Result<_> {
             let row: Row = row?;
             let route = row
@@ -71,11 +62,12 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
                 route: slug::slugify(route),
-                kind: RouteKind::Asset
+                kind: RouteKind::Asset,
             })
         });
 
-    let cachebust_routes = conn.prepare_reader(query_static, params)?
+    let cachebust_routes = conn
+        .prepare_reader(query_static, params)?
         .map(|row| -> Result<_> {
             let row: Row = row?;
 
@@ -83,52 +75,48 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 .extension()
                 .map(OsStr::to_str)
                 .map(Option::unwrap_or_default);
-            
+
             let route = match ext {
                 Some(ext) => format!("static/{}.{ext}", row.id),
-                None => format!("static/{}", row.id)
+                None => format!("static/{}", row.id),
             };
 
             Ok(Route {
                 id: Some(row.id),
                 revision: rev_id.to_owned(),
                 route,
-                kind: RouteKind::RedirectAsset
+                kind: RouteKind::RedirectAsset,
             })
         });
 
-    let page_routes = conn.prepare_reader(query_pages, params)?
-        .map(|row| {
-            let row: Row = row?;
-            Ok(Route {
-                id: Some(row.id),
-                revision: rev_id.to_owned(),
-                route: slug::slugify(to_route(&row.path)),
-                kind: RouteKind::Page
-            })
-        });
+    let page_routes = conn.prepare_reader(query_pages, params)?.map(|row| {
+        let row: Row = row?;
+        Ok(Route {
+            id: Some(row.id),
+            revision: rev_id.to_owned(),
+            route: slug::slugify(to_route(&row.path)),
+            kind: RouteKind::Page,
+        })
+    });
 
-    let alias_routes = conn.prepare_reader(query_alias, params)?
-        .map(|row| {
-            let row: Row = row?;
-            Ok(Route {
-                id: Some(row.id),
-                revision: rev_id.to_owned(),
-                route: row.path,
-                kind: RouteKind::RedirectPage
-            })
-        });
+    let alias_routes = conn.prepare_reader(query_alias, params)?.map(|row| {
+        let row: Row = row?;
+        Ok(Route {
+            id: Some(row.id),
+            revision: rev_id.to_owned(),
+            route: row.path,
+            kind: RouteKind::RedirectPage,
+        })
+    });
 
     let txn = conn.open_transaction()?;
     let mut insert_route = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-    
+
     static_routes
         .chain(cachebust_routes)
         .chain(page_routes)
         .chain(alias_routes)
-        .try_for_each(|route| {
-            insert_route(&route?)
-        })?;
+        .try_for_each(|route| insert_route(&route?))?;
 
     txn.commit()?;
     info!("Done computing routes.");

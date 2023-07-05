@@ -1,27 +1,14 @@
-use std::{
-    path::{PathBuf, Path}, 
-    sync::{Weak, Arc},
-    thread::JoinHandle,
-    ops::Deref, 
-};
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Weak};
+use std::thread::JoinHandle;
 
+use crossbeam::channel::{Receiver, Sender};
 use crossbeam::queue::ArrayQueue;
+use sqlite::{Bindable, Connection, OpenFlags, State};
 
-use crossbeam::channel::{
-    Sender,
-    Receiver
-};
-
-use sqlite::{
-    OpenFlags, 
-    Connection,
-    Bindable,
-    State
-};
-
+use super::{Insertable, Queryable};
 use crate::prelude::*;
-
-use super::{Queryable, Insertable};
 
 /// A shareable, threadsafe SQLite connection pool.
 #[derive(Debug)]
@@ -40,7 +27,7 @@ impl Pool {
             queue: ArrayQueue::new(size),
             loopback: loopback.clone(),
             path: path.into(),
-            flags
+            flags,
         })
     }
 
@@ -50,12 +37,12 @@ impl Pool {
         // connections than it can actually hold.
         let connection = match self.queue.pop() {
             Some(conn) => conn,
-            None => self.make_new()?
+            None => self.make_new()?,
         };
 
         Ok(PoolConnection {
             parent: self.loopback.clone(),
-            connection: Some(connection)
+            connection: Some(connection),
         })
     }
 
@@ -97,58 +84,65 @@ macro_rules! poll {
 pub struct PoolConnection {
     /// The [`Pool`] the connection was obtained from, if any.
     parent: Weak<Pool>,
-    /// The inner [`sqlite::Connection`]. 
+    /// The inner [`sqlite::Connection`].
     /// Wrapped in an [`Option`] so it can be taken during drop and returned to its parent pool.
-    /// 
+    ///
     /// This field should *never* observably contain [`None`], as the implementation of [`Deref`]
     /// on this type will unwrap it and cause a panic.
-    connection: Option<Connection>
+    connection: Option<Connection>,
 }
 
 impl PoolConnection {
     /// Opens a new read/write connection to the database at the provided path.
-    /// 
+    ///
     /// Connections opened in this manner have no parent pool, and as such will be closed
     /// when dropped.
     #[allow(dead_code)]
-    pub fn open<P>(path: P) -> Result<Self> where 
-        P: AsRef<Path>
-    {   
+    pub fn open<P>(path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let connection = Connection::open(path)?;
         connection.execute(super::PRAGMAS)?;
 
         Ok(Self {
             parent: Weak::new(),
-            connection: Some(connection)
+            connection: Some(connection),
         })
     }
 
     /// Opens a new connection to the database at the provided path and with the provided flags.
-    /// 
+    ///
     /// Connections opened in this manner have no parent pool, and as such will be closed
     /// when dropped.
     #[allow(dead_code)]
-    pub fn open_with_flags<P>(path: P, flags: OpenFlags) -> Result<Self> where
-        P: AsRef<Path>
+    pub fn open_with_flags<P>(path: P, flags: OpenFlags) -> Result<Self>
+    where
+        P: AsRef<Path>,
     {
         let connection = Connection::open_with_flags(path, flags)?;
         connection.execute(super::PRAGMAS)?;
 
         Ok(Self {
             parent: Weak::new(),
-            connection: Some(connection)
+            connection: Some(connection),
         })
     }
 
-    /// Creates a "reader" - an iterator that lazily deserializes instances of a [`Queryable`] type 
+    /// Creates a "reader" - an iterator that lazily deserializes instances of a [`Queryable`] type
     /// from the results of a database query.
-    pub fn prepare_reader<T, Q, P>(&self, query: Q, parameters: Option<P>) -> Result<impl Iterator<Item = Result<T>> + '_> where
+    pub fn prepare_reader<T, Q, P>(
+        &self,
+        query: Q,
+        parameters: Option<P>,
+    ) -> Result<impl Iterator<Item = Result<T>> + '_>
+    where
         T: Queryable,
         Q: AsRef<str>,
-        P: Bindable
+        P: Bindable,
     {
         let mut stmt = self.prepare(query)?;
-        
+
         if let Some(parameters) = parameters {
             stmt.bind(parameters)?;
         }
@@ -158,23 +152,28 @@ impl PoolConnection {
             match stmt.next().map_err(Report::from) {
                 Ok(Row) => Some(T::read_query(&stmt)),
                 Ok(Done) => None,
-                Err(err) => Err(err).into()
+                Err(err) => Err(err).into(),
             }
         });
-        
+
         Ok(iterator)
     }
 
-    /// Creates a "writer" - a closure that inserts instances of an [`Insertable`] type into the database, 
+    /// Creates a "writer" - a closure that inserts instances of an [`Insertable`] type into the database,
     /// using either the type's default insertion query or a caller-provided substitute.
-    pub fn prepare_writer<T, Q, P>(&self, query: Option<Q>, parameters: Option<P>) -> Result<impl FnMut(&T) -> Result<()> + '_> where 
+    pub fn prepare_writer<T, Q, P>(
+        &self,
+        query: Option<Q>,
+        parameters: Option<P>,
+    ) -> Result<impl FnMut(&T) -> Result<()> + '_>
+    where
         T: Insertable,
         Q: AsRef<str>,
-        P: Bindable
-    {   
+        P: Bindable,
+    {
         let mut stmt = match query {
             Some(sub) => self.prepare(sub)?,
-            None => self.prepare(T::default_query())?
+            None => self.prepare(T::default_query())?,
         };
 
         if let Some(parameters) = parameters {
@@ -192,31 +191,31 @@ impl PoolConnection {
     }
 
     /// Prepares a "consumer" - a thread and MPSC pair for safely handling concurrent writes to the database.
-    /// 
+    ///
     /// Unlike writers and readers, the caller is responsible for providing a handler closure that implements
     /// the desired behavior from scratch.
-    pub fn prepare_consumer<M, R, F>(self, handler: F) -> (JoinHandle<R>, Sender<M>) where
+    pub fn prepare_consumer<M, R, F>(self, handler: F) -> (JoinHandle<R>, Sender<M>)
+    where
         M: Send + 'static,
         R: Send + 'static,
         F: FnOnce(&Self, Receiver<M>) -> R + Send + 'static,
     {
-        let (tx, rx) =  crossbeam::channel::unbounded();
+        let (tx, rx) = crossbeam::channel::unbounded();
 
-        let handle = std::thread::spawn(move || {
-            handler(&self, rx)
-        });
+        let handle = std::thread::spawn(move || handler(&self, rx));
 
         (handle, tx)
     }
 
     /// Given a query and an optional set of parameters, returns `true` if it returns
     /// one or more rows.
-    pub fn exists<Q, P>(&self, query: Q, parameters: Option<P>) -> Result<bool> where
+    pub fn exists<Q, P>(&self, query: Q, parameters: Option<P>) -> Result<bool>
+    where
         Q: AsRef<str>,
-        P: Bindable
+        P: Bindable,
     {
         let mut stmt = self.prepare(query)?;
-        
+
         if let Some(parameters) = parameters {
             stmt.bind(parameters)?;
         }
@@ -249,7 +248,9 @@ impl Drop for PoolConnection {
             let conn = self.connection.take().unwrap();
             pool.put_back(conn);
         } else {
-            warn!("Attempted to put back a pooled connection, but its parent pool no longer exists.");
+            warn!(
+                "Attempted to put back a pooled connection, but its parent pool no longer exists."
+            );
             let _ = self.execute("PRAGMA optimize;");
         }
     }
@@ -257,7 +258,7 @@ impl Drop for PoolConnection {
 
 pub struct Transaction<'a> {
     parent: &'a PoolConnection,
-    complete: bool
+    complete: bool,
 }
 
 impl<'a> Transaction<'a> {
@@ -266,7 +267,7 @@ impl<'a> Transaction<'a> {
 
         Ok(Self {
             parent,
-            complete: false
+            complete: false,
         })
     }
 

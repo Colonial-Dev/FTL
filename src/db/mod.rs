@@ -1,28 +1,18 @@
 //! Types and traits for interacting with the database underlying FTL.
-//! 
+//!
 //! This module includes:
 //! - The [`Database`] type, a shareable top-level portal for acquiring connections and managing write contention.
 //! - The [`Insertable`] and [`Queryable`] traits, as well as their associated "model types" (such as [`InputFile`]) that map to and from tables in the database.
 
-mod pool;
 mod model;
+mod pool;
 
-use std::{
-    path::{PathBuf, Path},
-    sync::{Mutex, Arc, MutexGuard},
-};
-
-pub use sqlite::{
-    Statement,
-    OpenFlags,
-};
-
-pub use pool::{
-    Pool,
-    PoolConnection as Connection,
-};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 pub use model::*;
+pub use pool::{Pool, PoolConnection as Connection};
+pub use sqlite::{OpenFlags, Statement};
 
 use crate::prelude::*;
 
@@ -43,7 +33,7 @@ pub struct Database {
     pub path: PathBuf,
     pub rw_pool: Arc<Pool>,
     pub ro_pool: Arc<Pool>,
-    write_lock: Mutex<()>
+    write_lock: Mutex<()>,
 }
 
 impl Database {
@@ -61,23 +51,19 @@ impl Database {
     pub fn open(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
 
-        let rw_pool = Pool::open(
-            &path,
-            *THREADS as usize,
-            OpenFlags::new().set_read_write()
-        );
+        let rw_pool = Pool::open(&path, *THREADS as usize, OpenFlags::new().set_read_write());
 
         let ro_pool = Pool::open(
             &path,
             *BLOCKING_THREADS as usize,
-            OpenFlags::new().set_read_only()
+            OpenFlags::new().set_read_only(),
         );
 
         Self {
             path,
             rw_pool,
             ro_pool,
-            write_lock: Mutex::new(())
+            write_lock: Mutex::new(()),
         }
     }
 
@@ -90,7 +76,7 @@ impl Database {
 
         Ok(())
     }
-    
+
     /// Acquire a read-write connection from the underlying pool, creating a new one
     /// if it does not exist.
     pub fn get_rw(&self) -> Result<Connection> {

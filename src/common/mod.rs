@@ -6,9 +6,8 @@ mod state;
 
 pub use args::*;
 pub use config::*;
-pub use state::*;
-
 use once_cell::sync::Lazy;
+pub use state::*;
 
 use crate::prelude::*;
 
