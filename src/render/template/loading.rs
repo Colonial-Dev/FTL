@@ -1,6 +1,6 @@
 //! Template loading procedures, including validation and dependency resolution.
 
-use minijinja::Source;
+use minijinja::Environment;
 
 use crate::{
     poll,
@@ -14,9 +14,9 @@ use crate::{
 };
 
 const BUILTINS: &[&str] = &[
-    include_str!("builtins/default.html"),
+    include_str!("builtins/ftl_default.html"),
     include_str!("builtins/eval.html"),
-    include_str!("builtins/codeblock.html"),
+    include_str!("builtins/ftl_codeblock.html"),
 ];
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl Queryable for Row {
 }
 
 /// Loads all user-provided and builtin templates into a [`Source`]
-pub fn setup_source(state: &State) -> Result<Source> {
+pub fn setup_templates(state: &State, env: &mut Environment) -> Result<()> {
     let conn = state.db.get_rw()?;
     let rev_id = state.get_rev();
 
@@ -54,33 +54,34 @@ pub fn setup_source(state: &State) -> Result<Source> {
         .prepare_reader(query, params)?
         .collect::<MaybeVec<Row>>()?;
     
-    let builtins = load_builtins();
+    compute_dependencies(&conn, &rows)?;
 
-    let source = rows
-        .iter()
+    rows
+        .into_iter()
         .map(|row| {
             (
                 row.path
                     .trim_start_matches(SITE_SRC_PATH)
-                    .trim_start_matches(SITE_TEMPLATE_PATH),
-                row.contents.as_str()
+                    .trim_start_matches(SITE_TEMPLATE_PATH)
+                    .to_owned(),
+                row.contents
             )
         })
-        .chain(builtins)
-        .try_fold(Source::new(), |mut acc, (name, contents)| -> Result<_> {
-            acc.add_template(name, contents)?;
-            Ok(acc)
+        .chain(load_builtins())
+        .try_for_each(|(name, contents)| {
+            env.add_template_owned(name, contents)
         })?;
-
-    compute_dependencies(&conn, &rows)?;
-
-    Ok(source)
+    
+    Ok(())
 }
 
-fn load_builtins<'a>() -> impl Iterator<Item = (&'a str, &'a str)> {
+fn load_builtins() -> impl Iterator<Item = (String, String)> {
     BUILTINS.iter()
         .map(|template| {
             template.split_once('\n').expect("FTL builtin should have content.")
+        })
+        .map(|(name, content)| {
+            (name.to_owned(), content.to_owned())
         })
 }
 
@@ -125,7 +126,7 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
             )
 
         INSERT OR IGNORE INTO dependencies
-        SELECT NULL, 1, template_name.name, transitives.id
+        SELECT 1, template_name.name, transitives.id
         FROM template_name, transitives;
     ";
 
@@ -183,10 +184,10 @@ mod test {
 
     #[test]
     fn builtin_templates() {
-        let mut source = Source::new();
+        let mut env = Environment::new();
 
         for (name, data) in load_builtins() {
-            source.add_template(name, data).unwrap();
+            env.add_template_owned(name, data).unwrap();
         }
     }
 

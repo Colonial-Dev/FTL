@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     install_logging();
     
     let state = InnerState::init()?;
-    state.db.reinitialize()?;
+    //state.db.reinitialize()?;
     render::Renderer::new(&state)?.render_revision()?;
 
     Ok(())

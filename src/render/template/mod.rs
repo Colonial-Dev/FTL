@@ -27,9 +27,8 @@ pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
     let db = DbHandle::new(state);
 
     let mut env = Environment::new();
-    let source = loading::setup_source(state)?;
+    loading::setup_templates(state, &mut env)?;
 
-    env.set_source(source);
     env.add_global("CONFIG", Value::from_serializable(&state.config));
     env.add_global("REVISION_ID", Value::from_serializable(&*rev_id));
     env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));

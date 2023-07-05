@@ -135,7 +135,6 @@ pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
     let mut insert_attr = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 
     conn.prepare_reader(query, params)?
-        .into_iter()
         .map_ok(extract_frontmatter)
         .flatten()
         .try_for_each(|page| -> Result<_> {

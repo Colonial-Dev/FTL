@@ -2,7 +2,7 @@
 
 use nom::{
     branch::alt,
-    combinator::{not, eof},
+    combinator::{not, eof}, multi::{many0},
 };
 
 use nom::bytes::complete::*;
@@ -26,24 +26,30 @@ use super::{Input, Result, EyreResult, trim, to_report};
 /// One or many dependencies parsed from a Minijinja template.
 pub enum Dependency<'i> {
     Single(&'i str),
-    Vector(Vec<&'i str>)
+    Vector(Vec<&'i str>),
+    Ignored
 }
 
 impl<'i> Dependency<'i> {
     /// Attempts to parse dependencies from the provided input until exhaustion.
     pub fn parse_many(input: Input<'i>) -> EyreResult<impl Iterator<Item = &'i str>> {
-        separated_list0(
-            Self::skip_ignored,
-            Self::parse_dep
-        )(input)
-        .map(|(_, o)| {
-            o.into_iter()
-                .flat_map(|dep| match dep {
-                    Self::Single(path) => vec![path].into_iter(),
-                    Self::Vector(vec) => vec.into_iter()
-                })
-        })
-        .map_err(to_report)
+        many0(Self::parse_one)(input)
+            .map(|(_, o)| {
+                o.into_iter()
+                    .flat_map(|dep| match dep {
+                        Self::Single(path) => vec![path].into_iter(),
+                        Self::Vector(vec) => vec.into_iter(),
+                        Self::Ignored => Vec::new().into_iter()
+                    })
+            })
+            .map_err(to_report)
+    }
+
+    fn parse_one(input: Input<'i>) -> Result<Self> {
+        alt((
+            Self::parse_dep,
+            Self::skip_ignored
+        ))(input)
     }
 
     /// Attempts to parse a single dependency from the provided input.
@@ -52,7 +58,7 @@ impl<'i> Dependency<'i> {
             Self::parse_by_keyword("extends"),
             Self::parse_by_keyword("include"),
             Self::parse_by_keyword("import"),
-            Self::parse_by_keyword("from")
+            Self::parse_by_keyword("from"),
         ))(input)
     }
 
@@ -97,7 +103,7 @@ impl<'i> Dependency<'i> {
     }
 
     /// Attempts to skip over any text that does not contain a dependency.
-    fn skip_ignored(input: Input<'i>) -> Result<()> {
+    fn skip_ignored(input: Input<'i>) -> Result<Self> {
         let munch_plain = tuple((
             anychar,
             not(alt((
@@ -105,11 +111,11 @@ impl<'i> Dependency<'i> {
                 eof
             )))
         ));
-        
+
         let (_, count) = many0_count(munch_plain)(input)?;
 
         take(count + 1)(input).map(|(i, _)| {
-            (i, ())
+            (i, Self::Ignored)
         })
     }
 
@@ -203,6 +209,8 @@ mod test {
     #[test]
     fn parse_many() {
         let test_template = indoc::indoc! {r#"
+            Here is our test template!
+
             {% extends "base.html" %}
             {% include 'header.html' %}
             {% include 'customization.html' ignore missing %}

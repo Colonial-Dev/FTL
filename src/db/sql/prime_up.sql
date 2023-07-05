@@ -125,24 +125,19 @@ CREATE TABLE routes (
     UNIQUE(id, revision, route, kind)
 );
 
+-- Query optimization index - without this, looking up
+-- IDs by route would be SCANs.
+CREATE INDEX idx_routes ON routes (id, route);
 -- SQLite-recommended child key index.
 CREATE INDEX idx_routes_cfk ON routes(id, revision);
 
 CREATE TABLE dependencies (
-    revision TEXT,
     relation INTEGER,
     parent TEXT,
     child TEXT,
 
-    FOREIGN KEY (revision)
-    REFERENCES revisions(id)
-        ON DELETE CASCADE,
-
-    UNIQUE(revision, relation, parent, child)
+    UNIQUE(relation, parent, child)
 );
-
--- SQLite-recommended child key index.
-CREATE INDEX idx_dependencies_cfk ON dependencies(revision);
 
 CREATE TABLE output (
     id TEXT PRIMARY KEY,

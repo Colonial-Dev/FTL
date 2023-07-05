@@ -65,8 +65,10 @@ impl Ticket {
         }
     }
 
-    pub fn build(self: &Arc<Self>, env: &Environment) -> Result<()> {
-        let name = match &self.page.template {
+    pub fn build(self, env: &Environment) -> Result<Self> {
+        let arc_self = Arc::new(self);
+        
+        let name = match &arc_self.page.template {
             Some(name) => name,
             None => "ftl_default.html"
         };
@@ -83,10 +85,47 @@ impl Ticket {
         };
 
         let out = template.render(context!(
-            page => Value::from_object(Arc::clone(self))
+            page => Value::from_object(Arc::clone(&arc_self))
         )).map_err(Wrap::flatten)?;
 
-        self.metadata.push(Metadata::Rendered(out));
+        arc_self.register_dependency(Relation::PageTemplate, name)?;
+        arc_self.metadata.push(Metadata::Rendered(out));
+
+        Ok(Arc::into_inner(arc_self).expect("There should only be one strong reference to the ticket."))
+    }
+
+    pub fn register_dependency(&self, relation: Relation, child: impl Into<String>) -> Result<()> {
+        let child = child.into();
+
+        
+        if matches!(relation, Relation::PageTemplate) {
+            if matches!(&*child, "ftl_codeblock.html" | "eval.html" | "ftl_default.html") {
+                return Ok(())
+            }
+
+            let conn = self.state.db.get_ro()?;
+
+            let query = "
+                SELECT child FROM dependencies
+                WHERE parent = ?1
+                AND relation = 1
+            ";
+            let params = Some((1, &*child));
+
+            conn.prepare_reader(query, params)?.try_for_each(|child| -> Result<_> {
+                self.metadata.push(Metadata::Dependency {
+                    relation,
+                    child: child?
+                });
+
+                Ok(())
+            })?;
+        } else {
+            self.metadata.push(Metadata::Dependency {
+                relation, 
+                child 
+            });
+        }
 
         Ok(())
     }
@@ -159,11 +198,8 @@ impl Ticket {
     
             bail!(err);
         };
-
-        self.metadata.push(Metadata::Dependency {
-            relation: Relation::PageTemplate,
-            child: name
-        });
+        
+        self.register_dependency(Relation::PageTemplate, name)?;
 
         template.render(context!(
             args => code.args,

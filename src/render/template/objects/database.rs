@@ -247,7 +247,7 @@ impl StructObject for ValueMap {
         self.0.get(name).map(|x| x.to_owned())
     }
     
-    fn fields(&self) -> Vec<Arc<String>> {
+    fn fields(&self) -> Vec<Arc<str>> {
         self.0
             .keys()
             .map(String::as_str)

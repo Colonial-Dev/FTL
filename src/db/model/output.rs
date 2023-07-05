@@ -28,23 +28,20 @@ impl From<i64> for Relation {
 
 #[derive(Debug, Clone)]
 pub struct Dependency {
-    revision: String,
-    relation: Relation,
-    parent: String,
-    child: String,
+    pub relation: Relation,
+    pub parent: String,
+    pub child: String,
 }
 
 impl Insertable for Dependency {
     const TABLE_NAME: &'static str = "dependencies";
     const COLUMN_NAMES: &'static [&'static str] = &[
-        "revision",
         "relation",
         "parent",
         "child"
     ];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":revision", self.revision.as_str()))?;
         stmt.bind((":relation", self.relation as i64))?;
         stmt.bind((":parent", self.parent.as_str()))?;
         stmt.bind((":child", self.child.as_str()))?;
@@ -56,7 +53,6 @@ impl Insertable for Dependency {
 impl Queryable for Dependency {
     fn read_query(stmt: &Statement<'_>) -> Result<Self> {
         Ok(Self {
-            revision: stmt.read_string("revision")?,
             relation: stmt.read_i64("relation").map(Relation::from)?,
             parent: stmt.read_string("parent")?,
             child: stmt.read_string("child")?
