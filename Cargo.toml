@@ -50,8 +50,8 @@ lol_html = "0.3.1"
 slug = "0.1.4"
 
 # Serving
-# tokio = { version = "1.21.2", features = ["full"] }
-# axum = "0.6"
+tokio = { version = "1", features = ["full"] }
+axum = "0.6"
 # tower-http = "0.3.4"
 
 # Other

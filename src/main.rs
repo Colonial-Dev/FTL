@@ -4,7 +4,7 @@ mod common;
 mod db;
 mod parse;
 mod render;
-//mod serve;
+mod serve;
 
 mod prelude {
     pub use color_eyre::eyre::{bail, ensure, eyre, Context, ContextCompat};

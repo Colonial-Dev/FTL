@@ -4,7 +4,7 @@ use super::*;
 use crate::db::{InputFile, Insertable};
 use crate::prelude::*;
 
-/// A resource known to FTL, such as an image or page. Acquire inside the engine
+/// A resource known to FTL, such as an image or page. Acquired inside the engine
 /// through the [`DbHandle::get_resource`] method.
 ///
 /// Stores relatively little data, with more complex information being
