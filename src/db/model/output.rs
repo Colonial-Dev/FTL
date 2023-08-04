@@ -2,7 +2,7 @@ use sqlite::Statement;
 
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Relation {
     Unknown = 0,
@@ -26,7 +26,7 @@ impl From<i64> for Relation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dependency {
     pub relation: Relation,
     pub parent: String,
@@ -56,7 +56,7 @@ impl Queryable for Dependency {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OutputKind {
     Unknown = 0,
@@ -78,7 +78,7 @@ impl From<i64> for OutputKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Output {
     pub id: Option<String>,
     pub kind: OutputKind,

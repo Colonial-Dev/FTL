@@ -7,7 +7,7 @@ use super::*;
 /// A high-speed map of strings and TOML values.
 pub type TomlMap = AHashMap<String, toml::Value>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Page {
     pub id: String,
     pub path: String,
@@ -98,7 +98,7 @@ impl Queryable for Page {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attribute {
     pub id: String,
     pub kind: String,

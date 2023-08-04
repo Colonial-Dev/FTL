@@ -124,10 +124,12 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
     }
 
     let rev_id = format!("{hash:016x}");
+    let rev_id = RevisionID::from(rev_id);
+    
     info!("Computed revision ID {rev_id}.");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Revision {
-        id: rev_id.to_owned(),
+        id: rev_id.to_string(),
         name: None,
         time: None,
         pinned: false,
@@ -139,14 +141,14 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
     for id in ids {
         insert_file(&RevisionFile {
             id,
-            revision: rev_id.clone(),
+            revision: rev_id.to_string(),
         })?;
     }
 
     txn.commit()?;
     info!("Done walking source directory.");
 
-    Ok(RevisionID::from(rev_id))
+    Ok(rev_id)
 }
 
 /// Determines whether or not a file with the given extension is considered "inline."

@@ -6,7 +6,7 @@ use sqlite::Statement;
 use super::*;
 
 /// Represents a file discovered by FTL's walking algorithm.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct InputFile {
     /// The file's ID value.
     /// Computed as the hash of the file's `hash` and `path` concatenated together,
@@ -57,7 +57,7 @@ impl Queryable for InputFile {
 }
 
 /// Represents metadata about a revision.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Revision {
     pub id: String,
     pub name: Option<String>,
@@ -94,7 +94,7 @@ impl Queryable for Revision {
 }
 
 /// Represents a revision and file ID pair.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionFile {
     /// The file's ID value.
     pub id: String,
@@ -123,7 +123,7 @@ impl Queryable for RevisionFile {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RouteKind {
     Unknown = 0,
@@ -155,7 +155,7 @@ impl From<i64> for RouteKind {
 
 /// Represents a URL route to a file.
 /// Maps directly to and from rows in the `routes` table.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Route {
     /// The ID of the file this route points to.
     pub id: Option<String>,

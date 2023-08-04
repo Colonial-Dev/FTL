@@ -61,3 +61,4 @@ ahash = { version = "0.8.2", features = ["serde"] }
 itertools = "0.10.5"
 new_mime_guess = "4.0.1"
 chrono = "0.4.23"
+paste = "1.0.14"

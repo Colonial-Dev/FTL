@@ -79,4 +79,97 @@ impl StatementExt for Statement<'_> {
     }
 }
 
-// TODO: auto-derive insertion and retrieval tests for all queryable types.
+#[cfg(test)]
+mod test_roundtrip {
+    use std::fmt::Debug;
+    use std::path::PathBuf;
+
+    use super::*;
+
+    use crate::db::{Connection, DEFAULT_QUERY, NO_PARAMS};
+
+    fn test_insert<T>(conn: &Connection, data: T) -> Result<()> where
+        T: Insertable
+    {
+        let mut insert_data = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
+        insert_data(&data)?;
+        Ok(())
+    }
+
+    fn test_query<T>(conn: &Connection, data: T) -> Result<()> where
+        T: Insertable + Queryable + Eq + Debug
+    {
+        let mut query_data = conn.prepare_reader(
+            format!("SELECT * FROM {}", T::TABLE_NAME), 
+            NO_PARAMS
+        )?;
+
+        let queried = query_data.next().unwrap()?;
+
+        assert_eq!(data, queried);
+
+        Ok(())
+    }
+
+    macro_rules! derive_test {
+        ($name:ident, $data:expr) => {
+            paste::paste! {
+                #[test]
+                fn $name() {
+                    use crate::db::{IN_MEMORY, PRIME_UP};
+
+                    let conn = Connection::open(IN_MEMORY).unwrap();
+                    conn.execute("PRAGMA foreign_keys = OFF;").unwrap();
+                    conn.execute(PRIME_UP).unwrap();
+        
+                    test_insert(&conn, { $data }).unwrap();
+                    test_query(&conn, { $data }).unwrap();
+                }
+            }
+        };
+    }
+
+    derive_test!(input_file, InputFile {
+        id: format!("{:016x}", 0xF),
+        hash: format!("{:016x}", 0xF),
+        path: PathBuf::from("/path/to/file"),
+        extension: String::from("foo").into(),
+        contents: String::from("bar").into(),
+        inline: true
+    });
+
+    derive_test!(revision, Revision {
+        id: format!("{:016x}", 0xF),
+        name: String::from("A revision").into(),
+        time: String::from("A timestamp").into(),
+        pinned: true,
+        stable: true,
+    });
+
+    derive_test!(revision_file, RevisionFile {
+        id: format!("{:016x}", 0xF),
+        revision: format!("{:016x}", 0xF)
+    });
+
+    derive_test!(route, Route {
+        id: format!("{:016x}", 0xF).into(),
+        revision: format!("{:016x}", 0xF),
+        route: String::from("A route"),
+        kind: RouteKind::Page,
+    });
+
+    // TODO figure out how to apply this to Page and Attribute (TomlMap doesn't implement Eq)
+
+    derive_test!(dependency, Dependency {
+        relation: Relation::PageAsset,
+        parent: format!("{:016x}", 0xF),
+        child: format!("{:016x}", 0xF),
+    });
+
+    derive_test!(output, Output {
+        id: format!("{:016x}", 0xF).into(),
+        kind: OutputKind::Stylesheet,
+        content: String::from("content")
+    });
+}
+

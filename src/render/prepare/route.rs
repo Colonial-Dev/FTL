@@ -71,17 +71,20 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         .map(|row| -> Result<_> {
             let row: Row = row?;
 
+            let filename = Path::new(&row.path)
+                .file_stem()
+                .map(OsStr::to_str)
+                .map(Option::unwrap)
+                .unwrap();
+
             let ext = Path::new(&row.path)
                 .extension()
                 .map(OsStr::to_str)
                 .map(Option::unwrap_or_default);
 
-            // TODO modify to use version query string
-            // So static/<hash>.<ext> will become static/<filename>?v=<hash>
-            // Doesn't change anything, just more readable
             let route = match ext {
-                Some(ext) => format!("static/{}.{ext}", row.id),
-                None => format!("static/{}", row.id),
+                Some(ext) => format!("static/{filename}.{ext}?v={}", rev_id),
+                None => format!("static/{filename}?=v{}", row.id),
             };
 
             Ok(Route {
@@ -94,12 +97,21 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     let page_routes = conn.prepare_reader(query_pages, params)?.map(|row| {
         let row: Row = row?;
+
+        let route = to_route(&row.path);
+
+        let filename = Path::new(&route)
+            .file_stem()
+            .map(OsStr::to_str)
+            .map(Option::unwrap)
+            .unwrap();
+
+        let filepath = route.trim_end_matches(filename);
+        
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),
-            // TODO only slugify the page portion of the URL
-            // Currently /post/page foobar.md becomes post-page-foobar, when we really want /post/page-foobar
-            route: slug::slugify(to_route(&row.path)),
+            route: format!("{filepath}{}", slug::slugify(filename)),
             kind: RouteKind::Page,
         })
     });
