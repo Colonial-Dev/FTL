@@ -13,7 +13,7 @@ use crate::prelude::*;
 pub struct Resource {
     pub base: InputFile,
     pub inner: Value,
-    pub state: State,
+    pub state: Context,
 }
 
 impl Resource {

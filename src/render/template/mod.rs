@@ -12,24 +12,23 @@ use objects::{DbHandle, Highlighter};
 use super::stylesheet;
 use crate::prelude::*;
 
-pub fn setup_environment(state: &State) -> Result<Environment<'static>> {
-    let rev_id = state.get_rev();
-    let stylesheet = format!("static/style.{}.css", stylesheet::load_hash(state)?);
-    let db = DbHandle::new(state);
+pub fn setup_environment(ctx: &Context, rev_id: &RevisionID) -> Result<Environment<'static>> {
+    let stylesheet = format!("static/style.{}.css", stylesheet::load_hash(ctx, rev_id)?);
+    let db = DbHandle::new(ctx, rev_id);
 
     let mut env = Environment::new();
-    loading::setup_templates(state, &mut env)?;
+    loading::setup_templates(ctx, rev_id, &mut env)?;
 
-    env.add_global("CONFIG", Value::from_serializable(&state.config));
-    env.add_global("REVISION_ID", Value::from_serializable(&*rev_id));
+    env.add_global("CONFIG", Value::from_serializable(&ctx.config));
+    env.add_global("REVISION_ID", Value::from_serializable(&rev_id.as_ref()));
     env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));
     env.add_global("DB", Value::from_object(db));
-    register_routines(state, &mut env)?;
+    register_routines(ctx, rev_id, &mut env)?;
 
     Ok(env)
 }
 
-pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()> {
+pub fn register_routines(ctx: &Context, rev_id: &RevisionID, env: &mut Environment<'_>) -> Result<()> {
     env.add_function("eval", eval);
     env.add_function("raise", raise);
 
@@ -37,14 +36,14 @@ pub fn register_routines(state: &State, env: &mut Environment<'_>) -> Result<()>
     env.add_filter("timefmt", timefmt);
     env.add_filter("slug", slug::slugify::<String>);
 
-    let hili = Highlighter::new(state)?;
+    let hili = Highlighter::new(ctx, rev_id)?;
     env.add_filter("highlight", move |body, token| {
         hili.highlight(body, token)
             .map(Value::from_safe_string)
             .map_err(Wrap::wrap)
     });
 
-    let db = DbHandle::new(state);
+    let db = DbHandle::new(ctx, rev_id);
     env.add_filter("query", move |sql, params| db.query(sql, params));
 
     Ok(())

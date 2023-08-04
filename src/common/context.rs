@@ -3,7 +3,6 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use clap::Parser;
 
 use super::{Arguments, Config};
@@ -11,25 +10,18 @@ use crate::db::Database;
 use crate::prelude::*;
 
 /// Type alias for an atomically-refcounted instance of [`InnerState`].
-pub type State = Arc<InnerState>;
+pub type Context = Arc<InnerContext>;
 
-/// Constant for ID values that have not yet been set.
-pub const UNSET_ID: &str = "ID_NOT_SET";
-
-/// Inner representation of global program state.
-///
-/// This is *mostly* immutable - the primary exceptions are the pools in `db` and
-/// the revision tracking fields.
+/// Inner representation of global program context.
 #[derive(Debug)]
-pub struct InnerState {
-    pub config: Config,
+pub struct InnerContext {
     pub args: Arguments,
+    pub config: Config,
     pub db: Database,
-    pub swap: Swap,
 }
 
-impl InnerState {
-    pub fn init() -> Result<State> {
+impl InnerContext {
+    pub fn init() -> Result<Context> {
         let args = Arguments::parse();
         let dir = validate_env()?;
 
@@ -39,47 +31,13 @@ impl InnerState {
         let db = dir.join(SITE_DB_PATH);
         let db = Database::open(db);
 
-        let state = InnerState {
+        let state = InnerContext {
             config,
             args,
             db,
-            swap: Swap::new(),
         };
 
         Ok(Arc::new(state))
-    }
-}
-
-impl Deref for InnerState {
-    type Target = Swap;
-
-    fn deref(&self) -> &Self::Target {
-        &self.swap
-    }
-}
-
-#[derive(Debug)]
-pub struct Swap {
-    pub rev: ArcSwap<String>,
-}
-
-impl Swap {
-    pub fn new() -> Self {
-        Self {
-            rev: Self::new_unset_id().into(),
-        }
-    }
-
-    pub fn get_rev(&self) -> Arc<String> {
-        self.rev.load_full()
-    }
-
-    pub fn set_rev(&self, id: impl Into<String>) {
-        self.rev.store(Arc::new(id.into()))
-    }
-
-    fn new_unset_id() -> Arc<String> {
-        Arc::new(UNSET_ID.to_string())
     }
 }
 

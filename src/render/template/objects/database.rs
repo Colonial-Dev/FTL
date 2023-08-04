@@ -18,18 +18,18 @@ static CONTENT_PATH: Lazy<String> = Lazy::new(|| format!("{SITE_SRC_PATH}{SITE_C
 /// Used to enable access to a database from within templates.
 #[derive(Debug)]
 pub struct DbHandle {
-    state: State,
+    state: Context,
     pool: Arc<Pool>,
-    rev_id: Arc<String>,
+    rev_id: RevisionID,
 }
 
 // Public methods, mainly those called from within the engine.
 impl DbHandle {
-    pub fn new(state: &State) -> Self {
+    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Self {
         Self {
-            state: Arc::clone(state),
-            pool: Arc::clone(&state.db.ro_pool),
-            rev_id: state.get_rev(),
+            state: Arc::clone(ctx),
+            pool: Arc::clone(&ctx.db.ro_pool),
+            rev_id: rev_id.clone()
         }
     }
 
@@ -43,7 +43,7 @@ impl DbHandle {
 
     pub fn get_resource(&self, state: &MJState, path: String) -> Result<Value> {
         let conn = self.pool.get()?;
-        let rev_id = self.rev_id.as_str();
+        let rev_id = self.rev_id.as_ref();
         let mut lookup_targets = Vec::with_capacity(4);
 
         try_with_page(state, |ticket| {

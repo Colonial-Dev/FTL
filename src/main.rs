@@ -7,7 +7,7 @@ mod render;
 mod serve;
 
 mod prelude {
-    pub use color_eyre::eyre::{bail, ensure, eyre, Context, ContextCompat};
+    pub use color_eyre::eyre::{bail, ensure, eyre, Context as EyreContext, ContextCompat};
     pub use color_eyre::{Report, Result, Section};
     pub use indoc::indoc;
     pub use tracing::{debug, error, info, warn};
@@ -20,9 +20,9 @@ use prelude::*;
 fn main() -> Result<()> {
     install_logging();
 
-    let state = InnerState::init()?;
+    let ctx = InnerContext::init()?;
     //state.db.reinitialize()?;
-    render::Renderer::new(&state)?.render_revision()?;
+    render::Renderer::new(&ctx)?.render_revision()?;
 
     Ok(())
 }

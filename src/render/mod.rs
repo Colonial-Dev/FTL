@@ -28,21 +28,26 @@ use crate::prelude::*;
 #[derive(Debug)]
 pub struct Renderer {
     pub env: Environment<'static>,
-    pub state: State,
+    pub state: Context,
+    pub rev_id: RevisionID
 }
 
 impl Renderer {
-    pub fn new(state: &State) -> Result<Self> {
-        prepare::prepare(state)?;
+    pub fn new(ctx: &Context) -> Result<Self> {
+        let rev_id = prepare::prepare(ctx)?;
 
-        let env = template::setup_environment(state)?;
-        let state = Arc::clone(state);
+        let env = template::setup_environment(ctx, &rev_id)?;
+        let state = Arc::clone(ctx);
 
-        Ok(Self { env, state })
+        Ok(Self { 
+            env,
+            state,
+            rev_id: rev_id.clone() 
+        })
     }
 
     pub fn render_revision(&self) -> Result<()> {
-        info!("Starting render for revision {}...", self.state.get_rev());
+        info!("Starting render for revision {}...", self.rev_id);
 
         let conn = self.state.db.get_rw()?;
         let tickets = self.get_tickets(&conn)?;
@@ -61,7 +66,7 @@ impl Renderer {
             .join()
             .expect("Database consumer thread should not panic.")?;
 
-        stylesheet::compile(&self.state)?;
+        stylesheet::compile(&self.state, &self.rev_id)?;
 
         Ok(())
     }
@@ -91,8 +96,7 @@ impl Renderer {
             WHERE id = ?1
         ";
 
-        let rev_id = self.state.get_rev();
-        let params = (1, rev_id.as_str()).into();
+        let params = (1, self.rev_id.as_ref()).into();
 
         let mut source_query = conn.prepare(source_query)?;
         let mut get_source = move |id: &str| {

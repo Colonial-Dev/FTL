@@ -25,7 +25,7 @@ pub enum Metadata {
 pub struct Ticket {
     pub metadata: SegQueue<Metadata>,
     pub source: String,
-    pub state: State,
+    pub state: Context,
     pub page: Page,
     inner: Value,
 }
@@ -38,7 +38,7 @@ struct SerTicket<'a> {
 }
 
 impl Ticket {
-    pub fn new(state: &State, page: Page, source: &str) -> Self {
+    pub fn new(ctx: &Context, page: Page, source: &str) -> Self {
         // Slice off the page's frontmatter.
         let source = source[page.offset as usize..].to_string();
         let inner = Value::from_serializable(&SerTicket {
@@ -48,7 +48,7 @@ impl Ticket {
 
         Self {
             metadata: SegQueue::new(),
-            state: Arc::clone(state),
+            state: Arc::clone(ctx),
             source,
             page,
             inner,

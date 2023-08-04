@@ -4,8 +4,6 @@ description = ""
 language = "en-US"
 
 [build]
-incremental = true
-cachebust = true
 compile_sass = true
 inline_extensions = ["rs"]
 external_links_new_tab = false

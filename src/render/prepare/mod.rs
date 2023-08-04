@@ -4,11 +4,15 @@ mod walking;
 
 use crate::prelude::*;
 
-pub fn prepare(state: &State) -> Result<()> {
-    let rev_id = walking::walk(state)?;
-    frontmatter::parse_frontmatters(state, &rev_id)?;
-    route::create_routes(state, &rev_id)?;
+pub use frontmatter::parse_frontmatters;
+pub use route::create_routes;
+pub use walking::walk;
 
-    state.set_rev(rev_id);
-    Ok(())
+pub fn prepare(ctx: &Context) -> Result<RevisionID> {
+    let rev_id = walking::walk(ctx)?;
+
+    frontmatter::parse_frontmatters(ctx, &rev_id)?;
+    route::create_routes(ctx, &rev_id)?;
+
+    Ok(rev_id)
 }

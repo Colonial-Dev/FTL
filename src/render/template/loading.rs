@@ -1,5 +1,6 @@
 //! Template loading procedures, including validation and dependency resolution.
 
+use itertools::Itertools;
 use minijinja::Environment;
 
 use crate::db::{Connection, Queryable, Statement, StatementExt, AUX_DOWN, AUX_UP};
@@ -31,9 +32,8 @@ impl Queryable for Row {
 }
 
 /// Loads all user-provided and builtin templates into a [`Source`]
-pub fn setup_templates(state: &State, env: &mut Environment) -> Result<()> {
-    let conn = state.db.get_rw()?;
-    let rev_id = state.get_rev();
+pub fn setup_templates(ctx: &Context, rev_id: &RevisionID, env: &mut Environment) -> Result<()> {
+    let conn = ctx.db.get_rw()?;
 
     let query = "
         SELECT input_files.id, path, contents FROM input_files
@@ -42,11 +42,11 @@ pub fn setup_templates(state: &State, env: &mut Environment) -> Result<()> {
         AND input_files.extension = 'html'
         AND input_files.contents NOT NULL;
     ";
-    let params = Some((1, rev_id.as_str()));
+    let params = Some((1, rev_id.as_ref()));
 
-    let rows = conn
+    let rows: Vec<_> = conn
         .prepare_reader(query, params)?
-        .collect::<MaybeVec<Row>>()?;
+        .try_collect()?;
 
     compute_dependencies(&conn, &rows)?;
 

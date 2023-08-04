@@ -23,14 +23,14 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
-    pub fn new(state: &State) -> Result<Self> {
+    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         // If there's a highlighter dump on the disk, we load it and check its hash against the current revision.
         // If it matches, then we skip the expensive build step and just use the loaded dump.
         // If it doesn't match, or if a dump doesn't exist, we take the slow path and build a new one from scratch,
         // dumping the result to disk when finished.
         match Path::new(HIGHLIGHTER_DUMP_PATH).exists() {
-            false => Self::load_new(state),
-            true => Self::load_from_disk(state),
+            false => Self::load_new(ctx, rev_id),
+            true => Self::load_from_disk(ctx, rev_id),
         }
     }
 
@@ -57,33 +57,33 @@ impl Highlighter {
         Ok(())
     }
 
-    fn load_from_disk(state: &State) -> Result<Self> {
+    fn load_from_disk(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         debug!("Loading highlighter dump from disk...");
 
         let bytes = std::fs::read(HIGHLIGHTER_DUMP_PATH)?;
         let mut loaded: Self = serde_cbor::from_slice(&bytes)?;
-        let hash = load_hash(state)?;
+        let hash = load_hash(ctx, rev_id)?;
 
         if loaded.hash == hash {
             debug!("Hashes matched, using prebuilt highlighter.");
-            loaded.curr_theme = Self::get_theme(state, &loaded.theme_set)?;
+            loaded.curr_theme = Self::get_theme(ctx, &loaded.theme_set)?;
             Ok(loaded)
         } else {
             debug!("Hashes did NOT match, building new highlighter.");
-            Self::load_new(state)
+            Self::load_new(ctx, rev_id)
         }
     }
 
-    fn load_new(state: &State) -> Result<Self> {
+    fn load_new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         warn!("Building syntax and theme sets from scratch - this might take a hot second!");
 
-        let syntaxes = load_syntaxes(state)?;
+        let syntaxes = load_syntaxes(ctx, rev_id)?;
         info!("New syntax set loaded.");
-        let theme_set = load_themes(state)?;
+        let theme_set = load_themes(ctx, rev_id)?;
         info!("New theme set loaded.");
 
-        let hash = load_hash(state)?;
-        let curr_theme = Self::get_theme(state, &theme_set)?;
+        let hash = load_hash(ctx, rev_id)?;
+        let curr_theme = Self::get_theme(ctx, &theme_set)?;
 
         let new = Self {
             syntaxes,
@@ -97,8 +97,8 @@ impl Highlighter {
         Ok(new)
     }
 
-    fn get_theme(state: &State, set: &ThemeSet) -> Result<Theme> {
-        let Some(theme_name) = &state.config.render.highlight_theme else {
+    fn get_theme(ctx: &Context, set: &ThemeSet) -> Result<Theme> {
+        let Some(theme_name) = &ctx.config.render.highlight_theme else {
             bail!("Syntax highlighting is enabled, but no theme has been specified.")
         };
 
@@ -114,9 +114,8 @@ impl Highlighter {
     }
 }
 
-fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
-    let conn = state.db.get_ro()?;
-    let rev_id = state.get_rev();
+fn load_syntaxes(ctx: &Context, rev_id: &RevisionID) -> Result<SyntaxSet> {
+    let conn = ctx.db.get_ro()?;
 
     let query = "
         SELECT input_files.* FROM input_files
@@ -125,7 +124,7 @@ fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
         AND path LIKE 'src/config/highlighting/%'
         AND extension = 'sublime-syntax'
     ";
-    let params = (1, rev_id.as_str()).into();
+    let params = (1, rev_id.as_ref()).into();
 
     let mut syntax_builder = SyntaxSet::load_defaults_newlines().into_builder();
 
@@ -141,9 +140,8 @@ fn load_syntaxes(state: &State) -> Result<SyntaxSet> {
     Ok(syntax_builder.build())
 }
 
-fn load_themes(state: &State) -> Result<ThemeSet> {
-    let conn = state.db.get_ro()?;
-    let rev_id = state.get_rev();
+fn load_themes(ctx: &Context, rev_id: &RevisionID) -> Result<ThemeSet> {
+    let conn = ctx.db.get_ro()?;
 
     let query = "
         SELECT input_files.* FROM input_files
@@ -152,7 +150,7 @@ fn load_themes(state: &State) -> Result<ThemeSet> {
         AND path LIKE 'src/config/highlighting/%'
         AND extension = 'tmTheme'
     ";
-    let params = (1, rev_id.as_str()).into();
+    let params = (1, rev_id.as_ref()).into();
 
     let mut set = ThemeSet::load_defaults();
 
@@ -189,9 +187,8 @@ impl Queryable for Row {
     }
 }
 
-fn load_hash(state: &State) -> Result<u64> {
-    let conn = state.db.get_ro()?;
-    let rev_id = state.get_rev();
+fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<u64> {
+    let conn = ctx.db.get_ro()?;
 
     let query = "
         SELECT input_files.id FROM input_files
@@ -201,7 +198,7 @@ fn load_hash(state: &State) -> Result<u64> {
         AND extension IN ('sublime-syntax', 'tmTheme')
         ORDER BY input_files.id
     ";
-    let params = (1, rev_id.as_str()).into();
+    let params = (1, rev_id.as_ref()).into();
 
     let hash = conn
         .prepare_reader(query, params)?

@@ -10,10 +10,10 @@ use crate::db::{Connection, InputFile, Revision, RevisionFile, DEFAULT_QUERY, NO
 use crate::prelude::*;
 
 /// Walks the site's `/src` directory for all valid content files.
-pub fn walk(state: &State) -> Result<String> {
+pub fn walk(ctx: &Context) -> Result<RevisionID> {
     info!("Starting source directory walk...");
 
-    let (handle, tx) = state.db.get_rw()?.prepare_consumer(consumer_handler);
+    let (handle, tx) = ctx.db.get_rw()?.prepare_consumer(consumer_handler);
 
     WalkDir::new(SITE_SRC_PATH)
         .into_iter()
@@ -94,7 +94,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     Ok((file, int_id))
 }
 
-fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result<String> {
+fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result<RevisionID> {
     let txn = conn.open_transaction()?;
 
     let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
@@ -145,7 +145,8 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
 
     txn.commit()?;
     info!("Done walking source directory.");
-    Ok(rev_id)
+
+    Ok(RevisionID::from(rev_id))
 }
 
 /// Determines whether or not a file with the given extension is considered "inline."

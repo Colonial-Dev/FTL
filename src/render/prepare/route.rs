@@ -22,8 +22,8 @@ impl Queryable for Row {
     }
 }
 
-pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
-    let conn = state.db.get_rw()?;
+pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
+    let conn = ctx.db.get_rw()?;
 
     let query_static = "
         SELECT input_files.id, path FROM input_files
@@ -60,8 +60,8 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
 
             Ok(Route {
                 id: Some(row.id),
-                revision: rev_id.to_owned(),
-                route: slug::slugify(route),
+                revision: rev_id.to_string(),
+                route: route.to_owned(),
                 kind: RouteKind::Asset,
             })
         });
@@ -76,6 +76,9 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
                 .map(OsStr::to_str)
                 .map(Option::unwrap_or_default);
 
+            // TODO modify to use version query string
+            // So static/<hash>.<ext> will become static/<filename>?v=<hash>
+            // Doesn't change anything, just more readable
             let route = match ext {
                 Some(ext) => format!("static/{}.{ext}", row.id),
                 None => format!("static/{}", row.id),
@@ -83,7 +86,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
 
             Ok(Route {
                 id: Some(row.id),
-                revision: rev_id.to_owned(),
+                revision: rev_id.to_string(),
                 route,
                 kind: RouteKind::RedirectAsset,
             })
@@ -93,7 +96,9 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
         let row: Row = row?;
         Ok(Route {
             id: Some(row.id),
-            revision: rev_id.to_owned(),
+            revision: rev_id.to_string(),
+            // TODO only slugify the page portion of the URL
+            // Currently /post/page foobar.md becomes post-page-foobar, when we really want /post/page-foobar
             route: slug::slugify(to_route(&row.path)),
             kind: RouteKind::Page,
         })
@@ -103,7 +108,7 @@ pub fn create_routes(state: &State, rev_id: &str) -> Result<()> {
         let row: Row = row?;
         Ok(Route {
             id: Some(row.id),
-            revision: rev_id.to_owned(),
+            revision: rev_id.to_string(),
             route: row.path,
             kind: RouteKind::RedirectPage,
         })

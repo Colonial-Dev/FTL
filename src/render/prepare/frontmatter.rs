@@ -95,9 +95,9 @@ impl Queryable for Row {
     }
 }
 
-pub fn parse_frontmatters(state: &State, rev_id: &str) -> Result<()> {
+pub fn parse_frontmatters(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     info!("Starting frontmatter parsing for revision {}...", rev_id);
-    let conn = state.db.get_rw()?;
+    let conn = ctx.db.get_rw()?;
 
     let query = "
         SELECT id, path, contents FROM input_files

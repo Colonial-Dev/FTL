@@ -33,9 +33,8 @@ impl Queryable for Row {
 }
 
 impl MapFs {
-    pub fn load(state: &State) -> Result<Self> {
-        let conn = state.db.get_ro()?;
-        let rev_id = state.get_rev();
+    pub fn load(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
+        let conn = ctx.db.get_ro()?;
 
         let query = "
             SELECT path, contents FROM input_files
@@ -44,7 +43,7 @@ impl MapFs {
             AND path LIKE 'src/assets/sass/%'
             AND extension IN ('sass', 'scss');
         ";
-        let params = (1, rev_id.as_str()).into();
+        let params = (1, rev_id.as_ref()).into();
 
         let map: AHashMap<_, _> = conn
             .prepare_reader(query, params)?
@@ -80,18 +79,17 @@ impl Fs for MapFs {
     }
 }
 
-pub fn compile(state: &State) -> Result<()> {
+pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     info!("Starting SASS compilation...");
 
-    let conn = state.db.get_rw()?;
-    let rev_id = state.get_rev();
+    let conn = ctx.db.get_rw()?;
 
-    let hash = load_hash(state)?;
+    let hash = load_hash(ctx, rev_id)?;
     let route = format!("static/style.{hash}.css");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
         id: hash.clone().into(),
-        revision: (*rev_id).to_owned(),
+        revision: rev_id.to_string(),
         route,
         kind: RouteKind::Stylesheet,
     })?;
@@ -107,7 +105,7 @@ pub fn compile(state: &State) -> Result<()> {
         return Ok(());
     }
 
-    let fs = MapFs::load(state)?;
+    let fs = MapFs::load(ctx, rev_id)?;
     let options = Options::default().fs(&fs);
     let path = Path::new("style.scss");
 
@@ -130,9 +128,8 @@ pub fn compile(state: &State) -> Result<()> {
     Ok(())
 }
 
-pub fn load_hash(state: &State) -> Result<String> {
-    let conn = state.db.get_ro()?;
-    let rev_id = state.get_rev();
+pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
+    let conn = ctx.db.get_ro()?;
 
     let query = "
         SELECT input_files.id FROM input_files
@@ -142,7 +139,7 @@ pub fn load_hash(state: &State) -> Result<String> {
         AND extension IN ('sass', 'scss');
         ORDER BY input_files.id
     ";
-    let params = (1, rev_id.as_str()).into();
+    let params = (1, rev_id.as_ref()).into();
 
     let hash = conn
         .prepare_reader(query, params)?

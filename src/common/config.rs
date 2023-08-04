@@ -21,27 +21,19 @@ pub struct Config {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct Build {
-    pub incremental: bool,
-    pub cachebust: bool,
     pub compile_sass: bool,
     pub external_links_new_tab: bool,
     pub external_links_no_follow: bool,
     pub external_links_no_referrer: bool,
-    pub target_disk: bool,
-    pub target_dir: Option<String>,
 }
 
 impl Default for Build {
     fn default() -> Self {
         Build {
-            incremental: true,
-            cachebust: true,
             compile_sass: true,
             external_links_new_tab: false,
             external_links_no_follow: false,
             external_links_no_referrer: false,
-            target_disk: false,
-            target_dir: None,
         }
     }
 }
