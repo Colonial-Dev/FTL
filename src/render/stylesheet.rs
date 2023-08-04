@@ -40,7 +40,7 @@ impl MapFs {
             SELECT path, contents FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
-            AND path LIKE 'src/assets/sass/%'
+            AND path LIKE 'assets/sass/%'
             AND extension IN ('sass', 'scss');
         ";
         let params = (1, rev_id.as_ref()).into();
@@ -48,8 +48,8 @@ impl MapFs {
         let map: AHashMap<_, _> = conn
             .prepare_reader(query, params)?
             .map_ok(|row: Row| {
-                // Shave off the 'src/assets/sass/' component of the path.
-                let path: PathBuf = row.path.iter().skip(3).collect();
+                // Shave off the 'assets/sass/' component of the path.
+                let path: PathBuf = row.path.iter().skip(2).collect();
                 let bytes = row.contents.into_bytes();
                 (path, bytes)
             })
@@ -85,7 +85,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let conn = ctx.db.get_rw()?;
 
     let hash = load_hash(ctx, rev_id)?;
-    let route = format!("static/style.{hash}.css");
+    let route = format!("static/style.css?v={hash}");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
         id: hash.clone().into(),
@@ -112,7 +112,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     if !fs.is_file(path) {
         let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
         let err = err.note(
-            "SASS compilation expects the root file to be at \"src/assets/sass/style.scss\".",
+            "SASS compilation expects the root file to be at \"assets/sass/style.scss\".",
         );
         bail!(err)
     }
@@ -135,7 +135,7 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'src/assets/sass/%'
+        AND path LIKE 'assets/sass/%'
         AND extension IN ('sass', 'scss');
         ORDER BY input_files.id
     ";

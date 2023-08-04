@@ -9,18 +9,25 @@ use walkdir::{DirEntry, WalkDir};
 use crate::db::{Connection, InputFile, Revision, RevisionFile, DEFAULT_QUERY, NO_PARAMS};
 use crate::prelude::*;
 
-/// Walks the site's `/src` directory for all valid content files.
+/// Walks the site directory for all valid content files.
 pub fn walk(ctx: &Context) -> Result<RevisionID> {
     info!("Starting source directory walk...");
 
     let (handle, tx) = ctx.db.get_rw()?.prepare_consumer(consumer_handler);
 
-    WalkDir::new(SITE_SRC_PATH)
+    WalkDir::new(".")
         .into_iter()
-        .filter_ok(|entry| entry.file_type().is_file() || entry.file_type().is_symlink())
+        .filter_ok(|entry| {
+            (entry.file_type().is_file() || entry.file_type().is_symlink())
+            &&
+            !entry.path()
+                .to_str()
+                .map(|s| s.starts_with("./.ftl") || s.starts_with("./ftl.toml"))
+                .unwrap_or(false)
+        })
         .par_bridge()
-        .map(|entry| entry.map_err(Report::from).map(process_entry)?)
         .try_for_each(|entry| -> Result<_> {
+            let entry = entry.map_err(Report::from).map(process_entry)?;
             let _ = tx.send(entry?);
             Ok(())
         })?;
@@ -85,7 +92,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     let file = InputFile {
         id: hex_id,
         hash,
-        path: entry.into_path(),
+        path: path.trim_start_matches("./").into(),
         extension,
         contents,
         inline,

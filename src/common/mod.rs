@@ -19,7 +19,7 @@ use crate::prelude::*;
 pub const CONFIG_FILENAME: &str = "ftl.toml";
 pub const SITE_DB_PATH: &str = ".ftl/content.db";
 
-pub const SITE_SRC_PATH: &str = "src/";
+pub const SITE_FTL_PATH: &str = ".ftl/";
 pub const SITE_ASSET_PATH: &str = "assets/";
 pub const SITE_CONTENT_PATH: &str = "content/";
 pub const SITE_TEMPLATE_PATH: &str = "templates/";

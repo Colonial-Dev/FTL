@@ -3,16 +3,11 @@ use std::sync::Arc;
 
 use minijinja::value::*;
 use minijinja::State as MJState;
-use once_cell::sync::Lazy;
 use sqlite::{Bindable, Value as SQLValue};
 
 use super::*;
 use crate::db::{InputFile, Pool, Queryable, Statement, StatementExt, NO_PARAMS};
 use crate::prelude::*;
-
-static ASSETS_PATH: Lazy<String> = Lazy::new(|| format!("{SITE_SRC_PATH}{SITE_ASSET_PATH}"));
-
-static CONTENT_PATH: Lazy<String> = Lazy::new(|| format!("{SITE_SRC_PATH}{SITE_CONTENT_PATH}"));
 
 /// Dynamic object wrapper around a database connection pool.
 /// Used to enable access to a database from within templates.
@@ -53,8 +48,8 @@ impl DbHandle {
 
         lookup_targets.extend(
             [
-                format!("{}{path}", *ASSETS_PATH),
-                format!("{}{path}", *CONTENT_PATH),
+                format!("{}{path}", SITE_ASSET_PATH),
+                format!("{}{path}", SITE_CONTENT_PATH),
                 path.to_owned(),
             ]
             .into_iter(),

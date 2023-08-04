@@ -162,7 +162,7 @@ pub struct Route {
     /// The ID of the revision this route is associated with.
     pub revision: String,
     /// The URL this route qualifies.
-    /// Example: `/img/banner.png`, which points to `src/assets/img/banner.png`.
+    /// Example: `/img/banner.png`, which points to `assets/img/banner.png`.
     pub route: String,
     /// What type of asset this route points to.
     pub kind: RouteKind,

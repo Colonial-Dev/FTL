@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     install_logging();
 
     let ctx = InnerContext::init()?;
-    //state.db.reinitialize()?;
+    ctx.db.reinitialize()?;
     render::Renderer::new(&ctx)?.render_revision()?;
 
     Ok(())

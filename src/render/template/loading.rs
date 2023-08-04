@@ -54,7 +54,6 @@ pub fn setup_templates(ctx: &Context, rev_id: &RevisionID, env: &mut Environment
         .map(|row| {
             (
                 row.path
-                    .trim_start_matches(SITE_SRC_PATH)
                     .trim_start_matches(SITE_TEMPLATE_PATH)
                     .to_owned(),
                 row.contents,
@@ -132,7 +131,6 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     for row in templates {
         let trimmed_path = row
             .path
-            .trim_start_matches(SITE_SRC_PATH)
             .trim_start_matches(SITE_TEMPLATE_PATH);
 
         insert_template.reset()?;

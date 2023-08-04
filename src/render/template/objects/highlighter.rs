@@ -121,7 +121,7 @@ fn load_syntaxes(ctx: &Context, rev_id: &RevisionID) -> Result<SyntaxSet> {
         SELECT input_files.* FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'src/config/highlighting/%'
+        AND path LIKE 'config/highlighting/%'
         AND extension = 'sublime-syntax'
     ";
     let params = (1, rev_id.as_ref()).into();
@@ -147,7 +147,7 @@ fn load_themes(ctx: &Context, rev_id: &RevisionID) -> Result<ThemeSet> {
         SELECT input_files.* FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'src/config/highlighting/%'
+        AND path LIKE 'config/highlighting/%'
         AND extension = 'tmTheme'
     ";
     let params = (1, rev_id.as_ref()).into();
@@ -194,7 +194,7 @@ fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<u64> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'src/config/highlighting/%'
+        AND path LIKE 'config/highlighting/%'
         AND extension IN ('sublime-syntax', 'tmTheme')
         ORDER BY input_files.id
     ";

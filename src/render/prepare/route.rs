@@ -54,7 +54,6 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             let row: Row = row?;
             let route = row
                 .path
-                .trim_start_matches(SITE_SRC_PATH)
                 .trim_start_matches(SITE_ASSET_PATH)
                 .trim_start_matches(SITE_CONTENT_PATH);
 
@@ -104,7 +103,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             .file_stem()
             .map(OsStr::to_str)
             .map(Option::unwrap)
-            .unwrap();
+            .unwrap_or_default();
 
         let filepath = route.trim_end_matches(filename);
         
@@ -121,7 +120,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),
-            route: row.path,
+            route: row.path.trim_start_matches('/').to_string(),
             kind: RouteKind::RedirectPage,
         })
     });
@@ -144,7 +143,6 @@ static EXT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("[.][^.]+$").unwrap());
 
 fn to_route(path: &str) -> String {
     let route_path = path
-        .trim_start_matches(SITE_SRC_PATH)
         .trim_start_matches(SITE_CONTENT_PATH)
         .trim_end_matches("index.md")
         .trim_start_matches('/')

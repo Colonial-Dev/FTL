@@ -160,15 +160,19 @@ impl Ticket {
                     }
                 }
                 Header(header) => {
-                    for _ in 0..header.level {
-                        buffer.push('#')
-                    }
+                    let level = header.level;
 
-                    buffer += " ";
-                    buffer += header.title;
-                    buffer += " ";
+                    let anchor = header.ident.unwrap_or(header.title);
+                    let anchor = slug::slugify(anchor);
+                    let anchor = indoc::formatdoc!("
+                        <h{level}>
+                            <a id=\"{anchor}\" class=\"anchor\" href=\"#{anchor}\">
+                            {}
+                            </a>
+                        </h{level}>
+                    ", header.title);
 
-                    // TODO: Actually handle anchors and classes
+                    buffer += &anchor;
                 }
             }
         }
