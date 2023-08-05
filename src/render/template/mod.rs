@@ -13,7 +13,7 @@ use super::stylesheet;
 use crate::prelude::*;
 
 pub fn setup_environment(ctx: &Context, rev_id: &RevisionID) -> Result<Environment<'static>> {
-    let stylesheet = format!("static/style.{}.css", stylesheet::load_hash(ctx, rev_id)?);
+    let stylesheet = format!("/static/style.css?v={}", stylesheet::load_hash(ctx, rev_id)?);
     let db = DbHandle::new(ctx, rev_id);
 
     let mut env = Environment::new();
@@ -21,7 +21,7 @@ pub fn setup_environment(ctx: &Context, rev_id: &RevisionID) -> Result<Environme
 
     env.add_global("CONFIG", Value::from_serializable(&ctx.config));
     env.add_global("REVISION_ID", Value::from_serializable(&rev_id.as_ref()));
-    env.add_global("STYLESHEET", Value::from_safe_string(stylesheet));
+    env.add_global("STYLESHEET_PATH", Value::from_safe_string(stylesheet));
     env.add_global("DB", Value::from_object(db));
     register_routines(ctx, rev_id, &mut env)?;
 

@@ -17,10 +17,13 @@ pub use context::*;
 use crate::prelude::*;
 
 pub const CONFIG_FILENAME: &str = "ftl.toml";
-pub const SITE_DB_PATH: &str = ".ftl/content.db";
 
-pub const SITE_FTL_PATH: &str = ".ftl/";
+pub const SITE_INTERNAL_PATH: &str = ".ftl/";
+pub const SITE_DB_PATH: &str = ".ftl/content.db";
+pub const SITE_CACHE_PATH: &str = ".ftl/cache/";
+
 pub const SITE_ASSET_PATH: &str = "assets/";
+pub const SITE_CONFIG_PATH: &str = "config/";
 pub const SITE_CONTENT_PATH: &str = "content/";
 pub const SITE_TEMPLATE_PATH: &str = "templates/";
 

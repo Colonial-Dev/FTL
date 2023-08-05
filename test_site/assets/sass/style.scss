@@ -1,6 +1,13 @@
 $bgcolor: #222222;
 $textcolor: lightgray;
-$fontsize: 18px;
+$fontsize: 16px;
+
+@mixin border-radius($radius) {
+  -webkit-border-radius: $radius;
+     -moz-border-radius: $radius;
+      -ms-border-radius: $radius;
+          border-radius: $radius;
+}
 
 body {
   background-color: $bgcolor;
@@ -17,4 +24,24 @@ body {
 
 h1, h2, h3 {
   line-height:1.2
+}
+
+pre {
+  @include border-radius(5px);
+  padding:10px;
+  overflow: scroll;
+}
+
+a:link {
+  color: $textcolor;
+  text-decoration: none;
+}
+
+a:visited {
+  color: $textcolor;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }

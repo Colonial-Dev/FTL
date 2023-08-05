@@ -22,7 +22,11 @@ fn main() -> Result<()> {
 
     let ctx = InnerContext::init()?;
     ctx.db.reinitialize()?;
-    render::Renderer::new(&ctx)?.render_revision()?;
+
+    let renderer = render::Renderer::new(&ctx)?;
+    renderer.render_revision()?;
+
+    serve::serve(&ctx, &renderer.rev_id)?;
 
     Ok(())
 }
@@ -49,8 +53,9 @@ fn install_logging() {
             "Well, this is embarassing. It appears FTL has crashed!
             Consider reporting the bug at \"https://github.com/SomewhereOutInSpace/FTL\"."
         })
-        .display_env_section(false)
-        .display_location_section(false)
+        .capture_span_trace_by_default(true)
+        //.display_env_section(false)
+        //.display_location_section(false)
         .install()
         .expect("Could not install Eyre hooks!");
 

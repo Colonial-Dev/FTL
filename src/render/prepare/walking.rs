@@ -113,7 +113,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
         insert_file(&file)?;
 
         if !file.inline {
-            let destination = PathBuf::from(format!(".ftl/cache/{}", &file.hash));
+            let destination = PathBuf::from(format!(".ftl/cache/{}", &file.id));
 
             if !destination.exists() {
                 debug!("Caching non-inline file {:#?}", &file.path);

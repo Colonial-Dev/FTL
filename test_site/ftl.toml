@@ -5,7 +5,6 @@ language = "en-US"
 
 [build]
 compile_sass = true
-inline_extensions = ["rs"]
 external_links_new_tab = false
 external_links_no_follow = false
 external_links_no_referrer = false

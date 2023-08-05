@@ -83,3 +83,7 @@ _start:   mov       rax, 1
           section   .data
 message:  db        "Hello, World", 10
 ```
+
+Images can be inserted using standard Markdown syntax:
+
+![Cringe](java.png)

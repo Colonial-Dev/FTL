@@ -52,6 +52,7 @@ slug = "0.1.4"
 # Serving
 tokio = { version = "1", features = ["full"] }
 axum = "0.6"
+axum-macros = "0.3.8"
 # tower-http = "0.3.4"
 
 # Other
