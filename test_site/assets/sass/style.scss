@@ -30,6 +30,7 @@ pre {
   @include border-radius(5px);
   padding:10px;
   overflow: scroll;
+  white-space: -moz-pre-wrap;
 }
 
 a:link {
