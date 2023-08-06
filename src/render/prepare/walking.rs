@@ -19,11 +19,11 @@ pub fn walk(ctx: &Context) -> Result<RevisionID> {
         .into_iter()
         .filter_ok(|entry| {
             (entry.file_type().is_file() || entry.file_type().is_symlink())
-            &&
-            !entry.path()
-                .to_str()
-                .map(|s| s.starts_with("./.ftl") || s.starts_with("./ftl.toml"))
-                .unwrap_or(false)
+                && !entry
+                    .path()
+                    .to_str()
+                    .map(|s| s.starts_with("./.ftl") || s.starts_with("./ftl.toml"))
+                    .unwrap_or(false)
         })
         .par_bridge()
         .try_for_each(|entry| -> Result<_> {
@@ -132,7 +132,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
 
     let rev_id = format!("{hash:016x}");
     let rev_id = RevisionID::from(rev_id);
-    
+
     info!("Computed revision ID {rev_id}.");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Revision {

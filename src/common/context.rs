@@ -30,13 +30,9 @@ impl InnerContext {
         let db = dir.join(SITE_DB_PATH);
         let db = Database::open(db);
 
-        let state = InnerContext {
-            config,
-            args,
-            db,
-        };
+        let ctx = InnerContext { config, args, db };
 
-        Ok(Arc::new(state))
+        Ok(Arc::new(ctx))
     }
 }
 

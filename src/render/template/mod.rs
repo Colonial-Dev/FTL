@@ -13,7 +13,10 @@ use super::stylesheet;
 use crate::prelude::*;
 
 pub fn setup_environment(ctx: &Context, rev_id: &RevisionID) -> Result<Environment<'static>> {
-    let stylesheet = format!("/static/style.css?v={}", stylesheet::load_hash(ctx, rev_id)?);
+    let stylesheet = format!(
+        "/static/style.css?v={}",
+        stylesheet::load_hash(ctx, rev_id)?
+    );
     let db = DbHandle::new(ctx, rev_id);
 
     let mut env = Environment::new();
@@ -28,7 +31,11 @@ pub fn setup_environment(ctx: &Context, rev_id: &RevisionID) -> Result<Environme
     Ok(env)
 }
 
-pub fn register_routines(ctx: &Context, rev_id: &RevisionID, env: &mut Environment<'_>) -> Result<()> {
+pub fn register_routines(
+    ctx: &Context,
+    rev_id: &RevisionID,
+    env: &mut Environment<'_>,
+) -> Result<()> {
     env.add_function("eval", eval);
     env.add_function("raise", raise);
 
@@ -36,12 +43,16 @@ pub fn register_routines(ctx: &Context, rev_id: &RevisionID, env: &mut Environme
     env.add_filter("timefmt", timefmt);
     env.add_filter("slug", slug::slugify::<String>);
 
+    // TODO register highlighter dependencies
     let hili = Highlighter::new(ctx, rev_id)?;
     env.add_filter("highlight", move |body, token| {
         hili.highlight(body, token)
             .map(Value::from_safe_string)
             .map_err(Wrap::wrap)
     });
+
+    // TODO add function for getting stylesheet path
+    // and registering corresponding dependenciesk
 
     let db = DbHandle::new(ctx, rev_id);
     env.add_filter("query", move |sql, params| db.query(sql, params));

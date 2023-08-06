@@ -106,7 +106,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             .unwrap_or_default();
 
         let filepath = route.trim_end_matches(filename);
-        
+
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),

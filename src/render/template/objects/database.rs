@@ -13,7 +13,7 @@ use crate::prelude::*;
 /// Used to enable access to a database from within templates.
 #[derive(Debug)]
 pub struct DbHandle {
-    state: Context,
+    ctx: Context,
     pool: Arc<Pool>,
     rev_id: RevisionID,
 }
@@ -22,9 +22,9 @@ pub struct DbHandle {
 impl DbHandle {
     pub fn new(ctx: &Context, rev_id: &RevisionID) -> Self {
         Self {
-            state: Arc::clone(ctx),
+            ctx: Arc::clone(ctx),
             pool: Arc::clone(&ctx.db.ro_pool),
-            rev_id: rev_id.clone()
+            rev_id: rev_id.clone(),
         }
     }
 
@@ -79,7 +79,7 @@ impl DbHandle {
                 return Ok(Resource {
                     inner: Value::from_serializable(&file),
                     base: file,
-                    state: Arc::clone(&self.state),
+                    ctx: Arc::clone(&self.ctx),
                 })
                 .map(Value::from_object);
             }

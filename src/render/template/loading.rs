@@ -44,18 +44,14 @@ pub fn setup_templates(ctx: &Context, rev_id: &RevisionID, env: &mut Environment
     ";
     let params = Some((1, rev_id.as_ref()));
 
-    let rows: Vec<_> = conn
-        .prepare_reader(query, params)?
-        .try_collect()?;
+    let rows: Vec<_> = conn.prepare_reader(query, params)?.try_collect()?;
 
     compute_dependencies(&conn, &rows)?;
 
     rows.into_iter()
         .map(|row| {
             (
-                row.path
-                    .trim_start_matches(SITE_TEMPLATE_PATH)
-                    .to_owned(),
+                row.path.trim_start_matches(SITE_TEMPLATE_PATH).to_owned(),
                 row.contents,
             )
         })
@@ -129,9 +125,7 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     // 1. Trim its path to be relative to SITE_TEMPLATE_PATH.
     // 2. Insert the trimmed path and the template's ID into the map.templates table.
     for row in templates {
-        let trimmed_path = row
-            .path
-            .trim_start_matches(SITE_TEMPLATE_PATH);
+        let trimmed_path = row.path.trim_start_matches(SITE_TEMPLATE_PATH);
 
         insert_template.reset()?;
         insert_template.bind((1, trimmed_path))?;

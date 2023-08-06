@@ -25,7 +25,7 @@ pub enum Metadata {
 pub struct Ticket {
     pub metadata: SegQueue<Metadata>,
     pub source: String,
-    pub state: Context,
+    pub ctx: Context,
     pub page: Page,
     inner: Value,
 }
@@ -48,7 +48,7 @@ impl Ticket {
 
         Self {
             metadata: SegQueue::new(),
-            state: Arc::clone(ctx),
+            ctx: Arc::clone(ctx),
             source,
             page,
             inner,
@@ -103,7 +103,7 @@ impl Ticket {
                 return Ok(());
             }
 
-            let conn = self.state.db.get_ro()?;
+            let conn = self.ctx.db.get_ro()?;
 
             let query = "
                 SELECT child FROM dependencies
@@ -164,13 +164,16 @@ impl Ticket {
 
                     let anchor = header.ident.unwrap_or(header.title);
                     let anchor = slug::slugify(anchor);
-                    let anchor = indoc::formatdoc!("
+                    let anchor = indoc::formatdoc!(
+                        "
                         <h{level}>
                             <a id=\"{anchor}\" class=\"anchor\" href=\"#{anchor}\">
                             {}
                             </a>
                         </h{level}>
-                    ", header.title);
+                    ",
+                        header.title
+                    );
 
                     buffer += &anchor;
                 }

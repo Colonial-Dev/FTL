@@ -111,9 +111,8 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     if !fs.is_file(path) {
         let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
-        let err = err.note(
-            "SASS compilation expects the root file to be at \"assets/sass/style.scss\".",
-        );
+        let err =
+            err.note("SASS compilation expects the root file to be at \"assets/sass/style.scss\".");
         bail!(err)
     }
 
@@ -152,3 +151,5 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
     info!("Stylesheet compilation complete.");
     Ok(format!("{hash:016x}"))
 }
+
+// TODO load dependency list

@@ -1,8 +1,9 @@
-use axum::response::Response;
-use axum::{response::IntoResponse, http::StatusCode, body::Bytes};
+use axum::body::Bytes;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 
-use crate::prelude::*;
 use crate::db::*;
+use crate::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum Resource {
@@ -17,7 +18,7 @@ impl Resource {
         match route.kind {
             RouteKind::Asset | RouteKind::RedirectAsset => {
                 let path = format!(
-                    "{SITE_CACHE_PATH}{}", 
+                    "{SITE_CACHE_PATH}{}",
                     route.id.expect("Asset routes should have an ID")
                 );
 
@@ -28,7 +29,8 @@ impl Resource {
             }
             RouteKind::Page | RouteKind::RedirectPage | RouteKind::Stylesheet => {
                 let conn = ctx.db.get_ro()?;
-                let id = route.id
+                let id = route
+                    .id
                     .as_ref()
                     .expect("Page and stylesheet routes should have an ID")
                     .as_str();
@@ -37,12 +39,9 @@ impl Resource {
                     SELECT * FROM output
                     WHERE id = ?1
                 ";
-        
-                let mut get_output = conn.prepare_reader(
-                    query, 
-                    (1, id).into()
-                )?;
-            
+
+                let mut get_output = conn.prepare_reader(query, (1, id).into())?;
+
                 match get_output.next() {
                     Some(output) => {
                         let output: Output = output?;
@@ -53,11 +52,11 @@ impl Resource {
                         } else {
                             Ok(Self::Plaintext(content))
                         }
-                    },
-                    None => Ok(Self::Code(StatusCode::NOT_FOUND))
+                    }
+                    None => Ok(Self::Code(StatusCode::NOT_FOUND)),
                 }
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
@@ -67,36 +66,33 @@ impl IntoResponse for Resource {
         use Resource::*;
 
         match self {
-            Hypertext(html) => {
-                (
-                    StatusCode::OK,
-                    [
-                        ("Content-Type", "text/html"),
-                        ("Cache-Control", "max-age=500, must-revalidate")
-                    ],
-                    html
-                ).into_response()
-            },
-            Plaintext(str) => {
-                (
-                    StatusCode::OK,
-                    [
-                        ("Content-Type", "text/plain"),
-                        ("Cache-Control", "max-age=500, must-revalidate")
-                    ],
-                    str
-                ).into_response()
-            },
-            Octets(bytes) => {
-                (
-                    StatusCode::OK,
-                    [
-                        ("Content-Type", "application/octet-stream"),
-                        ("Cache-Control", "max-age=31536000, immutable")
-                    ],
-                    bytes
-                ).into_response()
-            },
+            Hypertext(html) => (
+                StatusCode::OK,
+                [
+                    ("Content-Type", "text/html; charset=utf-8"),
+                    ("Cache-Control", "max-age=500, must-revalidate"),
+                ],
+                html,
+            )
+                .into_response(),
+            Plaintext(str) => (
+                StatusCode::OK,
+                [
+                    ("Content-Type", "text/plain; charset=utf-8"),
+                    ("Cache-Control", "max-age=500, must-revalidate"),
+                ],
+                str,
+            )
+                .into_response(),
+            Octets(bytes) => (
+                StatusCode::OK,
+                [
+                    ("Content-Type", "application/octet-stream"),
+                    ("Cache-Control", "max-age=31536000, immutable"),
+                ],
+                bytes,
+            )
+                .into_response(),
             Code(status) => status.into_response(),
         }
     }

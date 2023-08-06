@@ -1,12 +1,3 @@
-// We need:
-// A high-level Renderer struct that wraps all the assorted crap needed to render a revision
-// A module for objects used in the templating engine
-//   - "Resource" enum?
-// A module for functions/filters/etc used in the templating engine
-// A module for setting up the templating engine environment (possibly super of the previous two?)
-// A module for post-render rewriting
-// A module for stylesheet compilation
-
 mod prepare;
 mod stylesheet;
 mod template;
@@ -28,8 +19,8 @@ use crate::prelude::*;
 #[derive(Debug)]
 pub struct Renderer {
     pub env: Environment<'static>,
-    pub state: Context,
-    pub rev_id: RevisionID
+    pub ctx: Context,
+    pub rev_id: RevisionID,
 }
 
 impl Renderer {
@@ -39,17 +30,17 @@ impl Renderer {
         let env = template::setup_environment(ctx, &rev_id)?;
         let state = Arc::clone(ctx);
 
-        Ok(Self { 
+        Ok(Self {
             env,
-            state,
-            rev_id: rev_id.clone() 
+            ctx: state,
+            rev_id: rev_id.clone(),
         })
     }
 
     pub fn render_revision(&self) -> Result<()> {
         info!("Starting render for revision {}...", self.rev_id);
 
-        let conn = self.state.db.get_rw()?;
+        let conn = self.ctx.db.get_rw()?;
         let tickets = self.get_tickets(&conn)?;
         let (handle, tx) = conn.prepare_consumer(consumer_handler);
 
@@ -66,7 +57,7 @@ impl Renderer {
             .join()
             .expect("Database consumer thread should not panic.")?;
 
-        stylesheet::compile(&self.state, &self.rev_id)?;
+        stylesheet::compile(&self.ctx, &self.rev_id)?;
 
         Ok(())
     }
@@ -113,7 +104,7 @@ impl Renderer {
             .prepare_reader(page_query, params)?
             .map_ok(|page: Page| -> Result<_> {
                 let source = get_source(&page.id)?;
-                Ok(Ticket::new(&self.state, page, &source))
+                Ok(Ticket::new(&self.ctx, page, &source))
             })
             .flatten()
             .try_collect()?;

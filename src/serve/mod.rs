@@ -1,29 +1,40 @@
+mod error;
 mod resource;
 
-use axum::{
-    response::{Response, IntoResponse},
-    Router, routing::get,
-    extract::State, 
-    http::{Uri, StatusCode}
-};
+use std::sync::Arc;
 
+use arc_swap::ArcSwapAny as Swap;
+use axum::extract::State;
+use axum::http::Uri;
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::Router;
+use error::BoxError;
 use resource::*;
 
-use tokio::task::spawn_blocking;
+use crate::db::*;
+use crate::prelude::*;
 
-use crate::{
-    prelude::*,
-    db::*
-};
+type Server = Arc<InnerServer>;
 
-#[derive(Clone)]
-pub struct Server {
-    pub rev_id: RevisionID,
+pub struct InnerServer {
+    pub rev_id: Swap<RevisionID>,
     pub ctx: Context,
+}
+
+impl InnerServer {
+    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Server {
+        Arc::new(Self {
+            rev_id: Swap::new(rev_id.clone()),
+            ctx: ctx.clone(),
+        })
+    }
 }
 
 /// Bootstraps the Tokio runtime and starts the internal `async` site serving code.
 pub fn serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
+    info!("Starting Tokio runtime.");
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -33,12 +44,11 @@ pub fn serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
 async fn _serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let app = Router::new()
-        .route("/", get(fetch))
-        .route("/*path", get(fetch))
-        .with_state(Server {
-            rev_id: rev_id.clone(),
-            ctx: ctx.clone()
-        });
+        .route("/", get(fetch_wrapper))
+        .route("/*path", get(fetch_wrapper))
+        .with_state(InnerServer::new(ctx, rev_id));
+
+    info!("Starting webserver.");
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
@@ -48,7 +58,7 @@ async fn _serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     Ok(())
 }
 
-async fn fetch(State(server): State<Server>, uri: Uri) -> Result<Response, AppError> {
+async fn fetch_wrapper(State(server): State<Server>, uri: Uri) -> Result<Response, BoxError> {
     Ok(fetch_resource(State(server), uri).await?)
 }
 
@@ -57,13 +67,10 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Respon
 
     let path = uri.to_string();
 
-    spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let route = lookup_route(&server, path)?;
 
-        let resource = Resource::from_route(
-            &server.ctx,
-            route
-        )?;
+        let resource = Resource::from_route(&server.ctx, route)?;
 
         Ok(resource)
     })
@@ -74,7 +81,7 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Respon
 fn lookup_route(server: &Server, path: String) -> Result<Route> {
     let path = path.trim_start_matches('/');
     let conn = server.ctx.db.get_ro()?;
-    let rev_id = server.rev_id.as_ref();
+    let rev_id = server.rev_id.load();
 
     let query = "
         SELECT * FROM routes
@@ -82,44 +89,12 @@ fn lookup_route(server: &Server, path: String) -> Result<Route> {
         AND revision = ?2
     ";
 
-    let parameters = [
-        (1, path),
-        (2, rev_id)
-    ];
+    let parameters = [(1, path), (2, rev_id.as_ref())];
 
-    let mut get_route = conn.prepare_reader(
-        query, 
-        parameters.as_slice().into()
-    )?;
+    let mut get_route = conn.prepare_reader(query, parameters.as_slice().into())?;
 
     match get_route.next() {
         Some(route) => route,
-        None => bail!("404 not found")
-    }
-}
-
-
-// Make our own error that wraps `anyhow::Error`.
-struct AppError(color_eyre::Report);
-
-// Tell axum how to convert `AppError` into a response.
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", self.0),
-        )
-            .into_response()
-    }
-}
-
-// This enables using `?` on functions that return `Result<_, anyhow::Error>` to turn them into
-// `Result<_, AppError>`. That way you don't need to do that manually.
-impl<E> From<E> for AppError
-where
-    E: Into<color_eyre::Report>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
+        None => bail!("404 not found"),
     }
 }

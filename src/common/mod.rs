@@ -4,15 +4,13 @@ mod args;
 mod config;
 mod context;
 
-use std::{sync::Arc, fmt::Display};
-
-use sqlite::BindableWithIndex;
-use once_cell::sync::Lazy;
-
+use std::fmt::Display;
+use std::sync::Arc;
 
 pub use args::*;
 pub use config::*;
 pub use context::*;
+use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 
@@ -29,15 +27,11 @@ pub const SITE_TEMPLATE_PATH: &str = "templates/";
 
 /// The number of threads available on the system.
 /// *Defaults to 1 if the true value cannot be determined.*
-pub static THREADS: Lazy<u16> = Lazy::new(|| {
-    match std::thread::available_parallelism() {
-        Ok(num) => num.get() as u16,
-        Err(e) => {
-            warn!(
-                "Couldn't determine available parallelism (error: {e}) - defaulting to 1 thread."
-            );
-            1
-        }
+pub static THREADS: Lazy<u16> = Lazy::new(|| match std::thread::available_parallelism() {
+    Ok(num) => num.get() as u16,
+    Err(e) => {
+        warn!("Couldn't determine available parallelism (error: {e}) - defaulting to 1 thread.");
+        1
     }
 });
 
@@ -48,14 +42,22 @@ pub static BLOCKING_THREADS: Lazy<u16> = Lazy::new(|| std::cmp::max(*THREADS * 6
 #[derive(Clone, Debug)]
 pub struct RevisionID(Arc<String>);
 
+impl RevisionID {
+    #[allow(clippy::wrong_self_convention)]
+    pub fn into_inner(&self) -> Arc<String> {
+        self.0.clone()
+    }
+}
+
 impl Display for RevisionID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl<S> From<S> for RevisionID where
-    S: Into<String> 
+impl<S> From<S> for RevisionID
+where
+    S: Into<String>,
 {
     fn from(value: S) -> Self {
         let value = value.into();
@@ -70,10 +72,30 @@ impl AsRef<str> for RevisionID {
     }
 }
 
-impl BindableWithIndex for &RevisionID {
-    fn bind<T: sqlite::ParameterIndex>(self, stmt: &mut sqlite::Statement, index: T) -> sqlite::Result<()> {
-        stmt.bind(
-            (index, self.0.as_str())
-        )
+impl sqlite::BindableWithIndex for &RevisionID {
+    fn bind<T: sqlite::ParameterIndex>(
+        self,
+        stmt: &mut sqlite::Statement,
+        index: T,
+    ) -> sqlite::Result<()> {
+        stmt.bind((index, self.0.as_str()))
+    }
+}
+
+// Safety: we're just forwarding to the implementations on Arc,
+// so the RevisionID newtype can be used directly in an ArcSwap.
+unsafe impl arc_swap::RefCnt for RevisionID {
+    type Base = String;
+
+    fn into_ptr(me: Self) -> *mut Self::Base {
+        arc_swap::RefCnt::into_ptr(me.0)
+    }
+
+    fn as_ptr(me: &Self) -> *mut Self::Base {
+        arc_swap::RefCnt::as_ptr(&me.0)
+    }
+
+    unsafe fn from_ptr(ptr: *const Self::Base) -> Self {
+        Self(Arc::from_raw(ptr))
     }
 }
