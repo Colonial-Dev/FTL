@@ -135,7 +135,7 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND path LIKE 'assets/sass/%'
-        AND extension IN ('sass', 'scss');
+        AND extension IN ('sass', 'scss')
         ORDER BY input_files.id
     ";
     let params = (1, rev_id.as_ref()).into();
@@ -152,4 +152,21 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
     Ok(format!("{hash:016x}"))
 }
 
-// TODO load dependency list
+pub fn load_all_ids(ctx: &Context, rev_id: &RevisionID) -> Result<Vec<String>> {
+    let conn = ctx.db.get_ro()?;
+
+    let query = "
+        SELECT input_files.id FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+        AND path LIKE 'assets/sass/%'
+        AND extension IN ('sass', 'scss')
+    ";
+    let params = (1, rev_id.as_ref()).into();
+
+    let ids = conn
+        .prepare_reader(query, params)?
+        .try_collect()?;
+
+    Ok(ids)
+}

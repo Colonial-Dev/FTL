@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use minijinja::value::*;
-use minijinja::State as MJState;
+use minijinja::State;
 use sqlite::{Bindable, Value as SQLValue};
 
 use super::*;
@@ -36,7 +36,7 @@ impl DbHandle {
         .map_err(Wrap::wrap)
     }
 
-    pub fn get_resource(&self, state: &MJState, path: String) -> Result<Value> {
+    pub fn get_resource(&self, state: &State, path: String) -> Result<Value> {
         let conn = self.pool.get()?;
         let rev_id = self.rev_id.as_ref();
         let mut lookup_targets = Vec::with_capacity(4);
@@ -200,7 +200,7 @@ impl std::fmt::Display for DbHandle {
 }
 
 impl Object for DbHandle {
-    fn call_method(&self, state: &MJState, name: &str, args: &[Value]) -> MJResult {
+    fn call_method(&self, state: &State, name: &str, args: &[Value]) -> MJResult {
         match name {
             "query" => {
                 let (sql, params) = from_args(args)?;

@@ -21,7 +21,7 @@ pub const SITE_DB_PATH: &str = ".ftl/content.db";
 pub const SITE_CACHE_PATH: &str = ".ftl/cache/";
 
 pub const SITE_ASSET_PATH: &str = "assets/";
-pub const SITE_CONFIG_PATH: &str = "config/";
+pub const SITE_HOOKS_PATH: &str = "hooks/";
 pub const SITE_CONTENT_PATH: &str = "content/";
 pub const SITE_TEMPLATE_PATH: &str = "templates/";
 

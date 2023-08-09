@@ -17,9 +17,9 @@ pub struct Resource {
 }
 
 impl Resource {
-    fn permalink(&self, state: &MJState) {}
+    fn permalink(&self, state: &State) {}
 
-    fn cachebusted(&self, state: &MJState) {}
+    fn cachebusted(&self, state: &State) {}
     // permalink (the canonical route to the asset - excludes redirects)
     // cachebusted (only for non-inline, returns none or error for inline?)
     // MIME (full/top/sub)

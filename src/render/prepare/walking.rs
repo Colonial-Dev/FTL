@@ -166,7 +166,7 @@ fn is_inline(ext: &Option<String>) -> bool {
     match ext {
         Some(ext) => matches!(
             ext.as_str(),
-            "md" | "in" | "html" | "scss" | "json" | "sublime-syntax" | "tmTheme"
+            "md" | "in" | "html" | "scss" | "json"
         ),
         _ => false,
     }

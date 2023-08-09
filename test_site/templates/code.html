@@ -3,6 +3,7 @@
 {{ body | highlight(args.token) }}
 
 {% else %}
-{{ args.token }}
+```{{ args.token }}
 {{ body }}
+```
 {% endif %}

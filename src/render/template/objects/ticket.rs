@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crossbeam::queue::SegQueue;
 use minijinja::value::*;
-use minijinja::{context, Environment, State as MJState};
+use minijinja::{context, Environment, State};
 use serde::Serialize;
 
 use super::*;
@@ -128,7 +128,7 @@ impl Ticket {
         Ok(())
     }
 
-    fn render(&self, state: &MJState) -> Result<Value> {
+    fn render(&self, state: &State) -> Result<Value> {
         use pulldown_cmark::{html, Options, Parser};
         use Content::*;
 
@@ -156,6 +156,7 @@ impl Ticket {
                                 body => block.body,
                                 token => block.token
                             ))
+                            .map(|x| {warn!("{x}"); x})
                             .map_err(Wrap::flatten)?
                     }
                 }
@@ -189,7 +190,7 @@ impl Ticket {
         Ok(Value::from_safe_string(html_buffer))
     }
 
-    fn eval_shortcode(&self, state: &MJState, code: Shortcode) -> Result<String> {
+    fn eval_shortcode(&self, state: &State, code: Shortcode) -> Result<String> {
         let name = format!("{}.html", code.name);
 
         let Ok(template) = state.env().get_template(&name) else {
@@ -227,7 +228,7 @@ impl Object for Ticket {
         ObjectKind::Struct(self)
     }
 
-    fn call_method(&self, state: &MJState, name: &str, _args: &[Value]) -> MJResult {
+    fn call_method(&self, state: &State, name: &str, _args: &[Value]) -> MJResult {
         match name {
             "render" => self.render(state),
             _ => Err(eyre!("object has no method named {name}")),
