@@ -41,9 +41,10 @@ impl Default for Build {
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
 pub struct Render {
+    pub anchor_template: Option<String>,
+    pub code_template: Option<String>,
     pub smart_punctuation: bool,
     pub highlight_code: bool,
-    pub highlight_theme: Option<String>,
     pub render_emoji: bool,
     pub minify_html: bool,
     pub minify_css: bool,

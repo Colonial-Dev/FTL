@@ -1,4 +1,5 @@
 use std::env;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -33,6 +34,15 @@ impl InnerContext {
         let ctx = InnerContext { config, args, db };
 
         Ok(Arc::new(ctx))
+    }
+}
+
+// Deref abuse to enable easy access to the configuration field.
+impl Deref for InnerContext {
+    type Target = Config;
+
+    fn deref(&self) -> &Self::Target {
+        &self.config
     }
 }
 

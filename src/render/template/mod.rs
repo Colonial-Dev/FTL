@@ -2,11 +2,7 @@ mod error;
 mod loading;
 mod objects;
 
-use std::cell::RefCell;
-
 use error::WrappedReport as Wrap;
-use inkjet::formatter::Html;
-use inkjet::{Highlighter, Language};
 use minijinja::value::Value;
 use minijinja::{context, Environment, State};
 
@@ -41,10 +37,13 @@ pub fn register_routines(
     env.add_function("raise", raise);
 
     let ids = stylesheet::load_all_ids(ctx, rev_id)?;
-    let path = format!("/static/style.css?v={}", stylesheet::load_hash(ctx, rev_id)?);
+    let path = format!(
+        "/static/style.css?v={}",
+        stylesheet::load_hash(ctx, rev_id)?
+    );
 
     env.add_function("stylesheet_path", move |state: &State| {
-        try_with_page(state, |page| {
+        try_with_ticket(state, |page| {
             for id in &ids {
                 // Unwrap justification: register_dependency can only fail
                 // if you're registering a template dependency
@@ -61,37 +60,6 @@ pub fn register_routines(
     env.add_filter("eval", eval);
     env.add_filter("timefmt", timefmt);
     env.add_filter("slug", slug::slugify::<String>);
-
-    env.add_filter("highlight", move |body: String, token: String| {
-        std::thread_local! {
-            static HIGHLIGHTER: RefCell<Highlighter> = RefCell::new(Highlighter::new())
-        };
-
-        // No token means the block should be formatted as plain text
-        if token.is_empty() {
-            return Ok(Value::from(body));
-        }
-
-        let Some(lang) = Language::from_token(&token) else {
-            let err = eyre!("A codeblock had a language token ('{token}'), but FTL could not find a matching language definition.")
-                .note("Your codeblock's language token may just be malformed, or it could specify a language not bundled with FTL.")
-                .suggestion("Provide a valid language token, or remove it to format the block as plain text.");
-            
-            return Err(Wrap::wrap(err))
-        };
-
-        let output = HIGHLIGHTER.with(|cell| {
-            let mut highlighter = cell.borrow_mut();
-
-            highlighter.highlight_to_string(
-                lang,
-                &Html,
-                &body
-            )
-        }).map_err(Wrap::wrap)?;
-
-        Ok(Value::from_safe_string(output))
-    });
 
     let db = DbHandle::new(ctx, rev_id);
     env.add_filter("query", move |sql, params| db.query(sql, params));
@@ -133,15 +101,15 @@ fn timefmt(input: String, format: String) -> MJResult {
 /// - If successful, it then executes the provided closure against the downcasted [`Ticket`]
 /// and returns its output.
 /// - If unsuccessful, it immediately returns [`None`].
-fn try_with_page<F, R>(state: &State, op: F) -> Option<R>
+fn try_with_ticket<F, R>(state: &State, op: F) -> Option<R>
 where
     F: FnOnce(&Ticket) -> R,
 {
-    use std::sync::Arc;
+    use minijinja_stack_ref::StackHandle as Handle;
 
     if let Some(value) = state.lookup("page") {
-        if let Some(ticket) = value.downcast_object_ref::<Arc<Ticket>>() {
-            return op(ticket).into();
+        if let Some(ticket) = value.downcast_object_ref::<Handle<Ticket>>() {
+            return Some(ticket.with(op))
         }
     }
 

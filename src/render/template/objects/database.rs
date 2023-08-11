@@ -41,7 +41,7 @@ impl DbHandle {
         let rev_id = self.rev_id.as_ref();
         let mut lookup_targets = Vec::with_capacity(4);
 
-        try_with_page(state, |ticket| {
+        try_with_ticket(state, |ticket| {
             let target = format!("{}{}", &ticket.page.path.trim_end_matches("index.md"), path);
             lookup_targets.push(target);
         });

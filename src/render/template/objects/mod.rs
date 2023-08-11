@@ -7,5 +7,5 @@ use minijinja::State;
 pub use resource::*;
 pub use ticket::*;
 
-use super::try_with_page;
+use super::try_with_ticket;
 use super::error::{MJError, MJErrorKind, MJResult, WrappedReport as Wrap};

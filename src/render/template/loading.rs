@@ -11,7 +11,6 @@ use crate::prelude::*;
 const BUILTINS: &[&str] = &[
     include_str!("builtins/ftl_default.html"),
     include_str!("builtins/eval.html"),
-    include_str!("builtins/ftl_codeblock.html"),
 ];
 
 #[derive(Debug)]

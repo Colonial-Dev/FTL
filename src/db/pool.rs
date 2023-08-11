@@ -68,6 +68,11 @@ impl Drop for Pool {
             // SQLite recommends calling the optimize PRAGMA immediately before
             // closing database connections.
             let _ = conn.execute("PRAGMA optimize;");
+
+            // If this is the last connection, make a best-effort attempt to flush the WAL logs.
+            if self.queue.is_empty() {
+               let _ = conn.execute("PRAGMA wal_checkpoint(FULL);");
+            }
         }
     }
 }

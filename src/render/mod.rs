@@ -47,7 +47,8 @@ impl Renderer {
         tickets
             .into_par_iter()
             .try_for_each(|ticket| -> Result<_> {
-                tx.send(ticket.build(&self.env)?)?;
+                ticket.build(&self.env)?;
+                tx.send(ticket)?;
                 Ok(())
             })?;
 
@@ -59,6 +60,7 @@ impl Renderer {
 
         stylesheet::compile(&self.ctx, &self.rev_id)?;
 
+        info!("Finished rendering revison.");
         Ok(())
     }
 

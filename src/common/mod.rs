@@ -14,10 +14,14 @@ use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
+pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+
 pub const CONFIG_FILENAME: &str = "ftl.toml";
 
 pub const SITE_INTERNAL_PATH: &str = ".ftl/";
-pub const SITE_DB_PATH: &str = ".ftl/content.db";
+pub const SITE_DB_PATH: &str = ".ftl/ftl.db";
 pub const SITE_CACHE_PATH: &str = ".ftl/cache/";
 
 pub const SITE_ASSET_PATH: &str = "assets/";

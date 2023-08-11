@@ -1,5 +1,6 @@
 [package]
 name = "ftl"
+authors = ["Colonial"]
 version = "0.1.0"
 edition = "2021"
 description = "A sorta-static site generator and server."
@@ -43,6 +44,7 @@ toml = "0.7"
 # Rendering
 pulldown-cmark = { version = "0.9.3", default-features = false, features = ["simd"] }
 minijinja = { version = "1", features = ["loader", "speedups", "unicode"] }
+minijinja-stack-ref = "1.0.5"
 gh-emoji = "1.0.7"
 inkjet = { git = "https://github.com/SomewhereOutInSpace/inkjet.git" }
 grass = "0.13.1"
