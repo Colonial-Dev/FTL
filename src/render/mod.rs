@@ -8,7 +8,7 @@ use crossbeam::channel::Receiver;
 use itertools::Itertools;
 use minijinja::Environment;
 use rayon::prelude::*;
-use template::{Metadata, Ticket};
+use template::Ticket;
 
 use crate::db::{
     Connection, Dependency, Output, OutputKind, Page, Queryable, DEFAULT_QUERY, NO_PARAMS,
@@ -47,8 +47,13 @@ impl Renderer {
         tickets
             .into_par_iter()
             .try_for_each(|ticket| -> Result<_> {
-                ticket.build(&self.env)?;
-                tx.send(ticket)?;
+                let rendered = ticket.build(&self.env)?;
+                
+                tx.send((
+                    ticket,
+                    rendered
+                ))?;
+
                 Ok(())
             })?;
 
@@ -115,17 +120,16 @@ impl Renderer {
     }
 }
 
-fn consumer_handler(conn: &Connection, rx: Receiver<Ticket>) -> Result<()> {
+fn consumer_handler(conn: &Connection, rx: Receiver<(Ticket, String)>) -> Result<()> {
     let txn = conn.open_transaction()?;
     let mut insert_output = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
     let mut insert_dep = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
 
-    let mut remove_deps = conn.prepare(
-        "
+    let mut remove_deps = conn.prepare("
         DELETE FROM dependencies
         WHERE parent = ?1
-    ",
-    )?;
+    ")?;
+
     let mut remove_deps = move |id: &str| -> Result<_> {
         remove_deps.reset()?;
         remove_deps.bind((1, id))?;
@@ -133,27 +137,25 @@ fn consumer_handler(conn: &Connection, rx: Receiver<Ticket>) -> Result<()> {
         Ok(())
     };
 
-    for ticket in rx {
-        let id = ticket.page.id.to_owned();
+    for (ticket, output) in rx {
+        let id = ticket.page.id;
+        
         remove_deps(&id)?;
 
-        for md in ticket.metadata.into_iter() {
-            match md {
-                Metadata::Rendered(output) => {
-                    println!("{output}");
-                    insert_output(&Output {
-                        id: id.clone().into(),
-                        kind: OutputKind::Page,
-                        content: output,
-                    })?
-                }
-                Metadata::Dependency { relation, child } => insert_dep(&Dependency {
-                    relation,
-                    parent: id.clone(),
-                    child,
-                })?,
-            }
+        for (relation, child) in ticket.dependencies.into_iter() {
+            insert_dep(&Dependency {
+                relation,
+                parent: id.clone(),
+                child,
+            })?
         }
+
+        println!("{output}");
+        insert_output(&Output {
+            id: Some(id),
+            kind: OutputKind::Page,
+            content: output
+        })?;
     }
 
     txn.commit()?;

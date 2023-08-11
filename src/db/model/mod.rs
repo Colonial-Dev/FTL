@@ -1,7 +1,9 @@
+mod hook;
 mod output;
 mod page;
 mod revision;
 
+pub use hook::*;
 pub use output::*;
 pub use page::*;
 pub use revision::*;

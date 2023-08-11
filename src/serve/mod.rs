@@ -65,10 +65,8 @@ async fn fetch_wrapper(State(server): State<Server>, uri: Uri) -> Result<Respons
 async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Response> {
     info!("GET request for path {uri:?}");
 
-    let path = uri.to_string();
-
     tokio::task::spawn_blocking(move || {
-        let route = lookup_route(&server, path)?;
+        let route = lookup_route(&server, uri.path())?;
 
         let resource = Resource::from_route(&server.ctx, route)?;
 
@@ -78,8 +76,7 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Respon
     .map(IntoResponse::into_response)
 }
 
-fn lookup_route(server: &Server, path: String) -> Result<Route> {
-    let path = path.trim_start_matches('/');
+fn lookup_route(server: &Server, path: &str) -> Result<Route> {
     let conn = server.ctx.db.get_ro()?;
     let rev_id = server.rev_id.load();
 

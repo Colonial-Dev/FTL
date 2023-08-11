@@ -1,0 +1,8 @@
+paths = ["/hook-example"]
+template = "hook.html"
+headers = []
+cache = true
+
+# All hook templates receive the following variables:
+# path - the path component of the URI (in case you want the hook to do slightly different things depending on the path)
+# queries - a String/Value (or maybe String/String) map containing the URI queries

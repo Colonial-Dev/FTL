@@ -112,6 +112,32 @@ CREATE INDEX idx_attributes ON attributes(id, kind, property);
 -- SQLite-recommended child key index.
 CREATE INDEX idx_attributes_cfk ON attributes(id);
 
+-- Records all known hooks (dynamic rendering triggers.)
+CREATE TABLE hooks (
+    -- The ID of the hook.
+    id TEXT,
+    -- The revision of the hook.
+    revision TEXT,
+    -- The template associated with the hook.
+    template TEXT,
+    -- The response headers of the hook.
+    -- Stored as a single string, with newlines between name and directives.
+    headers TEXT,
+    -- Whether or not the output of the hook should be cached in-memory.
+    cache INTEGER,
+
+    FOREIGN KEY (revision)
+    REFERENCES revisions (id)
+        ON DELETE CASCADE
+
+    UNIQUE(id, revision)
+);
+
+-- Query optimization index.
+CREATE INDEX idx_hooks ON hooks(id);
+-- SQLite-recommended child key index.
+CREATE INDEX idx_hooks_cfk ON hooks(id);
+
 CREATE TABLE routes (
     id TEXT,
     revision TEXT,

@@ -85,7 +85,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let conn = ctx.db.get_rw()?;
 
     let hash = load_hash(ctx, rev_id)?;
-    let route = format!("static/style.css?v={hash}");
+    let route = format!("/static/style.css?v={hash}");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
         id: hash.clone().into(),

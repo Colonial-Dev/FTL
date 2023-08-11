@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crossbeam::queue::SegQueue;
 use inkjet::formatter::Html;
 use minijinja::value::*;
@@ -12,12 +10,6 @@ use crate::db::{Page, Relation};
 use crate::parse::{Content, Shortcode};
 use crate::prelude::*;
 
-#[derive(Debug)]
-pub enum Metadata {
-    Dependency { relation: Relation, child: String },
-    Rendered(String),
-}
-
 /// A rendering ticket, i.e. a discrete unit of rendering work that needs to be done.
 ///
 /// Implements [`Object`]/[`StructObject`], which forwards in-engine interactions to the `inner` field
@@ -25,7 +17,7 @@ pub enum Metadata {
 /// in a well-typed manner.
 #[derive(Debug)]
 pub struct Ticket {
-    pub metadata: SegQueue<Metadata>,
+    pub dependencies: SegQueue<(Relation, String)>,
     pub source: String,
     pub ctx: Context,
     pub page: Page,
@@ -49,15 +41,15 @@ impl Ticket {
         });
 
         Self {
-            metadata: SegQueue::new(),
-            ctx: Arc::clone(ctx),
+            dependencies: SegQueue::new(),
+            ctx: ctx.clone(),
             source,
             page,
             inner,
         }
     }
 
-    pub fn build(&self, env: &Environment) -> Result<()> {
+    pub fn build(&self, env: &Environment) -> Result<String> {
         let name = match &self.page.template {
             Some(name) => name,
             None => "ftl_default.html",
@@ -83,9 +75,8 @@ impl Ticket {
         })?;
 
         self.register_dependency(Relation::PageTemplate, name)?;
-        self.metadata.push(Metadata::Rendered(out));
 
-        Ok(())
+        Ok(out)
     }
 
     fn render(&self, state: &State) -> Result<Value> {
@@ -293,15 +284,13 @@ impl Ticket {
 
             conn.prepare_reader(query, params)?
                 .try_for_each(|child| -> Result<_> {
-                    self.metadata.push(Metadata::Dependency {
-                        relation,
-                        child: child?,
-                    });
+                    self.dependencies.push((relation, child?));
 
                     Ok(())
                 })?;
-        } else {
-            self.metadata.push(Metadata::Dependency { relation, child });
+        } 
+        else {
+            self.dependencies.push((relation, child));
         }
 
         Ok(())

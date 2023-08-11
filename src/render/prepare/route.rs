@@ -60,7 +60,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             Ok(Route {
                 id: Some(row.id),
                 revision: rev_id.to_string(),
-                route: route.to_owned(),
+                route: format!("/{route}"),
                 kind: RouteKind::Asset,
             })
         });
@@ -82,8 +82,8 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 .map(Option::unwrap_or_default);
 
             let route = match ext {
-                Some(ext) => format!("static/{filename}.{ext}?v={}", rev_id),
-                None => format!("static/{filename}?=v{}", row.id),
+                Some(ext) => format!("/static/{filename}.{ext}?v={}", rev_id),
+                None => format!("/static/{filename}?=v{}", row.id),
             };
 
             Ok(Route {
@@ -110,7 +110,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),
-            route: format!("{filepath}{}", slug::slugify(filename)),
+            route: format!("/{filepath}{}", slug::slugify(filename)),
             kind: RouteKind::Page,
         })
     });
@@ -120,7 +120,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),
-            route: row.path.trim_start_matches('/').to_string(),
+            route: row.path.to_owned(),
             kind: RouteKind::RedirectPage,
         })
     });
@@ -145,7 +145,6 @@ fn to_route(path: &str) -> String {
     let route_path = path
         .trim_start_matches(SITE_CONTENT_PATH)
         .trim_end_matches("index.md")
-        .trim_start_matches('/')
         .trim_end_matches('/');
 
     EXT_REGEX.replace(route_path, "").to_string()
