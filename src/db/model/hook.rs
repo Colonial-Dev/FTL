@@ -5,6 +5,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hook {
     pub id: String,
+    pub paths: String,
     pub revision: String,
     pub template: String,
     pub headers: String,
@@ -16,6 +17,7 @@ impl Insertable for Hook {
     const COLUMN_NAMES: &'static [&'static str] = &[
         "id",
         "revision",
+        "paths",
         "template",
         "headers",
         "cache"
@@ -23,6 +25,7 @@ impl Insertable for Hook {
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
         stmt.bind((":id", self.id.as_str()))?;
+        stmt.bind((":paths", self.paths.as_str()))?;
         stmt.bind((":revision", self.revision.as_str()))?;
         stmt.bind((":template", self.template.as_str()))?;
         stmt.bind((":headers", self.headers.as_str()))?;
@@ -37,6 +40,7 @@ impl Queryable for Hook {
         Ok(Self {
             id: stmt.read_string("id")?,
             revision: stmt.read_string("revision")?,
+            paths: stmt.read_string("paths")?,
             template: stmt.read_string("template")?,
             headers: stmt.read_string("headers")?,
             cache: stmt.read_bool("cache")?

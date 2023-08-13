@@ -92,7 +92,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     let file = InputFile {
         id: hex_id,
         hash,
-        path: path.trim_start_matches("./").into(),
+        path: path.trim_start_matches('.').into(),
         extension,
         contents,
         inline,
@@ -166,7 +166,7 @@ fn is_inline(ext: &Option<String>) -> bool {
     match ext {
         Some(ext) => matches!(
             ext.as_str(),
-            "md" | "in" | "html" | "scss" | "json"
+            "md" | "in" | "html" | "scss" | "json" | "toml"
         ),
         _ => false,
     }

@@ -171,6 +171,18 @@ mod test_roundtrip {
         }
     );
 
+    derive_test!(
+        hook,
+        Hook {
+            id: format!("{:016x}", 0xF),
+            paths: String::from("a path"),
+            revision: format!("{:016x}", 0xF),
+            template: String::from("a template"),
+            headers: String::from("some headers"),
+            cache: true
+        }
+    );
+
     // TODO figure out how to apply this to Page and Attribute (TomlMap doesn't implement Eq)
 
     derive_test!(

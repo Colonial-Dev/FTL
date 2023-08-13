@@ -1,10 +1,11 @@
 use std::ffi::OsStr;
 use std::path::Path;
 
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::db::{Queryable, Route, RouteKind, Statement, StatementExt, DEFAULT_QUERY, NO_PARAMS};
+use crate::db::*;
 use crate::prelude::*;
 
 #[derive(Debug)]
@@ -30,6 +31,12 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND input_files.inline = FALSE
+    ";
+
+    let query_hooks = "
+        SELECT * FROM hooks
+        JOIN revision_files ON revision_files.id = hooks.id
+        WHERE revision_files.revision = ?1
     ";
 
     let query_pages = "
@@ -65,6 +72,25 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             })
         });
 
+    let hook_routes = conn
+        .prepare_reader(query_hooks, params)?
+        .map(|hook| -> Result<_> {
+            let hook: Hook = hook?;
+            let mut routes = Vec::new();
+
+            for path in hook.paths.split('\n') {
+                routes.push(Route {
+                    id: hook.id.to_owned().into(),
+                    revision: rev_id.to_string(),
+                    route: path.to_string(),
+                    kind: RouteKind::Hook,
+                });
+            }
+
+            Ok(routes)
+        })
+        .flatten_ok();
+    
     let cachebust_routes = conn
         .prepare_reader(query_static, params)?
         .map(|row| -> Result<_> {
@@ -120,7 +146,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         Ok(Route {
             id: Some(row.id),
             revision: rev_id.to_string(),
-            route: row.path.to_owned(),
+            route: row.path,
             kind: RouteKind::RedirectPage,
         })
     });
@@ -130,6 +156,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     static_routes
         .chain(cachebust_routes)
+        .chain(hook_routes)
         .chain(page_routes)
         .chain(alias_routes)
         .try_for_each(|route| insert_route(&route?))?;

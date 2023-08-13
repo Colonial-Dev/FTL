@@ -1,4 +1,5 @@
 mod frontmatter;
+mod hook;
 mod route;
 mod walking;
 
@@ -12,6 +13,7 @@ pub fn prepare(ctx: &Context) -> Result<RevisionID> {
     let rev_id = walking::walk(ctx)?;
 
     frontmatter::parse_frontmatters(ctx, &rev_id)?;
+    hook::create_hooks(ctx, &rev_id)?;
     route::create_routes(ctx, &rev_id)?;
 
     Ok(rev_id)

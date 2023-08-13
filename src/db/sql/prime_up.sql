@@ -118,6 +118,8 @@ CREATE TABLE hooks (
     id TEXT,
     -- The revision of the hook.
     revision TEXT,
+    -- The paths associated with the hook, newline-separated.
+    paths TEXT,
     -- The template associated with the hook.
     template TEXT,
     -- The response headers of the hook.

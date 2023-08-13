@@ -40,7 +40,7 @@ impl MapFs {
             SELECT path, contents FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
-            AND path LIKE 'assets/sass/%'
+            AND path LIKE '/assets/sass/%'
             AND extension IN ('sass', 'scss');
         ";
         let params = (1, rev_id.as_ref()).into();
@@ -49,12 +49,12 @@ impl MapFs {
             .prepare_reader(query, params)?
             .map_ok(|row: Row| {
                 // Shave off the 'assets/sass/' component of the path.
-                let path: PathBuf = row.path.iter().skip(2).collect();
+                let path: PathBuf = row.path.iter().skip(3).collect();
                 let bytes = row.contents.into_bytes();
                 (path, bytes)
             })
             .try_collect()?;
-
+        debug!("{:?}", map);
         Ok(Self { map })
     }
 }
@@ -112,7 +112,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     if !fs.is_file(path) {
         let err = eyre!("Tried to compile SASS, but 'style.scss' could not be found.");
         let err =
-            err.note("SASS compilation expects the root file to be at \"assets/sass/style.scss\".");
+            err.note("SASS compilation expects the root file to be at \"/assets/sass/style.scss\".");
         bail!(err)
     }
 
@@ -134,7 +134,7 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'assets/sass/%'
+        AND path LIKE '/assets/sass/%'
         AND extension IN ('sass', 'scss')
         ORDER BY input_files.id
     ";
@@ -159,7 +159,7 @@ pub fn load_all_ids(ctx: &Context, rev_id: &RevisionID) -> Result<Vec<String>> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE 'assets/sass/%'
+        AND path LIKE '/assets/sass/%'
         AND extension IN ('sass', 'scss')
     ";
     let params = (1, rev_id.as_ref()).into();
