@@ -3,7 +3,7 @@ mod resource;
 
 use std::sync::Arc;
 
-use arc_swap::ArcSwapAny as Swap;
+use arc_swap::ArcSwap;
 use axum::extract::State;
 use axum::http::Uri;
 use axum::response::{IntoResponse, Response};
@@ -14,48 +14,53 @@ use resource::*;
 
 use crate::db::*;
 use crate::prelude::*;
+use crate::render::Renderer;
 
 type Server = Arc<InnerServer>;
 
 pub struct InnerServer {
-    pub rev_id: Swap<RevisionID>,
+    pub renderer: ArcSwap<Renderer>,
+    pub rev_id: ArcSwap<String>,
     pub ctx: Context,
 }
 
 impl InnerServer {
-    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Server {
+    pub fn new(ctx: &Context, renderer: Renderer) -> Server {
+        let renderer = Arc::new(renderer);
+        let rev_id = renderer.rev_id.clone();
+        
         Arc::new(Self {
-            rev_id: Swap::new(rev_id.clone()),
+            renderer: ArcSwap::new(renderer),
+            rev_id: ArcSwap::new(rev_id.into_inner()),
             ctx: ctx.clone(),
         })
     }
-}
 
-/// Bootstraps the Tokio runtime and starts the internal `async` site serving code.
-pub fn serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
-    info!("Starting Tokio runtime.");
+    /// Bootstraps the Tokio runtime and starts the internal `async` site serving code.
+    pub fn serve(self: &Server) -> Result<()> {
+        info!("Starting Tokio runtime.");
 
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(_serve(ctx, rev_id))
-}
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to start Tokio runtime.")
+            .block_on(self._serve())
+    }
 
-async fn _serve(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
-    let app = Router::new()
-        .route("/", get(fetch_wrapper))
-        .route("/*path", get(fetch_wrapper))
-        .with_state(InnerServer::new(ctx, rev_id));
+    async fn _serve(self: &Server) -> Result<()> {
+        let app = Router::new()
+            .route("/", get(fetch_wrapper))
+            .route("/*path", get(fetch_wrapper))
+            .with_state(self.clone());
 
-    info!("Starting webserver.");
+        info!("Starting webserver.");
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+            .serve(app.into_make_service())
+            .await?;
 
-    Ok(())
+        Ok(())
+    }
 }
 
 async fn fetch_wrapper(State(server): State<Server>, uri: Uri) -> Result<Response, BoxError> {
@@ -68,7 +73,7 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Respon
     tokio::task::spawn_blocking(move || {
         let route = lookup_route(&server, uri.path())?;
 
-        let resource = Resource::from_route(&server.ctx, route)?;
+        let resource = Resource::from_route(&server, route)?;
 
         Ok(resource)
     })

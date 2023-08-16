@@ -7,15 +7,37 @@ mod render;
 mod serve;
 
 mod prelude {
-    pub use color_eyre::eyre::{bail, ensure, eyre, Context as EyreContext, ContextCompat};
-    pub use color_eyre::{Report, Result, Section};
+    pub use color_eyre::eyre::{
+        bail,
+        ensure,
+        eyre,
+        Context as EyreContext,
+        ContextCompat
+    };
+
+    pub use color_eyre::{
+        Report,
+        Result, 
+        Section
+    };
+
     pub use indoc::indoc;
-    pub use tracing::{debug, error, info, warn};
+
+    pub use tracing::{
+        instrument,
+        trace,
+        debug,
+        info,
+        warn,
+        error
+    };
 
     pub use crate::common::*;
 }
 
-use prelude::*;
+use crate::prelude::*;
+use crate::render::Renderer;
+use crate::serve::InnerServer;
 
 fn main() -> Result<()> {
     install_logging();
@@ -28,10 +50,13 @@ fn main() -> Result<()> {
     let ctx = InnerContext::init()?;
     ctx.db.reinitialize()?;
 
-    let renderer = render::Renderer::new(&ctx)?;
+    let rev_id = render::prepare(&ctx)?;
+    let renderer = Renderer::new(&ctx, &rev_id)?;
     renderer.render_revision()?;
 
-    serve::serve(&ctx, &renderer.rev_id)?;
+    let server = InnerServer::new(&ctx, renderer);
+
+    server.serve()?;
 
     Ok(())
 }

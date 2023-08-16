@@ -54,7 +54,7 @@ impl MapFs {
                 (path, bytes)
             })
             .try_collect()?;
-        debug!("{:?}", map);
+        
         Ok(Self { map })
     }
 }

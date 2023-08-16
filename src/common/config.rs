@@ -9,9 +9,6 @@ use crate::prelude::*;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub root_url: String,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub language: Option<String>,
     pub build: Build,
     pub render: Render,
     #[serde(default)]

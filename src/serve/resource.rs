@@ -5,6 +5,8 @@ use axum::response::{IntoResponse, Response};
 use crate::db::*;
 use crate::prelude::*;
 
+use super::Server;
+
 #[derive(Debug, Clone)]
 pub enum Resource {
     Hypertext(String),
@@ -14,12 +16,12 @@ pub enum Resource {
 }
 
 impl Resource {
-    pub fn from_route(ctx: &Context, route: Route) -> Result<Self> {
+    pub fn from_route(server: &Server, route: Route) -> Result<Self> {
         match route.kind {
             RouteKind::Asset | RouteKind::RedirectAsset => {
                 let path = format!(
                     "{SITE_CACHE_PATH}{}",
-                    route.id.expect("Asset routes should have an ID")
+                    route.id.expect("Asset routes should have an ID.")
                 );
 
                 let bytes = std::fs::read(path)?;
@@ -28,11 +30,11 @@ impl Resource {
                 Ok(Self::Octets(bytes))
             }
             RouteKind::Page | RouteKind::RedirectPage | RouteKind::Stylesheet => {
-                let conn = ctx.db.get_ro()?;
+                let conn = server.ctx.db.get_ro()?;
                 let id = route
                     .id
                     .as_ref()
-                    .expect("Page and stylesheet routes should have an ID")
+                    .expect("Page and stylesheet routes should have an ID.")
                     .as_str();
 
                 let query = "
@@ -56,7 +58,13 @@ impl Resource {
                     None => Ok(Self::Code(StatusCode::NOT_FOUND)),
                 }
             }
-            _ => unimplemented!(),
+            RouteKind::Hook => {
+                // TODO implement me
+                // This function will need access to the URI (maybe move the lookup in here?)
+                // so we can parse out the path and queries, which are passed along to the template.
+                todo!()
+            }
+            _ => unimplemented!()
         }
     }
 }

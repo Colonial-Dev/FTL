@@ -23,7 +23,9 @@ impl Resource {
     // permalink (the canonical route to the asset - excludes redirects)
     // cachebusted (only for non-inline, returns none or error for inline?)
     // MIME (full/top/sub)
+    // is_page/is_asset
     // contents/contents_bytes (?)/contents_string
+    // Time to read and (naive) word count
 }
 
 impl std::fmt::Display for Resource {

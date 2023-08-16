@@ -1,7 +1,4 @@
 root_url = "https://ftl.rs"
-title = ""
-description = ""
-language = "en-US"
 
 [build]
 compile_sass = true
@@ -21,3 +18,6 @@ address = "127.0.0.1"
 port = 8080
 
 [extra]
+title = ""
+description = ""
+language = "en-US"

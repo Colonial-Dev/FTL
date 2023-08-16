@@ -192,7 +192,9 @@ impl Ticket {
 
                             buffer
                         };
-    
+                        
+                        // TODO use user provided anchor template if defined
+
                         let anchor = header.ident.unwrap_or(header.title);
                         let anchor = slug::slugify(anchor);
                         let anchor = indoc::formatdoc!("

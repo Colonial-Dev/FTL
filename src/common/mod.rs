@@ -85,21 +85,3 @@ impl sqlite::BindableWithIndex for &RevisionID {
         stmt.bind((index, self.0.as_str()))
     }
 }
-
-// Safety: we're just forwarding to the implementations on Arc,
-// so the RevisionID newtype can be used directly in an ArcSwap.
-unsafe impl arc_swap::RefCnt for RevisionID {
-    type Base = String;
-
-    fn into_ptr(me: Self) -> *mut Self::Base {
-        arc_swap::RefCnt::into_ptr(me.0)
-    }
-
-    fn as_ptr(me: &Self) -> *mut Self::Base {
-        arc_swap::RefCnt::as_ptr(&me.0)
-    }
-
-    unsafe fn from_ptr(ptr: *const Self::Base) -> Self {
-        Self(Arc::from_raw(ptr))
-    }
-}

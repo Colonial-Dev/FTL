@@ -2,19 +2,17 @@ mod prepare;
 mod stylesheet;
 mod template;
 
-use std::sync::Arc;
-
 use crossbeam::channel::Receiver;
 use itertools::Itertools;
 use minijinja::Environment;
 use rayon::prelude::*;
 use template::Ticket;
 
-use crate::db::{
-    Connection, Dependency, Output, OutputKind, Page, Queryable, DEFAULT_QUERY, NO_PARAMS,
-};
+use crate::db::*;
 use crate::poll;
 use crate::prelude::*;
+
+pub use prepare::prepare;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -24,15 +22,11 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(ctx: &Context) -> Result<Self> {
-        let rev_id = prepare::prepare(ctx)?;
-
-        let env = template::setup_environment(ctx, &rev_id)?;
-        let state = Arc::clone(ctx);
-
+    // TODO move prepare call out
+    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         Ok(Self {
-            env,
-            ctx: state,
+            env: template::setup_environment(ctx, rev_id)?,
+            ctx: ctx.clone(),
             rev_id: rev_id.clone(),
         })
     }
@@ -65,7 +59,7 @@ impl Renderer {
 
         stylesheet::compile(&self.ctx, &self.rev_id)?;
 
-        info!("Finished rendering revison.");
+        info!("Finished rendering revison {}.", self.rev_id);
         Ok(())
     }
 
