@@ -69,4 +69,8 @@ pub struct Serve {
     pub address: String,
     pub port: u16,
     pub error_template: Option<String>,
+    pub cache_max_size: u64,
+    pub cache_ttl: u64,
+    pub cache_tti: u64,
+
 }

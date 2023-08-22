@@ -2,6 +2,7 @@ mod error;
 mod resource;
 
 use std::net::SocketAddr;
+use std::time::Duration;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap as Swap;
@@ -10,6 +11,7 @@ use axum::http::{StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use moka::future::Cache;
 use resource::*;
 
 use crate::prelude::*;
@@ -20,6 +22,7 @@ type Server = Arc<InnerServer>;
 pub struct InnerServer {
     pub renderer: Swap<Renderer>,
     pub rev_id: Swap<String>,
+    pub cache: Cache<Uri, Resource>,
     pub ctx: Context,
 }
 
@@ -27,10 +30,20 @@ impl InnerServer {
     pub fn new(ctx: &Context, renderer: Renderer) -> Server {
         let renderer = Arc::new(renderer);
         let rev_id = renderer.rev_id.clone();
+        let cache = Cache::builder()
+            .max_capacity(ctx.serve.cache_max_size)
+            .time_to_idle(Duration::from_secs(ctx.serve.cache_tti))
+            .time_to_live(Duration::from_secs(ctx.serve.cache_ttl))
+            .weigher(|_, value: &Resource| {
+                value.size() as u32
+            })
+            .build();
+            
         
         Arc::new(Self {
             renderer: Swap::new(renderer),
             rev_id: Swap::new(rev_id.into_inner()),
+            cache,
             ctx: ctx.clone(),
         })
     }
@@ -103,7 +116,22 @@ impl InnerServer {
 }
 
 async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
-    info!("GET request for path {uri:?}");
+    debug!("GET request for URI {uri:?}");
 
-    Resource::from_uri(&server, uri).await.into_response()
+    if let Some(cached) = server.cache.get(&uri) {
+        debug!("Serving URI {uri:?} from cache.");
+        return cached.into_response();
+    }
+
+    let resource = Resource::from_uri(&server, uri.clone()).await;
+
+    if resource.should_cache() {
+        debug!("Caching {uri:?}");
+        server.cache.insert(
+            uri, 
+            resource.clone()
+        ).await;
+    }
+
+    resource.into_response()
 }

@@ -87,13 +87,15 @@ impl Resource {
             AND revision = ?3
         ";
         
-        let path = uri.path();
+        // We trim any leading slashes, just in case the user accidentally adds one.
+        let path = uri.path().trim_end_matches('/');
         let path_and_query = uri
             .path_and_query()
             .map(|path| {
                 path.as_str()
             })
-            .unwrap_or("");
+            .unwrap_or("")
+            .trim_end_matches('/');
         
         // We need to check the path both with and without the query,
         // in order to work with both versioned assets and hooks.
@@ -228,6 +230,15 @@ impl Resource {
 }
 
 impl Resource {
+    pub fn should_cache(&self) -> bool {
+        use Resource::*;
+
+        match self {
+            Hook { cache, .. } => *cache,
+            _ => true
+        }
+    }
+    
     pub fn size(&self) -> usize {
         use std::mem::size_of_val;
         use Resource::*;
