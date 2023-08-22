@@ -46,7 +46,7 @@ pulldown-cmark = { version = "0.9.3", default-features = false, features = ["sim
 minijinja = { version = "1", features = ["loader", "speedups", "unicode"] }
 minijinja-stack-ref = "1.0.5"
 gh-emoji = "1.0.7"
-inkjet = { git = "https://github.com/SomewhereOutInSpace/inkjet.git" }
+inkjet = "0.5.1"
 grass = "0.13.1"
 lol_html = "1.1.1"
 slug = "0.1.4"
@@ -55,6 +55,7 @@ slug = "0.1.4"
 tokio = { version = "1", features = ["full"] }
 axum = "0.6"
 axum-macros = "0.3.8"
+moka = "0.11.3"
 # tower-http = "0.3.4"
 
 # Other
@@ -65,3 +66,4 @@ itertools = "0.11.0"
 new_mime_guess = "4.0.1"
 chrono = "0.4.23"
 paste = "1.0.14"
+ansi-to-html = "0.1.3"

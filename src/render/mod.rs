@@ -22,7 +22,6 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    // TODO move prepare call out
     pub fn new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         Ok(Self {
             env: template::setup_environment(ctx, rev_id)?,

@@ -11,6 +11,7 @@ pub struct Config {
     pub root_url: String,
     pub build: Build,
     pub render: Render,
+    pub serve: Serve,
     #[serde(default)]
     pub extra: HashMap<String, toml::Value>,
 }
@@ -60,4 +61,12 @@ impl Config {
 
         Ok(toml::from_str(&toml_raw)?)
     }
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(default)]
+pub struct Serve {
+    pub address: String,
+    pub port: u16,
+    pub error_template: Option<String>,
 }

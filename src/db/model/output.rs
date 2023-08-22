@@ -5,7 +5,6 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Relation {
-    Unknown = 0,
     Intertemplate = 1,
     PageAsset = 2,
     PageTemplate = 3,
@@ -18,10 +17,7 @@ impl From<i64> for Relation {
             1 => Intertemplate,
             2 => PageAsset,
             3 => PageTemplate,
-            _ => {
-                error!("Encountered an unknown Relation discriminant ({value}).");
-                Unknown
-            }
+            _ => panic!("Encountered an unknown Relation discriminant ({value}).")
         }
     }
 }
@@ -59,7 +55,6 @@ impl Queryable for Dependency {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OutputKind {
-    Unknown = 0,
     Page = 1,
     Stylesheet = 2,
 }
@@ -70,10 +65,7 @@ impl From<i64> for OutputKind {
         match value {
             1 => Page,
             2 => Stylesheet,
-            _ => {
-                error!("Encountered an unknown OutputKind discriminant ({value}).");
-                Unknown
-            }
+            _ => panic!("Encountered an unknown OutputKind discriminant ({value}).")
         }
     }
 }

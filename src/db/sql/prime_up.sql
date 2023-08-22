@@ -154,8 +154,8 @@ CREATE TABLE routes (
 );
 
 -- Query optimization index - without this, looking up
--- IDs by route would be SCANs.
-CREATE INDEX idx_routes ON routes (id, route);
+-- routes will be SCANs.
+CREATE INDEX idx_routes ON routes (route);
 -- SQLite-recommended child key index.
 CREATE INDEX idx_routes_cfk ON routes(id, revision);
 

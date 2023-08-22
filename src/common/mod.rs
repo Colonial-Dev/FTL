@@ -7,10 +7,11 @@ mod context;
 use std::fmt::Display;
 use std::sync::Arc;
 
+use once_cell::sync::Lazy;
+
 pub use args::*;
 pub use config::*;
 pub use context::*;
-use once_cell::sync::Lazy;
 
 use crate::prelude::*;
 
@@ -40,8 +41,7 @@ pub static THREADS: Lazy<u16> = Lazy::new(|| match std::thread::available_parall
 });
 
 /// The number of blocking threads available to the program in an asynchronous context.
-/// Evaluates to `THREADS * 64` or `512`, whichever is larger.
-pub static BLOCKING_THREADS: Lazy<u16> = Lazy::new(|| std::cmp::max(*THREADS * 64, 512));
+pub const BLOCKING_THREADS: u16 = 512;
 
 #[derive(Clone, Debug)]
 pub struct RevisionID(Arc<String>);

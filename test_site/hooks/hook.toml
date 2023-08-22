@@ -1,6 +1,9 @@
 paths = ["/hook-example"]
 template = "hook.html"
-headers = []
+headers = [
+    "Content-Type", "text/html; charset=utf-8",
+    "Cache-Control", "max-age=500, must-revalidate"
+]
 cache = true
 
 # All hook templates receive the following variables:

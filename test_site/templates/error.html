@@ -1,0 +1,19 @@
+<head>
+    <title>{{ code }} {{ reason }}</title>
+    <link rel="stylesheet" href="{{ stylesheet_path() }}">
+</head>
+
+<body>
+<h1> {{ code }} </h1>
+<h3> {{ reason }} </h3>
+{% if backtrace  %}
+Backtrace captured.
+<code>
+<pre>
+{{ backtrace | safe }}
+</pre>
+</code>
+{% endif %}
+<hr>
+Requested URI: {{ uri }}
+</body>

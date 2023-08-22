@@ -14,8 +14,21 @@ minify_html = false
 minify_css = false
 
 [serve]
-address = "127.0.0.1"
+address = "0.0.0.0"
 port = 8080
+error_template = "error.html"
+# Whether or not to "preheat" the cache.
+# If true, FTL will query all known routes and insert them into the cache
+# before starting the web server.
+# 
+# If this causes the maximum cache size to be exceeded, some routes will
+# be evicted. Which routes are evicted is non-deterministic.
+cache_preheat = true
+# Maximum cache size in MB
+cache_max_size = 512
+# TTL/TTI in seconds
+cache_ttl = 1800
+cache_tti = 500
 
 [extra]
 title = ""

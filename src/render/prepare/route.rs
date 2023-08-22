@@ -65,7 +65,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 .trim_start_matches(SITE_CONTENT_PATH);
 
             Ok(Route {
-                id: Some(row.id),
+                id: row.id,
                 revision: rev_id.to_string(),
                 route: format!("/{route}"),
                 kind: RouteKind::Asset,
@@ -113,7 +113,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             };
 
             Ok(Route {
-                id: Some(row.id),
+                id: row.id,
                 revision: rev_id.to_string(),
                 route,
                 kind: RouteKind::RedirectAsset,
@@ -134,7 +134,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         let filepath = route.trim_end_matches(filename);
 
         Ok(Route {
-            id: Some(row.id),
+            id: row.id,
             revision: rev_id.to_string(),
             route: format!("/{filepath}{}", slug::slugify(filename)),
             kind: RouteKind::Page,
@@ -144,7 +144,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let alias_routes = conn.prepare_reader(query_alias, params)?.map(|row| {
         let row: Row = row?;
         Ok(Route {
-            id: Some(row.id),
+            id: row.id,
             revision: rev_id.to_string(),
             route: row.path,
             kind: RouteKind::RedirectPage,

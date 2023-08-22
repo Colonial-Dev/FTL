@@ -1,26 +1,25 @@
 mod error;
 mod resource;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
+use arc_swap::ArcSwap as Swap;
 use axum::extract::State;
-use axum::http::Uri;
+use axum::http::{StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use error::BoxError;
 use resource::*;
 
-use crate::db::*;
 use crate::prelude::*;
 use crate::render::Renderer;
 
 type Server = Arc<InnerServer>;
 
 pub struct InnerServer {
-    pub renderer: ArcSwap<Renderer>,
-    pub rev_id: ArcSwap<String>,
+    pub renderer: Swap<Renderer>,
+    pub rev_id: Swap<String>,
     pub ctx: Context,
 }
 
@@ -30,8 +29,8 @@ impl InnerServer {
         let rev_id = renderer.rev_id.clone();
         
         Arc::new(Self {
-            renderer: ArcSwap::new(renderer),
-            rev_id: ArcSwap::new(rev_id.into_inner()),
+            renderer: Swap::new(renderer),
+            rev_id: Swap::new(rev_id.into_inner()),
             ctx: ctx.clone(),
         })
     }
@@ -49,54 +48,62 @@ impl InnerServer {
 
     async fn _serve(self: &Server) -> Result<()> {
         let app = Router::new()
-            .route("/", get(fetch_wrapper))
-            .route("/*path", get(fetch_wrapper))
+            .route("/", get(fetch_resource))
+            .route("/*path", get(fetch_resource))
             .with_state(self.clone());
 
         info!("Starting webserver.");
 
-        axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+        let ip = self.ctx.serve.address.parse()?;
+        let port = self.ctx.serve.port;
+
+        let addr = SocketAddr::new(
+            ip,
+            port
+        );
+
+        axum::Server::bind(&addr)
             .serve(app.into_make_service())
             .await?;
 
         Ok(())
     }
+
+    fn render_error_page(self: &Server, code: StatusCode, uri: &Uri, report: Option<Report>) -> Result<String> {
+        if let Some(template) = &self.ctx.serve.error_template {
+            let renderer = self.renderer.load();
+            let template = renderer
+                .env
+                .get_template(template)
+                .expect("Error template should be loaded.");
+
+            let backtrace = report.map(|report| {
+                ansi_to_html::convert_escaped(
+                    &format!("{report:?}")
+                ).unwrap()
+            });
+            
+            let error_page = template.render(minijinja::context!{
+                code => code.as_u16(),
+                reason => code.canonical_reason(),
+                path => uri.path(),
+                uri => uri.to_string(),
+                backtrace
+            })?;
+
+            Ok(error_page)
+        } else {
+            Ok(format!(
+                "{} {}",
+                code.as_u16(),
+                code.canonical_reason().unwrap_or("Unknown")
+            ))
+        }
+    }
 }
 
-async fn fetch_wrapper(State(server): State<Server>, uri: Uri) -> Result<Response, BoxError> {
-    Ok(fetch_resource(State(server), uri).await?)
-}
-
-async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Result<Response> {
+async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
     info!("GET request for path {uri:?}");
 
-    tokio::task::spawn_blocking(move || {
-        let route = lookup_route(&server, uri.path())?;
-
-        let resource = Resource::from_route(&server, route)?;
-
-        Ok(resource)
-    })
-    .await?
-    .map(IntoResponse::into_response)
-}
-
-fn lookup_route(server: &Server, path: &str) -> Result<Route> {
-    let conn = server.ctx.db.get_ro()?;
-    let rev_id = server.rev_id.load();
-
-    let query = "
-        SELECT * FROM routes
-        WHERE route = ?1
-        AND revision = ?2
-    ";
-
-    let parameters = [(1, path), (2, rev_id.as_ref())];
-
-    let mut get_route = conn.prepare_reader(query, parameters.as_slice().into())?;
-
-    match get_route.next() {
-        Some(route) => route,
-        None => bail!("404 not found"),
-    }
+    Resource::from_uri(&server, uri).await.into_response()
 }

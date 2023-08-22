@@ -55,7 +55,7 @@ impl Database {
 
         let ro_pool = Pool::open(
             &path,
-            *BLOCKING_THREADS as usize,
+            BLOCKING_THREADS as usize,
             OpenFlags::new().set_read_only(),
         );
 

@@ -88,7 +88,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let route = format!("/static/style.css?v={hash}");
 
     conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
-        id: hash.clone().into(),
+        id: hash.clone(),
         revision: rev_id.to_string(),
         route,
         kind: RouteKind::Stylesheet,

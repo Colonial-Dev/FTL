@@ -126,7 +126,6 @@ impl Queryable for RevisionFile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RouteKind {
-    Unknown = 0,
     Asset = 1,
     Hook = 2,
     Page = 3,
@@ -145,10 +144,7 @@ impl From<i64> for RouteKind {
             4 => Stylesheet,
             5 => RedirectPage,
             6 => RedirectAsset,
-            _ => {
-                warn!("Encountered an unknown RouteKind discriminant ({value}).");
-                Unknown
-            }
+            _ => panic!("Encountered an unknown RouteKind discriminant ({value}).")
         }
     }
 }
@@ -158,7 +154,7 @@ impl From<i64> for RouteKind {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Route {
     /// The ID of the file this route points to.
-    pub id: Option<String>,
+    pub id: String,
     /// The ID of the revision this route is associated with.
     pub revision: String,
     /// The URL this route qualifies.
@@ -173,7 +169,7 @@ impl Insertable for Route {
     const COLUMN_NAMES: &'static [&'static str] = &["id", "revision", "route", "kind"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_deref()))?;
+        stmt.bind((":id", &*self.id))?;
         stmt.bind((":revision", self.revision.as_str()))?;
         stmt.bind((":route", self.route.as_str()))?;
         stmt.bind((":kind", self.kind as i64))?;
@@ -185,7 +181,7 @@ impl Insertable for Route {
 impl Queryable for Route {
     fn read_query(stmt: &Statement<'_>) -> Result<Self> {
         Ok(Self {
-            id: stmt.read_optional_str("id")?,
+            id: stmt.read_string("id")?,
             revision: stmt.read_string("revision")?,
             route: stmt.read_string("route")?,
             kind: stmt.read_i64("kind").map(RouteKind::from)?,
