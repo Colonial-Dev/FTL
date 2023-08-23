@@ -4,7 +4,7 @@ authors = ["Colonial"]
 version = "0.1.0"
 edition = "2021"
 description = "A sorta-static site generator and server."
-repository = "https://github.com/SomewhereOutInSpace/FTL"
+repository = "https://github.com/Colonial-Dev/FTL"
 readme = "README.md"
 license = "AGPL-3.0"
 
@@ -46,7 +46,7 @@ pulldown-cmark = { version = "0.9.3", default-features = false, features = ["sim
 minijinja = { version = "1", features = ["loader", "speedups", "unicode"] }
 minijinja-stack-ref = "1.0.5"
 gh-emoji = "1.0.7"
-inkjet = "0.5.1"
+inkjet = "0.6.0"
 grass = "0.13.1"
 lol_html = "1.1.1"
 slug = "0.1.4"

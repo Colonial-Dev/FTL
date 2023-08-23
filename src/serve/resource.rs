@@ -45,7 +45,7 @@ impl Resource {
                     &uri,
                     Some(err)
                 ).unwrap_or_else(|err| {
-                    format!("503 Internal Server Error (Double Fault)\n{err:?}")
+                    format!("500 Internal Server Error (Double Fault)\n{err:?}")
                 });
 
                 Self::Error(

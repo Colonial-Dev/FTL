@@ -164,7 +164,7 @@ mod test_roundtrip {
     derive_test!(
         route,
         Route {
-            id: format!("{:016x}", 0xF).into(),
+            id: format!("{:016x}", 0xF),
             revision: format!("{:016x}", 0xF),
             route: String::from("A route"),
             kind: RouteKind::Page,

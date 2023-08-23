@@ -30,6 +30,7 @@ impl InnerServer {
     pub fn new(ctx: &Context, renderer: Renderer) -> Server {
         let renderer = Arc::new(renderer);
         let rev_id = renderer.rev_id.clone();
+
         let cache = Cache::builder()
             .max_capacity(ctx.serve.cache_max_size)
             .time_to_idle(Duration::from_secs(ctx.serve.cache_tti))
@@ -37,9 +38,11 @@ impl InnerServer {
             .weigher(|_, value: &Resource| {
                 value.size() as u32
             })
+            .eviction_listener_with_queued_delivery_mode(|uri, _, reason| {
+                debug!("Entry for URI {uri:?} evicted from cache (reason: {reason:?}).")
+            })
             .build();
             
-        
         Arc::new(Self {
             renderer: Swap::new(renderer),
             rev_id: Swap::new(rev_id.into_inner()),

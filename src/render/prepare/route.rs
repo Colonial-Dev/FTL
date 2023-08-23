@@ -80,7 +80,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
             for path in hook.paths.split('\n') {
                 routes.push(Route {
-                    id: hook.id.to_owned().into(),
+                    id: hook.id.to_owned(),
                     revision: rev_id.to_string(),
                     route: path.to_string(),
                     kind: RouteKind::Hook,
