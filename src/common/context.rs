@@ -18,6 +18,7 @@ pub struct InnerContext {
     pub args: Arguments,
     pub config: Config,
     pub db: Database,
+    // TODO command line output (indicatif)
 }
 
 impl InnerContext {

@@ -709,7 +709,6 @@ dependencies = [
  "minijinja",
  "minijinja-stack-ref",
  "moka",
- "new_mime_guess",
  "nom",
  "once_cell",
  "paste",
@@ -1319,16 +1318,6 @@ dependencies = [
  "thiserror",
  "triomphe",
  "uuid",
-]
-
-[[package]]
-name = "new_mime_guess"
-version = "4.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d684d1b59e0dc07b37e2203ef576987473288f530082512aff850585c61b1f"
-dependencies = [
- "mime",
- "unicase",
 ]
 
 [[package]]

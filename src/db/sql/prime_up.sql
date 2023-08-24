@@ -14,7 +14,7 @@ CREATE TABLE input_files (
     -- Whether or not the file's contents are stored inline.
     -- Only textual files are inlined; binary blobs (such as images)
     -- are instead copied to the flat-file cache.
-    inline INTEGER
+    inline BOOLEAN
 );
 
 -- Records metadata about site revisions.
@@ -29,17 +29,17 @@ CREATE TABLE revisions (
     -- The timestamp at which the revision was stabilized.
     -- Defaults to and contains NULL otherwise.
     time TEXT,
-    -- Boolean - whether or not the revision is "pinned."
+    -- Whether or not the revision is "pinned."
     -- Pinned revisions and their dependencies are excluded
     -- when performing database cleanup.
-    pinned INTEGER,
-    -- Boolean - whether or not the revision is "stable."
+    pinned BOOLEAN,
+    -- Whether or not the revision is "stable."
     -- New revisions start as "unstable." Once a revision's output is 
     -- successfully evaluated, it becomes stable.
     -- 
     -- Revisions that do not successfully produce output are not stabilized,
     -- and will be discarded at next build time.
-    stable INTEGER
+    stable BOOLEAN
 );
 
 -- Records one-to-many relationships between revisions and their files.
@@ -68,8 +68,8 @@ CREATE TABLE pages (
     template TEXT,
     -- The byte offset at which the page's frontmatter ends.
     offset INTEGER,
-    -- Boolean - whether or not the page is a draft.
-    draft INTEGER,
+    -- Whether or not the page is a draft.
+    draft BOOLEAN,
     -- Bincode blob of the page's "attributes"  frontmatter section.
     --
     -- In addition to being stored here, the contents
@@ -126,7 +126,7 @@ CREATE TABLE hooks (
     -- Stored as a single string, with newlines between name and directives.
     headers TEXT,
     -- Whether or not the output of the hook should be cached in-memory.
-    cache INTEGER,
+    cache BOOLEAN,
 
     FOREIGN KEY (revision)
     REFERENCES revisions (id)
