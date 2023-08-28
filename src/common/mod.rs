@@ -1,4 +1,5 @@
 //! Types, functions, constants and other items that are globally relevant throughout the FTL codebase.
+#![allow(dead_code)]
 
 mod args;
 mod config;

@@ -216,7 +216,9 @@ impl Resource {
         let output = template.render(context! {
             path => uri.path(),
             queries => Value::from_iter(queries)
-        })?;
+        })
+        .context("Hook rendering failed")
+        .suggestion("Check your template code for bugs.")?;
 
         let headers = hook.headers
             .split('\n')

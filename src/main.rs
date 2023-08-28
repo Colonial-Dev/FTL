@@ -47,7 +47,33 @@ fn main() -> Result<()> {
     info!("See {REPOSITORY} for more information.");
 
     let ctx = InnerContext::init()?;
-    ctx.db.reinitialize()?;
+    ctx.db.clear()?;
+
+    use common::{
+        Command::*,
+        RevisionSubcommand::*,
+        DatabaseSubcommand::*,
+    };
+    
+    match &ctx.args.command {
+        Build { watch, serve, full, .. } => {
+
+        },
+        Serve => {
+            let rev_id = render::prepare(&ctx)?;
+            let renderer = Renderer::new(&ctx, &rev_id)?;
+            
+            renderer.render_revision()?;
+
+            InnerServer::new(&ctx, renderer).serve()?;
+        }
+        Db(subcommand) => match subcommand {
+            Stat => todo!(),
+            Compress => ctx.db.compress()?,
+            Clear => ctx.db.clear()?,
+        }
+        _ => todo!()
+    }
 
     let rev_id = render::prepare(&ctx)?;
     let renderer = Renderer::new(&ctx, &rev_id)?;

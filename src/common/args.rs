@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 #[command(author, version, about, long_about = None)]
 pub struct Arguments {
     #[command(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 
 impl Arguments {}
@@ -12,7 +12,10 @@ impl Arguments {}
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Interactively create a new FTL site.
-    Init,
+    Init {
+        /// The root URL for the new site (e.g. `https://example.com`)
+        root_url: String,
+    },
     /// Invoke the FTL build pipeline.
     Build {
         /// Stay resident and trigger a new build whenever changes to the site source are detected.

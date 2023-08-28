@@ -51,12 +51,16 @@ impl Database {
     pub fn open(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
 
-        let rw_pool = Pool::open(&path, *THREADS as usize, OpenFlags::new().set_read_write());
+        let rw_pool = Pool::open(
+            &path, 
+            *THREADS as usize, 
+            OpenFlags::new().set_read_write().set_create()
+        );
 
         let ro_pool = Pool::open(
             &path,
             BLOCKING_THREADS as usize,
-            OpenFlags::new().set_read_only(),
+            OpenFlags::new().set_read_only().set_create(),
         );
 
         Self {
@@ -67,7 +71,11 @@ impl Database {
         }
     }
 
-    pub fn reinitialize(&self) -> Result<()> {
+    pub fn compress(&self) -> Result<()> {
+        todo!()
+    }
+
+    pub fn clear(&self) -> Result<()> {
         let _guard = self.write_lock();
         let conn = self.get_rw()?;
 

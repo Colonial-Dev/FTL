@@ -7,7 +7,7 @@ use toml::Value;
 use crate::db::{Page, Queryable, Statement, StatementExt, TomlMap, DEFAULT_QUERY, NO_PARAMS};
 use crate::prelude::*;
 
-static TOML_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?s)\+\+\+.*?\+\+\+"#).unwrap());
+static TOML_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\+\+\+.*?\+\+\+").unwrap());
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Frontmatter {

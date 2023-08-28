@@ -44,8 +44,6 @@ pub struct Render {
     pub smart_punctuation: bool,
     pub highlight_code: bool,
     pub render_emoji: bool,
-    pub minify_html: bool,
-    pub minify_css: bool,
 }
 
 impl Config {

@@ -10,8 +10,6 @@ external_links_no_referrer = false
 smart_punctuation = true
 highlight_code = true
 render_emoji = true
-minify_html = false
-minify_css = false
 
 [serve]
 address = "0.0.0.0"

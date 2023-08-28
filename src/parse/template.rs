@@ -57,7 +57,7 @@ impl<'i> Dependency<'i> {
             ),
             delimited(
                 tag("'"),
-                escaped(is_not(r#"\'"#), '\\', one_of(r#"'"#)),
+                escaped(is_not(r"\'"), '\\', one_of(r#"'"#)),
                 tag("'"),
             ),
         ))(input)
