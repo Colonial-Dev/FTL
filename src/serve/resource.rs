@@ -88,14 +88,18 @@ impl Resource {
         ";
         
         // We trim any leading slashes, just in case the user accidentally adds one.
-        let path = uri.path().trim_end_matches('/');
+        let path = match uri.path() {
+            "/" => "/", // Special case for the root path.
+            path => path.trim_end_matches('/')
+        };
+
         let path_and_query = uri
             .path_and_query()
-            .map(|path| {
-                path.as_str()
+            .map(|path| match path.as_str() {
+                "/" => "/", 
+                path => path.trim_end_matches('/')
             })
-            .unwrap_or("")
-            .trim_end_matches('/');
+            .unwrap_or("");
         
         // We need to check the path both with and without the query,
         // in order to work with both versioned assets and hooks.

@@ -45,7 +45,6 @@ fn main() -> Result<()> {
     info!("FTL v{VERSION} by {AUTHORS}");
     info!("This program is licensed under the GNU Affero General Public License, version 3.");
     info!("See {REPOSITORY} for more information.");
-    println!();
 
     let ctx = InnerContext::init()?;
     ctx.db.reinitialize()?;

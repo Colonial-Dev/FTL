@@ -22,7 +22,7 @@ pub struct InputFile {
     pub contents: Option<String>,
     /// Whether or not the file's contents are stored in the database.
     /// - When `true`, the file's contents are written to the database as UTF-8 TEXT.
-    /// - When `false`, the file is copied to `.ftl/cache` and renamed to its hash.
+    /// - When `false`, the file is copied to `.ftl/cache` and renamed to its ID.
     pub inline: bool,
 }
 

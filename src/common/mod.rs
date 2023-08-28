@@ -51,6 +51,10 @@ impl RevisionID {
     pub fn into_inner(&self) -> Arc<String> {
         self.0.clone()
     }
+
+    pub fn as_inner(&self) -> &Arc<String> {
+        &self.0
+    }
 }
 
 impl Display for RevisionID {

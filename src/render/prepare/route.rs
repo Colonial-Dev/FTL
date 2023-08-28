@@ -108,7 +108,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 .map(Option::unwrap_or_default);
 
             let route = match ext {
-                Some(ext) => format!("/static/{filename}.{ext}?v={}", rev_id),
+                Some(ext) => format!("/static/{filename}.{ext}?v={}", row.id),
                 None => format!("/static/{filename}?=v{}", row.id),
             };
 

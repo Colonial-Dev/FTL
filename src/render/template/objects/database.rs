@@ -51,8 +51,7 @@ impl DbHandle {
                 format!("{}{path}", SITE_ASSET_PATH),
                 format!("{}{path}", SITE_CONTENT_PATH),
                 path.to_owned(),
-            ]
-            .into_iter(),
+            ],
         );
 
         let query = "
@@ -80,6 +79,7 @@ impl DbHandle {
                     inner: Value::from_serializable(&file),
                     base: file,
                     ctx: Arc::clone(&self.ctx),
+                    rev_id: self.rev_id.clone(),
                 })
                 .map(Value::from_object);
             }

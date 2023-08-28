@@ -1,4 +1,3 @@
-mod error;
 mod resource;
 
 use std::net::SocketAddr;
@@ -73,6 +72,8 @@ impl InnerServer {
         let ip = self.ctx.serve.address.parse()?;
         let port = self.ctx.serve.port;
 
+        info!("Binding to address {ip}:{port}...");
+
         let addr = SocketAddr::new(
             ip,
             port
@@ -81,6 +82,8 @@ impl InnerServer {
         axum::Server::bind(&addr)
             .serve(app.into_make_service())
             .await?;
+
+        info!("Webserver terminated successfully.");
 
         Ok(())
     }
@@ -126,7 +129,10 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
         return cached.into_response();
     }
 
-    let resource = Resource::from_uri(&server, uri.clone()).await;
+    let resource = Resource::from_uri(
+        &server,
+        uri.clone()
+    ).await;
 
     if resource.should_cache() {
         debug!("Caching {uri:?}");

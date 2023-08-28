@@ -230,11 +230,6 @@ impl Ticket {
         Ok(html_buffer)
     }
 
-    #[inline(always)]
-    fn postprocess(&self, state: &State, buffer: String) -> Result<String> {
-        todo!()
-    }
-
     fn eval_shortcode(&self, state: &State, code: Shortcode) -> Result<String> {
         let name = format!("{}.html", code.name);
 
