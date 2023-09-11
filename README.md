@@ -44,7 +44,7 @@ Dependencies:
 
 Installation is easy - just use `cargo install`, and FTL will be automatically compiled and added to your `PATH`.
 ```sh
-cargo install --locked --git https://github.com/Colonial-Dev/FTL --branch latest
+cargo install --locked --git https://github.com/Colonial-Dev/FTL --branch master
 ```
 
 The same command can be used to update FTL in the future.

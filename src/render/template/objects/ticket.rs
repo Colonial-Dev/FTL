@@ -6,7 +6,7 @@ use minijinja_stack_ref::scope;
 use serde::Serialize;
 
 use super::*;
-use crate::db::{Page, Relation};
+use crate::db::*;
 use crate::parse::{Content, Shortcode};
 use crate::prelude::*;
 
@@ -18,6 +18,7 @@ use crate::prelude::*;
 #[derive(Debug)]
 pub struct Ticket {
     pub dependencies: SegQueue<(Relation, String)>,
+    pub rev_id: RevisionID,
     pub source: String,
     pub ctx: Context,
     pub page: Page,
@@ -32,9 +33,9 @@ struct SerTicket<'a> {
 }
 
 impl Ticket {
-    pub fn new(ctx: &Context, page: Page, source: &str) -> Self {
+    pub fn new(ctx: &Context, rev_id: &RevisionID, page: Page, source: &str) -> Self {
         // Slice off the page's frontmatter.
-        let source = source[page.offset as usize..].to_string();
+        let source = source[page.offset as usize..].to_owned();
         let inner = Value::from_serializable(&SerTicket {
             source: &source,
             page: &page,
@@ -42,6 +43,7 @@ impl Ticket {
 
         Self {
             dependencies: SegQueue::new(),
+            rev_id: rev_id.clone(),
             ctx: ctx.clone(),
             source,
             page,
@@ -82,8 +84,7 @@ impl Ticket {
     fn render(&self, state: &State) -> Result<Value> {
         let buffer = self.preprocess(state)?;
         let buffer = self.render_markdown(buffer)?;
-
-        // TODO HTML rewriting/postprocessing
+        let buffer = self.postprocess(state, buffer)?;
 
         Ok(Value::from_safe_string(buffer))
     }
@@ -193,8 +194,6 @@ impl Ticket {
                             buffer
                         };
                         
-                        // TODO use user provided anchor template if defined
-
                         let anchor = header.ident.unwrap_or(header.title);
                         let anchor = slug::slugify(anchor);
                         let anchor = indoc::formatdoc!("
@@ -228,6 +227,75 @@ impl Ticket {
         html::push_html(&mut html_buffer, parser);
 
         Ok(html_buffer)
+    }
+
+    #[inline(always)]
+    fn postprocess(&self, state: &State, buffer: String) -> Result<String> {
+        use lol_html::{element, HtmlRewriter, Settings};
+
+        let mut output = Vec::new();
+        {   
+            let element_content_handlers = vec![
+                element!("img", |el| {
+                    let src = el.get_attribute("src")
+                        .context("Tried to cachebust an img element without a src attribute")?;
+                    
+                    let lookup_targets = vec![
+                        format!("{}{}", &self.page.path.trim_end_matches("index.md"), src),
+                        format!("{}{src}", SITE_ASSET_PATH),
+                        format!("{}{src}", SITE_CONTENT_PATH),
+                        src.to_owned(),
+                    ];
+
+                    let query = "
+                        SELECT input_files.* FROM input_files
+                        JOIN revision_files ON revision_files.id = input_files.id
+                        WHERE revision_files.revision = ?1
+                        AND input_files.path IN (?2, ?3, ?4, ?5)
+                    ";
+
+                    let parameters = [
+                        (1, self.rev_id.as_ref()),
+                        (2, &*lookup_targets[0]),
+                        (3, &*lookup_targets[1]),
+                        (4, &*lookup_targets[2]),
+                        (5, &*lookup_targets[3]),
+                    ];
+
+                    let conn = self.ctx.db.get_ro()?;
+
+                    let mut reader = conn.prepare_reader(query, parameters.as_slice().into())?;
+
+                    match reader.next() {
+                        Some(file) => {
+                            let file: InputFile = file?;
+                    
+                            el.set_attribute("src", &file.cachebust())
+                                .context("Failed to set img element src attribute")?;
+                        }
+                        None => {
+                            Err(eyre!("Could not cachebust image tag with src attribute {src}"))?
+                        }
+                    }
+
+                    Ok(())
+                })
+            ];
+
+            let mut rewriter = HtmlRewriter::new(
+                Settings {
+                    element_content_handlers,
+                    ..Settings::default()
+                },
+                |c: &[u8]| output.extend_from_slice(c)
+            );
+
+            rewriter.write(buffer.as_bytes())?;
+        }
+
+        let buffer = String::from_utf8(output)?;
+
+        Ok(buffer)
     }
 
     fn eval_shortcode(&self, state: &State, code: Shortcode) -> Result<String> {

@@ -54,13 +54,13 @@ impl Database {
         let rw_pool = Pool::open(
             &path, 
             *THREADS as usize, 
-            OpenFlags::new().set_read_write().set_create()
+            OpenFlags::new().set_read_write()
         );
 
         let ro_pool = Pool::open(
             &path,
             BLOCKING_THREADS as usize,
-            OpenFlags::new().set_read_only().set_create(),
+            OpenFlags::new().set_read_only(),
         );
 
         Self {

@@ -26,10 +26,10 @@ pub const SITE_INTERNAL_PATH: &str = ".ftl/";
 pub const SITE_DB_PATH: &str = ".ftl/ftl.db";
 pub const SITE_CACHE_PATH: &str = ".ftl/cache/";
 
-pub const SITE_ASSET_PATH: &str = "/assets/";
-pub const SITE_HOOKS_PATH: &str = "/hooks/";
-pub const SITE_CONTENT_PATH: &str = "/content/";
-pub const SITE_TEMPLATE_PATH: &str = "/templates/";
+pub const SITE_ASSET_PATH: &str = "assets/";
+pub const SITE_HOOKS_PATH: &str = "hooks/";
+pub const SITE_CONTENT_PATH: &str = "content/";
+pub const SITE_TEMPLATE_PATH: &str = "templates/";
 
 /// The number of threads available on the system.
 /// *Defaults to 1 if the true value cannot be determined.*

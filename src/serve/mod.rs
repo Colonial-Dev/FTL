@@ -31,7 +31,7 @@ impl InnerServer {
         let rev_id = renderer.rev_id.clone();
 
         let cache = Cache::builder()
-            .max_capacity(ctx.serve.cache_max_size)
+            .max_capacity(ctx.serve.cache_max_size * 1024 * 1024)
             .time_to_idle(Duration::from_secs(ctx.serve.cache_tti))
             .time_to_live(Duration::from_secs(ctx.serve.cache_ttl))
             .weigher(|_, value: &Resource| {

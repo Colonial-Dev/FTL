@@ -1,5 +1,3 @@
-#![warn(clippy::all)]
-
 mod common;
 mod db;
 mod parse;
@@ -106,7 +104,7 @@ fn install_logging() {
     HookBuilder::new()
         .panic_section(indoc! {
             "Well, this is embarassing. It appears FTL has crashed!
-            Consider reporting the bug at \"https://github.com/SomewhereOutInSpace/FTL\"."
+            Consider reporting the bug at \"https://github.com/Colonial-Dev/FTL\"."
         })
         .capture_span_trace_by_default(true)
         //.display_env_section(false)

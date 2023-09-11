@@ -90,10 +90,13 @@ impl Renderer {
         let params = (1, self.rev_id.as_ref()).into();
 
         let mut source_query = conn.prepare(source_query)?;
+        
         let mut get_source = move |id: &str| {
             use sqlite::State;
+
             source_query.reset()?;
             source_query.bind((1, id))?;
+
             match source_query.next()? {
                 State::Row => String::read_query(&source_query),
                 State::Done => bail!("Could not find source for page with ID {id}."),
@@ -104,7 +107,7 @@ impl Renderer {
             .prepare_reader(page_query, params)?
             .map_ok(|page: Page| -> Result<_> {
                 let source = get_source(&page.id)?;
-                Ok(Ticket::new(&self.ctx, page, &source))
+                Ok(Ticket::new(&self.ctx, &self.rev_id, page, &source))
             })
             .flatten()
             .try_collect()?;

@@ -26,6 +26,31 @@ pub struct InputFile {
     pub inline: bool,
 }
 
+impl InputFile {
+    /// Given a path and input file ID, this function generates its cachebusted link
+    /// in the format "/static/{filename}.{ext (if it exists)}?v={id}".
+    pub fn cachebust(&self) -> String {
+        use std::ffi::OsStr;
+        use std::path::Path;
+
+        let filename = Path::new(&self.path)
+            .file_stem()
+            .map(OsStr::to_str)
+            .map(Option::unwrap)
+            .unwrap();
+
+        let ext = Path::new(&self.path)
+            .extension()
+            .map(OsStr::to_str)
+            .map(Option::unwrap_or_default);   
+
+        match ext {
+                Some(ext) => format!("/static/{filename}.{ext}?v={}", &self.id),
+                None => format!("/static/{filename}?=v{}", &self.id),
+        }
+    }
+}
+
 impl Insertable for InputFile {
     const TABLE_NAME: &'static str = "input_files";
     const COLUMN_NAMES: &'static [&'static str] =

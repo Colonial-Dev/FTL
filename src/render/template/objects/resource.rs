@@ -45,33 +45,12 @@ impl Resource {
     }
 
     fn cachebusted(&self) -> MJResult {
-        use std::path::Path;
-        use std::ffi::OsStr;
-
         // Only non-inline files have cachebusted routes.
         if self.base.inline {
             return Ok(Value::from(()));
         }
-
-        // TODO possibly extract this + original in prepare/route.rs
-        // into a single function to avoid divergence
-        let filename = Path::new(&self.base.path)
-            .file_stem()
-            .map(OsStr::to_str)
-            .map(Option::unwrap)
-            .unwrap();
-
-        let ext = Path::new(&self.base.path)
-            .extension()
-            .map(OsStr::to_str)
-            .map(Option::unwrap_or_default);   
-
-        let route = match ext {
-                Some(ext) => format!("/static/{filename}.{ext}?v={}", self.base.id),
-                None => format!("/static/{filename}?=v{}", self.base.id),
-        }; 
         
-        Ok(Value::from(route))
+        Ok(Value::from(self.base.cachebust()))
     }
     
     fn contents_bytes(&self) -> Result<Value> {

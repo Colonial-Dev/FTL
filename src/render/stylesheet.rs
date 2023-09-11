@@ -40,7 +40,7 @@ impl MapFs {
             SELECT path, contents FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
-            AND path LIKE '/assets/sass/%'
+            AND path LIKE 'assets/sass/%'
             AND extension IN ('sass', 'scss');
         ";
         let params = (1, rev_id.as_ref()).into();
@@ -49,7 +49,7 @@ impl MapFs {
             .prepare_reader(query, params)?
             .map_ok(|row: Row| {
                 // Shave off the 'assets/sass/' component of the path.
-                let path: PathBuf = row.path.iter().skip(3).collect();
+                let path: PathBuf = row.path.iter().skip(2).collect();
                 let bytes = row.contents.into_bytes();
                 (path, bytes)
             })
@@ -98,6 +98,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         SELECT NULL FROM output
         WHERE id = ?1
     ";
+
     let params = (1, hash.as_str()).into();
 
     if conn.exists(query, params)? {
@@ -134,7 +135,7 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE '/assets/sass/%'
+        AND path LIKE 'assets/sass/%'
         AND extension IN ('sass', 'scss')
         ORDER BY input_files.id
     ";
@@ -159,7 +160,7 @@ pub fn load_all_ids(ctx: &Context, rev_id: &RevisionID) -> Result<Vec<String>> {
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND path LIKE '/assets/sass/%'
+        AND path LIKE 'assets/sass/%'
         AND extension IN ('sass', 'scss')
     ";
     let params = (1, rev_id.as_ref()).into();

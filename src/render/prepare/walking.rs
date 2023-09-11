@@ -48,6 +48,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     };
 
     debug!("Walk found item at {path}");
+
     // Note: we filter out directories before calling this function.
     let mut contents = std::fs::read(path)?;
 
@@ -92,7 +93,7 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     let file = InputFile {
         id: hex_id,
         hash,
-        path: path.trim_start_matches('.').into(),
+        path: path.trim_start_matches("./").into(),
         extension,
         contents,
         inline,
@@ -113,7 +114,7 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
         insert_file(&file)?;
 
         if !file.inline {
-            let destination = PathBuf::from(format!(".ftl/cache/{}", &file.id));
+            let destination = PathBuf::from(format!("{SITE_CACHE_PATH}{}", &file.id));
 
             if !destination.exists() {
                 debug!("Caching non-inline file {:#?}", &file.path);

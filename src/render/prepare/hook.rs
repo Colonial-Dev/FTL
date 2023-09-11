@@ -34,7 +34,7 @@ pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         SELECT input_files.id, contents FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
-        AND input_files.path LIKE '/hooks/%'
+        AND input_files.path LIKE 'hooks/%'
         AND input_files.extension = 'toml'
     ";
 
