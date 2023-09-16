@@ -1,4 +1,4 @@
-mod prepare;
+pub mod prepare;
 mod stylesheet;
 mod template;
 
@@ -13,6 +13,7 @@ use crate::poll;
 use crate::prelude::*;
 
 pub use prepare::prepare;
+pub use prepare::prepare_with_id;
 
 #[derive(Debug)]
 pub struct Renderer {

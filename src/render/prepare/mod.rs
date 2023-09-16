@@ -18,3 +18,11 @@ pub fn prepare(ctx: &Context) -> Result<RevisionID> {
 
     Ok(rev_id)
 }
+
+pub fn prepare_with_id(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
+    frontmatter::parse_frontmatters(ctx, rev_id)?;
+    hook::create_hooks(ctx, rev_id)?;
+    route::create_routes(ctx, rev_id)?;
+
+    Ok(())
+}

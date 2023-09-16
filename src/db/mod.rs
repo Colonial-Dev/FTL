@@ -81,6 +81,10 @@ impl Database {
 
         conn.execute(PRIME_DOWN)?;
         conn.execute(PRIME_UP)?;
+        conn.execute("VACUUM;")?;
+
+        std::fs::remove_dir_all(SITE_CACHE_PATH)?;
+        std::fs::create_dir_all(SITE_CACHE_PATH)?;
 
         Ok(())
     }

@@ -3,6 +3,7 @@ mod db;
 mod parse;
 mod render;
 mod serve;
+mod watch;
 
 mod prelude {
     pub use color_eyre::eyre::{
@@ -65,6 +66,7 @@ fn main() -> Result<()> {
 
             InnerServer::new(&ctx, renderer).serve()?;
         }
+        Revision(subcommand) => todo!(),
         Db(subcommand) => match subcommand {
             Stat => todo!(),
             Compress => ctx.db.compress()?,
@@ -75,6 +77,7 @@ fn main() -> Result<()> {
 
     let rev_id = render::prepare(&ctx)?;
     let renderer = Renderer::new(&ctx, &rev_id)?;
+    
     renderer.render_revision()?;
 
     let server = InnerServer::new(&ctx, renderer);

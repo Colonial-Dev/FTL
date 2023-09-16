@@ -9,7 +9,7 @@ use super::{Arguments, Config};
 use crate::db::Database;
 use crate::prelude::*;
 
-/// Type alias for an atomically-refcounted instance of [`InnerState`].
+/// Type alias for an atomically-refcounted instance of [`InnerContext`].
 pub type Context = Arc<InnerContext>;
 
 /// Inner representation of global program context.

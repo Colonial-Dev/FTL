@@ -84,7 +84,7 @@ impl Ticket {
     fn render(&self, state: &State) -> Result<Value> {
         let buffer = self.preprocess(state)?;
         let buffer = self.render_markdown(buffer)?;
-        let buffer = self.postprocess(state, buffer)?;
+        let buffer = self.postprocess(buffer)?;
 
         Ok(Value::from_safe_string(buffer))
     }
@@ -218,19 +218,23 @@ impl Ticket {
     #[inline(always)]
     fn render_markdown(&self, buffer: String) -> Result<String> {
         use pulldown_cmark::{html, Options, Parser};
+        
+        let mut options = Options::all();
 
-        // TODO build options from Context config field
-        let options = Options::all();
+        if !self.ctx.render.smart_punctuation {
+            options.remove(Options::ENABLE_SMART_PUNCTUATION);
+        }
+
         let parser = Parser::new_ext(&buffer, options);
-
         let mut html_buffer = String::new();
+
         html::push_html(&mut html_buffer, parser);
 
         Ok(html_buffer)
     }
 
     #[inline(always)]
-    fn postprocess(&self, state: &State, buffer: String) -> Result<String> {
+    fn postprocess(&self, buffer: String) -> Result<String> {
         use lol_html::{element, HtmlRewriter, Settings};
 
         let mut output = Vec::new();
@@ -392,6 +396,7 @@ impl StructObject for Ticket {
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
+        // TODO - is this out of sync?
         Some(&["source", "id", "template", "draft", "attributes", "extra"])
     }
 }

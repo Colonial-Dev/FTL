@@ -14,12 +14,13 @@ use crate::prelude::*;
 /// An interface for types that can be serialized and inserted into the database.
 pub trait Insertable {
     const TABLE_NAME: &'static str;
+    const INSERT_TYPE: &'static str = "INSERT OR IGNORE INTO";
     const COLUMN_NAMES: &'static [&'static str];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()>;
 
     fn default_query() -> String {
-        let mut query = format!("INSERT OR IGNORE INTO {}\n VALUES(", Self::TABLE_NAME);
+        let mut query = format!("{} {}\n VALUES(", Self::INSERT_TYPE, Self::TABLE_NAME);
         let mut columns = Self::COLUMN_NAMES.iter().peekable();
 
         while let Some(column) = columns.next() {

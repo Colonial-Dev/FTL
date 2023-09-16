@@ -79,6 +79,7 @@ pub struct Output {
 
 impl Insertable for Output {
     const TABLE_NAME: &'static str = "output";
+    const INSERT_TYPE: &'static str = "INSERT OR REPLACE INTO";
     const COLUMN_NAMES: &'static [&'static str] = &["id", "kind", "content"];
 
     fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
