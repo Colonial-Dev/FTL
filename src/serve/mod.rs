@@ -14,7 +14,7 @@ use moka::future::Cache;
 use resource::*;
 
 use crate::prelude::*;
-use crate::render::{prepare_with_id, Renderer};
+use crate::render::Renderer;
 use crate::watch::init_watcher;
 
 type Server = Arc<InnerServer>;
@@ -65,21 +65,17 @@ impl InnerServer {
     async fn _serve(self: &Server) -> Result<()> {
         let server = self.clone();
 
-        tokio::task::spawn(async move { loop {
+        tokio::task::spawn(async move {
             let (_debouncer, mut rx) = init_watcher(&server.ctx)
                 .expect("Failed to create watcher");
 
-            match rx.recv().await {
-                Ok(id) => {
-                    server.migrate_revision(id)
-                        .unwrap_or_else(|err| error!("Failed to migrate revision - {err:?}"))
-                },
-                Err(_) => {
-                    error!("Watch receiver closed - this shouldn't happen!");
-                    break;
-                }
+            while let Ok(id) = rx.recv().await {
+                server.migrate_revision(id)
+                    .unwrap_or_else(|err| error!("Failed to migrate revision - {err:?}"))
             }
-        }});
+
+            error!("Watch receiver closed - this shouldn't happen!");
+        });
 
         let app = Router::new()
             .route("/", get(fetch_resource))
@@ -130,7 +126,8 @@ impl InnerServer {
             })?;
 
             Ok(error_page)
-        } else {
+        } 
+        else {
             Ok(format!(
                 "{} {}",
                 code.as_u16(),
@@ -142,10 +139,8 @@ impl InnerServer {
     fn migrate_revision(&self, rev_id: RevisionID) -> Result<()> {
         info!("Migrating to revision {rev_id}...");
 
-        prepare_with_id(&self.ctx, &rev_id)?;
-
         let renderer = Renderer::new(&self.ctx, &rev_id)?;
-        renderer.render_revision()?;
+        renderer.render()?;
 
         self.renderer.swap(renderer.into());
         self.rev_id.swap(rev_id.into_inner());

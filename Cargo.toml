@@ -19,6 +19,7 @@ clap = { version = "4", features = ["derive"] }
 indicatif = { version = "0.17.6", features = ["rayon"] }
 dialoguer = "0.10.4"
 console = "0.15.7"
+tabled = "0.14.0"
 
 # Logging / Errors
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

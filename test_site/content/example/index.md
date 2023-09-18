@@ -4,7 +4,7 @@ template = "post.html"
 [attributes]
 title = "Example FTL output"
 date = 2022-09-14T15:00:00-05:00
-summary = "Generating arbitrary hypertext with just 4500 lines of code!"
+summary = "Generating arbitrary hypertext with just 5000 lines of code!"
 tags = ["test"]
 aliases = ["/foo/example", "/bar/example"]
 +++

@@ -5,12 +5,12 @@ mod walking;
 
 pub use frontmatter::parse_frontmatters;
 pub use route::create_routes;
-pub use walking::walk;
+pub use walking::walk_src;
 
 use crate::prelude::*;
 
 pub fn prepare(ctx: &Context) -> Result<RevisionID> {
-    let rev_id = walking::walk(ctx)?;
+    let rev_id = walking::walk_src(ctx)?;
 
     frontmatter::parse_frontmatters(ctx, &rev_id)?;
     hook::create_hooks(ctx, &rev_id)?;

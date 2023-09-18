@@ -116,7 +116,7 @@ impl Ticket {
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => {                    
                     let format = |code| {
-                        if let Some(name) = &self.ctx.render.code_template {
+                        if let Some(name) = &self.ctx.build.code_template {
                             let Ok(template) = state.env().get_template(name) else {
                                 bail!("Could not find specified codeblock template \"{name}\".");
                             };
@@ -165,7 +165,7 @@ impl Ticket {
                     }
                 },
                 Header(header) => {
-                    if let Some(name) = &self.ctx.render.anchor_template {
+                    if let Some(name) = &self.ctx.build.anchor_template {
                         let Ok(template) = state.env().get_template(name) else {
                             bail!("Could not find specified anchor template \"{name}\".");
                         };
@@ -221,7 +221,7 @@ impl Ticket {
         
         let mut options = Options::all();
 
-        if !self.ctx.render.smart_punctuation {
+        if !self.ctx.build.smart_punctuation {
             options.remove(Options::ENABLE_SMART_PUNCTUATION);
         }
 

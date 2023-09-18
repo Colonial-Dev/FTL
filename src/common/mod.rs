@@ -4,6 +4,7 @@
 mod args;
 mod config;
 mod context;
+mod output;
 
 use std::fmt::Display;
 use std::sync::Arc;

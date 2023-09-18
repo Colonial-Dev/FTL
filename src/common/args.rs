@@ -1,13 +1,21 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Arguments {
     #[command(subcommand)]
     pub command: Command,
+    /// If enabled, surpress all output.
+    #[arg(short, long, default_value_t = false)]
+    pub quiet: bool,
+    /// Enable debug logging. 
+    /// 
+    /// - Level 1 enables ERROR, WARN and INFO.
+    /// - Level 2 enables DEBUG.
+    /// - Level 3 and up enables TRACE.
+    #[clap(short, long, action = ArgAction::Count)]
+    pub verbose: u8,
 }
-
-impl Arguments {}
 
 #[derive(Debug, Subcommand)]
 pub enum Command {

@@ -10,7 +10,7 @@ use crate::db::{Connection, InputFile, Revision, RevisionFile, DEFAULT_QUERY, NO
 use crate::prelude::*;
 
 /// Walks the site directory for all valid content files.
-pub fn walk(ctx: &Context) -> Result<RevisionID> {
+pub fn walk_src(ctx: &Context) -> Result<RevisionID> {
     info!("Starting source directory walk...");
 
     let (handle, tx) = ctx.db.get_rw()?.prepare_consumer(consumer_handler);

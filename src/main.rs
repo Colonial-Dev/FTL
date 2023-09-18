@@ -39,30 +39,36 @@ use crate::render::Renderer;
 use crate::serve::InnerServer;
 
 fn main() -> Result<()> {
-    install_logging();
-    
-    info!("FTL v{VERSION} by {AUTHORS}");
-    info!("This program is licensed under the GNU Affero General Public License, version 3.");
-    info!("See {REPOSITORY} for more information.");
-
-    let ctx = InnerContext::init()?;
-    ctx.db.clear()?;
-
     use common::{
         Command::*,
         RevisionSubcommand::*,
         DatabaseSubcommand::*,
     };
     
+    let ctx = InnerContext::init()?;
+
+    match ctx.args.verbose {
+        0 => std::env::set_var("RUST_LOG", "none"),
+        1 => std::env::set_var("RUST_LOG", "info"),
+        2 => std::env::set_var("RUST_LOG", "debug"),
+        _ => std::env::set_var("RUST_LOG", "trace"),
+    }
+    
+    install_logging();
+    info!("FTL v{VERSION} by {AUTHORS}");
+    info!("This program is licensed under the GNU Affero General Public License, version 3.");
+    info!("See {REPOSITORY} for more information.");
+    
+    ctx.db.clear()?;
+
     match &ctx.args.command {
         Build { watch, serve, full, .. } => {
 
         },
         Serve => {
-            let rev_id = render::prepare(&ctx)?;
-            let renderer = Renderer::new(&ctx, &rev_id)?;
+            let renderer = Renderer::new_prepare(&ctx)?;
             
-            renderer.render_revision()?;
+            renderer.render()?;
 
             InnerServer::new(&ctx, renderer).serve()?;
         }
@@ -71,18 +77,9 @@ fn main() -> Result<()> {
             Stat => todo!(),
             Compress => ctx.db.compress()?,
             Clear => ctx.db.clear()?,
-        }
-        _ => todo!()
+        },
+        Init { .. } => unreachable!()
     }
-
-    let rev_id = render::prepare(&ctx)?;
-    let renderer = Renderer::new(&ctx, &rev_id)?;
-    
-    renderer.render_revision()?;
-
-    let server = InnerServer::new(&ctx, renderer);
-
-    server.serve()?;
 
     Ok(())
 }
@@ -114,6 +111,4 @@ fn install_logging() {
         //.display_location_section(false)
         .install()
         .expect("Could not install Eyre hooks!");
-
-    info!("Logging installed.")
 }

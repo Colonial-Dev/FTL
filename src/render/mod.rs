@@ -1,6 +1,11 @@
-pub mod prepare;
+mod prepare;
 mod stylesheet;
 mod template;
+
+use std::sync::atomic::{
+    AtomicBool,
+    Ordering
+};
 
 use crossbeam::channel::Receiver;
 use itertools::Itertools;
@@ -12,27 +17,41 @@ use crate::db::*;
 use crate::poll;
 use crate::prelude::*;
 
-pub use prepare::prepare;
-pub use prepare::prepare_with_id;
+pub use prepare::walk_src;
 
 #[derive(Debug)]
 pub struct Renderer {
     pub env: Environment<'static>,
     pub ctx: Context,
     pub rev_id: RevisionID,
+    flag: AtomicBool,
 }
 
 impl Renderer {
     pub fn new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
+        prepare::prepare_with_id(ctx, rev_id)?;
+        
         Ok(Self {
             env: template::setup_environment(ctx, rev_id)?,
             ctx: ctx.clone(),
             rev_id: rev_id.clone(),
+            flag: AtomicBool::new(false),
         })
     }
 
-    pub fn render_revision(&self) -> Result<()> {
+    pub fn new_prepare(ctx: &Context) -> Result<Self> {        
+        Self::new(
+            ctx,
+            &prepare::prepare(ctx)?
+        )
+    }
+
+    pub fn render(&self) -> Result<()> {
+        // TODO implement atomic flag check
+
         info!("Starting render for revision {}...", self.rev_id);
+
+        stylesheet::compile(&self.ctx, &self.rev_id)?;
 
         let conn = self.ctx.db.get_rw()?;
         let tickets = self.get_tickets(&conn)?;
@@ -57,7 +76,7 @@ impl Renderer {
             .join()
             .expect("Database consumer thread should not panic.")?;
 
-        stylesheet::compile(&self.ctx, &self.rev_id)?;
+        self.finalize_revision()?;
 
         info!("Finished rendering revison {}.", self.rev_id);
         Ok(())
@@ -115,6 +134,30 @@ impl Renderer {
 
         Ok(tickets)
     }
+
+    fn finalize_revision(&self) -> Result<()> {
+        let conn = self.ctx.db.get_rw()?;
+
+        let query = "
+            UPDATE revisions
+            SET time = datetime('now', 'localtime'),
+                stable = TRUE
+            WHERE revisions.id = ?1
+        ";
+
+        let mut query = conn.prepare(query)?;
+
+        query.bind((1, self.rev_id.as_ref()))?;
+
+        poll!(query);
+
+        self.flag.store(
+            true,
+            Ordering::SeqCst
+        );
+
+        Ok(())
+    }
 }
 
 fn consumer_handler(conn: &Connection, rx: Receiver<(Ticket, String)>) -> Result<()> {
@@ -147,7 +190,8 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(Ticket, String)>) -> Result
             })?
         }
 
-        println!("{output}");
+        debug!("{output}");
+        
         insert_output(&Output {
             id: Some(id),
             kind: OutputKind::Page,

@@ -10,12 +10,10 @@ use notify_debouncer_full::{
 use tokio::sync::broadcast::*;
 
 use crate::prelude::*;
-use crate::render::prepare;
+use crate::render;
 
 pub fn init_watcher(ctx: &Context) -> Result<(Debouncer<impl Watcher, impl FileIdCache>, Receiver<RevisionID>)> {
     let ctx = ctx.clone();
-    let conn = ctx.db.get_ro()?;
-
     let (tx, rx) = channel(16);
 
     let mut debouncer = new_debouncer(
@@ -32,11 +30,13 @@ pub fn init_watcher(ctx: &Context) -> Result<(Debouncer<impl Watcher, impl FileI
                         });
 
                     debug!("Watcher received events - {events:?}");
-                    debug!("Any files changed? {changed}");
 
-                    if !changed { return; }
+                    if !changed {
+                        debug!("No files changed - early return.");
+                        return;
+                    }
 
-                    match prepare::walk(&ctx) {
+                    match render::walk_src(&ctx) {
                         Ok(id) => {
                             let _ = tx.send(id);
                         }

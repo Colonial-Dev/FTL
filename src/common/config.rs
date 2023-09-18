@@ -10,7 +10,6 @@ use crate::prelude::*;
 pub struct Config {
     pub root_url: String,
     pub build: Build,
-    pub render: Render,
     pub serve: Serve,
     #[serde(default)]
     pub extra: HashMap<String, toml::Value>,
@@ -23,6 +22,11 @@ pub struct Build {
     pub external_links_new_tab: bool,
     pub external_links_no_follow: bool,
     pub external_links_no_referrer: bool,
+    pub anchor_template: Option<String>,
+    pub code_template: Option<String>,
+    pub smart_punctuation: bool,
+    pub highlight_code: bool,
+    pub render_emoji: bool,
 }
 
 impl Default for Build {
@@ -32,18 +36,13 @@ impl Default for Build {
             external_links_new_tab: false,
             external_links_no_follow: false,
             external_links_no_referrer: false,
+            anchor_template: None,
+            code_template: None,
+            smart_punctuation: false,
+            highlight_code: true,
+            render_emoji: true,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Default, Debug)]
-#[serde(default)]
-pub struct Render {
-    pub anchor_template: Option<String>,
-    pub code_template: Option<String>,
-    pub smart_punctuation: bool,
-    pub highlight_code: bool,
-    pub render_emoji: bool,
 }
 
 impl Config {

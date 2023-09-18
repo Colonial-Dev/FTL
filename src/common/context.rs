@@ -53,6 +53,7 @@ impl Deref for InnerContext {
 /// In no particular order, this function:
 /// -
 fn validate_env() -> Result<PathBuf> {
+    // TODO extend this
     let mut current_dir = env::current_dir()?;
 
     if env::var("FTL_TEST_MODE").is_ok() {
