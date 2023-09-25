@@ -24,6 +24,7 @@ pub struct InnerContext {
 impl InnerContext {
     pub fn init() -> Result<Context> {
         let args = Arguments::parse();
+        // TODO handle init subcommand case
         let dir = validate_env()?;
 
         let config = dir.join(CONFIG_FILENAME);

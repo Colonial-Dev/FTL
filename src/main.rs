@@ -63,7 +63,20 @@ fn main() -> Result<()> {
 
     match &ctx.args.command {
         Build { watch, serve, full, .. } => {
+            if *full {
+                ctx.db.clear()?; 
+            }
 
+            Renderer::new_prepare(&ctx)?
+                .render()?;
+
+            if *serve {
+
+            }
+            
+            if *watch {
+
+            }
         },
         Serve => {
             let renderer = Renderer::new_prepare(&ctx)?;

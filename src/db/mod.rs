@@ -72,7 +72,35 @@ impl Database {
     }
 
     pub fn compress(&self) -> Result<()> {
-        todo!()
+        let _guard = self.write_lock();
+        let conn = self.get_rw()?;
+
+        conn.execute("
+            DELETE FROM revisions
+            WHERE pinned = FALSE
+            AND time NOT IN (
+                SELECT MAX(time) FROM revisions
+            )
+        ")?;
+
+        conn.execute("
+            DELETE FROM input_files
+            WHERE id NOT IN (
+                SELECT id FROM revision_files
+            )
+        ")?;
+
+        // TODO delete all cache files that aren't in revision_files.
+        // Algo:
+        // - Query all IDs.
+        // - Fold into a HashSet.
+        // - Iterate over the cache directory, removing any files that aren't found in the set.
+        // Not the most efficient, but this is a user-invoked function, so runtime isn't too important.
+
+        conn.execute("VACUUM;")?;
+        conn.execute("PRAGMA wal_checkpoint(FULL);")?;
+
+        Ok(())
     }
 
     pub fn clear(&self) -> Result<()> {

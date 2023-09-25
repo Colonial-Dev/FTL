@@ -125,6 +125,7 @@ impl Renderer {
 
         let tickets: Vec<_> = conn
             .prepare_reader(page_query, params)?
+            // TODO filter out draft pages where applicable
             .map_ok(|page: Page| -> Result<_> {
                 let source = get_source(&page.id)?;
                 Ok(Ticket::new(&self.ctx, &self.rev_id, page, &source))
