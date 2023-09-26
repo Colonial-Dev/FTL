@@ -4,7 +4,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
-use crate::db::{Page, Queryable, Statement, StatementExt, TomlMap, DEFAULT_QUERY, NO_PARAMS};
+use crate::record;
+use crate::db::*;
 use crate::prelude::*;
 
 static TOML_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)\+\+\+.*?\+\+\+").unwrap());
@@ -78,28 +79,19 @@ impl Into<Page> for Frontmatter {
     }
 }
 
-#[derive(Debug)]
-struct Row {
-    pub id: String,
-    pub path: String,
-    pub contents: String,
-}
-
-impl Queryable for Row {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            path: stmt.read_string("path")?,
-            contents: stmt.read_string("contents")?,
-        })
-    }
+record! {
+    Name     => Row,
+    id       => String,
+    path     => String,
+    contents => String
 }
 
 pub fn parse_frontmatters(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     info!("Starting frontmatter parsing for revision {}...", rev_id);
-    let conn = ctx.db.get_rw()?;
+    let mut conn = ctx.db.get_rw()?;
+    let txn = conn.transaction()?;
 
-    let query = "
+    let mut query = txn.prepare("
         SELECT id, path, contents FROM input_files
         WHERE EXISTS (
                 SELECT 1
@@ -112,28 +104,23 @@ pub fn parse_frontmatters(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 WHERE pages.id = input_files.id
         )
         AND input_files.extension = 'md';
-    ";
+    ")?;
 
-    let params = (1, rev_id).into();
-    let txn = conn.open_transaction()?;
-
-    let mut insert_page = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-    let mut insert_attr = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-
-    conn.prepare_reader(query, params)?
+    query.query_and_then([rev_id.as_ref()], Row::from_row)?
         .map_ok(extract_frontmatter)
         .flatten()
         .try_for_each(|page| -> Result<_> {
             let page = page?;
 
-            insert_page(&page)?;
+            page.insert(&txn)?;
             for attr in page.flatten_attrs() {
-                insert_attr(&attr)?;
+                attr.insert(&txn)?;
             }
 
             Ok(())
         })?;
 
+    query.finalize()?;
     txn.commit()?;
     info!("Done parsing frontmatters for revision {}", rev_id);
     Ok(())

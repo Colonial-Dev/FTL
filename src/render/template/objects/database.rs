@@ -3,10 +3,17 @@ use std::sync::Arc;
 
 use minijinja::value::*;
 use minijinja::State;
-use sqlite::{Bindable, Value as SQLValue};
+use rusqlite::{
+    Row,
+    Params,
+    ToSql,
+    params_from_iter,
+    types::Value as SQLValue
+};
 
 use super::*;
-use crate::db::{InputFile, Pool, Queryable, Statement, StatementExt, NO_PARAMS};
+use crate::db::Model;
+use crate::db::{InputFile, Pool};
 use crate::prelude::*;
 
 /// Dynamic object wrapper around a database connection pool.
@@ -31,7 +38,7 @@ impl DbHandle {
     pub fn query(&self, sql: String, params: Option<Value>) -> MJResult {
         match params {
             Some(params) => self.query_with_params(sql, params),
-            None => self.query_core(sql, NO_PARAMS),
+            None => self.query_core(sql, []),
         }
         .map_err(Wrap::wrap)
     }
@@ -54,38 +61,35 @@ impl DbHandle {
             ],
         );
 
-        let query = "
+        let mut get_source = conn.prepare("
             SELECT input_files.* FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
-            AND input_files.path = ?2
-        ";
+            AND input_files.path IN (?2, ?3, ?4, ?5)
+        ")?;
 
-        let mut query = conn.prepare(query)?;
-        let mut get_source = move |path: &str| -> Result<_> {
-            use sqlite::State;
-            query.reset()?;
-            query.bind((1, rev_id))?;
-            query.bind((2, path))?;
-            match query.next()? {
-                State::Row => Ok(Some(InputFile::read_query(&query)?)),
-                State::Done => Ok(None),
-            }
-        };
+        get_source.raw_bind_parameter(1, rev_id)?;
 
-        for target in &lookup_targets {
-            if let Some(file) = get_source(target)? {
-                return Ok(Resource {
-                    inner: Value::from_serializable(&file),
-                    base: file,
-                    ctx: Arc::clone(&self.ctx),
-                    rev_id: self.rev_id.clone(),
-                })
-                .map(Value::from_object);
-            }
+        for (i, target) in lookup_targets.iter().enumerate() {
+            get_source.raw_bind_parameter(i + 2, target)?;
         }
 
-        bail!("Could not resolve resource at path \"{path}\".")
+        let file = match get_source
+            .raw_query()
+            .and_then(InputFile::from_row)
+            .find(|res| res.is_ok()) 
+        {
+            Some(Ok(file)) => file,
+            _ => bail!("Could not resolve resource at path \"{path}\".")
+        };
+
+        Ok(Resource {
+            inner: Value::from_serializable(&file),
+            base: file,
+            ctx: Arc::clone(&self.ctx),
+            rev_id: self.rev_id.clone(),
+        })
+        .map(Value::from_object)
     }
 }
 
@@ -103,14 +107,13 @@ impl DbHandle {
                 let parameters = params
                     .try_iter()?
                     .map(Self::map_value)
-                    .enumerate()
-                    .try_fold(Vec::new(), |mut acc, (i, param)| -> Result<_> {
+                    .try_fold(Vec::new(), |mut acc, param| -> Result<_> {
                         // SQLite parameter indices start at 1, not 0.
-                        acc.push((i + 1, param?));
+                        acc.push(param?);
                         Ok(acc)
                     })?;
 
-                self.query_core(sql, Some(&parameters[..]))
+                self.query_core(sql, params_from_iter(parameters))
             }
             ValueKind::Map => {
                 if params
@@ -131,24 +134,25 @@ impl DbHandle {
 
                 let params_bindable: Vec<_> = parameters
                     .iter()
-                    .map(|(key, val)| (key.as_str(), val))
+                    .map(|(key, val)| (key.as_str(), val as &dyn ToSql))
                     .collect();
 
-                self.query_core(sql, Some(&params_bindable[..]))
+                self.query_core(sql, &params_bindable[..])
             }
             _ => {
-                let parameters = [(1, Self::map_value(params)?)];
-                self.query_core(sql, Some(&parameters[..]))
+                let parameters = [(&Self::map_value(params)? as &dyn ToSql)];
+                self.query_core(sql, &parameters[..])
             }
         }
     }
 
     /// Query the database using the provided SQL and optional parameters, converting the resulting
     /// rows into [`ValueMap`]s for use inside of Minijinja.
-    fn query_core(&self, sql: String, params: Option<impl Bindable>) -> Result<Value> {
+    fn query_core(&self, sql: String, params: impl Params) -> Result<Value> {
         self.pool
             .get()?
-            .prepare_reader(sql, params)?
+            .prepare(&sql)?
+            .query_and_then(params, ValueMap::from_row)?
             .try_fold(Vec::new(), |mut acc, map| -> Result<_> {
                 let map: ValueMap = map?;
                 acc.push(Value::from_struct_object(map));
@@ -168,14 +172,14 @@ impl DbHandle {
     fn map_value(value: Value) -> Result<SQLValue> {
         match value.kind() {
             ValueKind::Number => {
-                Ok(SQLValue::Float(
+                Ok(SQLValue::Real(
                     f64::try_from(value.clone()).or_else(|_| {
                         i64::try_from(value).map(|x| x as f64)
                     })?
                 ))
             }
             ValueKind::String => {
-                Ok(SQLValue::String(
+                Ok(SQLValue::Text(
                     String::try_from(value)?
                 ))
             },
@@ -223,6 +227,27 @@ impl Object for DbHandle {
 #[derive(Debug)]
 pub struct ValueMap(HashMap<String, Value>);
 
+impl ValueMap {
+    pub fn from_row(row: &Row) -> Result<Self> {
+        let stmt = row.as_ref();
+        let mut map = HashMap::with_capacity(stmt.column_count());
+
+        for column in stmt.column_names() {
+            let value = match row.get(column)? {
+                SQLValue::Blob(bytes) => Value::from(bytes),
+                SQLValue::Real(float) => Value::from(float),
+                SQLValue::Integer(int) => Value::from(int),
+                SQLValue::Null => Value::from(()),
+                SQLValue::Text(str) => Value::from(str)
+            };
+
+            map.insert(column.to_owned(), value);
+        }
+
+        Ok(Self(map))
+    }
+}
+
 impl std::fmt::Display for ValueMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.0)
@@ -243,7 +268,7 @@ impl StructObject for ValueMap {
     }
 }
 
-impl Queryable for ValueMap {
+/*impl Queryable for ValueMap {
     fn read_query(stmt: &Statement<'_>) -> Result<Self> {
         let mut map = HashMap::with_capacity(stmt.column_count());
 
@@ -261,4 +286,4 @@ impl Queryable for ValueMap {
 
         Ok(Self(map))
     }
-}
+}*/

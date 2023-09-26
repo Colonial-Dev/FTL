@@ -1,6 +1,4 @@
-use sqlite::Statement;
-
-use super::*;
+use crate::{model, enum_sql};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -22,34 +20,14 @@ impl From<i64> for Relation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Dependency {
-    pub relation: Relation,
-    pub parent: String,
-    pub child: String,
-}
+enum_sql!(Relation);
 
-impl Insertable for Dependency {
-    const TABLE_NAME: &'static str = "dependencies";
-    const COLUMN_NAMES: &'static [&'static str] = &["relation", "parent", "child"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":relation", self.relation as i64))?;
-        stmt.bind((":parent", self.parent.as_str()))?;
-        stmt.bind((":child", self.child.as_str()))?;
-
-        Ok(())
-    }
-}
-
-impl Queryable for Dependency {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            relation: stmt.read_i64("relation").map(Relation::from)?,
-            parent: stmt.read_string("parent")?,
-            child: stmt.read_string("child")?,
-        })
-    }
+model! {
+    Name     => Dependency,
+    Table    => "dependencies",
+    relation => Relation,
+    parent   => String,
+    child    => String
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,33 +48,12 @@ impl From<i64> for OutputKind {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Output {
-    pub id: Option<String>,
-    pub kind: OutputKind,
-    pub content: String,
-}
+enum_sql!(OutputKind);
 
-impl Insertable for Output {
-    const TABLE_NAME: &'static str = "output";
-    const INSERT_TYPE: &'static str = "INSERT OR REPLACE INTO";
-    const COLUMN_NAMES: &'static [&'static str] = &["id", "kind", "content"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_deref()))?;
-        stmt.bind((":kind", self.kind as i64))?;
-        stmt.bind((":content", self.content.as_str()))?;
-
-        Ok(())
-    }
-}
-
-impl Queryable for Output {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_optional_str("id")?,
-            kind: stmt.read_i64("kind").map(OutputKind::from)?,
-            content: stmt.read_string("content")?,
-        })
-    }
+model! {
+    Name    => Output,
+    Table   => "output",
+    id      => Option<String>,
+    kind    => OutputKind,
+    content => String
 }

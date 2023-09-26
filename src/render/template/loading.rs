@@ -3,9 +3,9 @@
 use itertools::Itertools;
 use minijinja::Environment;
 
-use crate::db::{Connection, Queryable, Statement, StatementExt, AUX_DOWN, AUX_UP};
+use crate::record;
+use crate::db::{Connection, AUX_DOWN, AUX_UP};
 use crate::parse::Dependency;
-use crate::poll;
 use crate::prelude::*;
 
 const BUILTINS: &[&str] = &[
@@ -13,39 +13,32 @@ const BUILTINS: &[&str] = &[
     include_str!("builtins/eval.html"),
 ];
 
-#[derive(Debug)]
-struct Row {
-    pub id: String,
-    pub path: String,
-    pub contents: String,
-}
-
-impl Queryable for Row {
-    fn read_query(row: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: row.read_string("id")?,
-            path: row.read_string("path")?,
-            contents: row.read_string("contents")?,
-        })
-    }
+record! {
+    Name     => Row,
+    id       => String,
+    path     => String,
+    contents => String
 }
 
 /// Loads all user-provided and builtin templates into a [`Source`]
 pub fn setup_templates(ctx: &Context, rev_id: &RevisionID, env: &mut Environment) -> Result<()> {
-    let conn = ctx.db.get_rw()?;
-
-    let query = "
+    let mut conn = ctx.db.get_rw()?;
+    
+    let mut query = conn.prepare("
         SELECT input_files.id, path, contents FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND input_files.extension = 'html'
         AND input_files.contents NOT NULL;
-    ";
-    let params = Some((1, rev_id.as_ref()));
+    ")?;
 
-    let rows: Vec<_> = conn.prepare_reader(query, params)?.try_collect()?;
+    let rows: Vec<_> = query
+        .query_and_then([rev_id.as_ref()], Row::from_row)?
+        .try_collect()?;
 
-    compute_dependencies(&conn, &rows)?;
+    query.finalize()?;
+
+    compute_dependencies(&mut conn, &rows)?;
 
     rows.into_iter()
         .map(|row| {
@@ -71,17 +64,17 @@ fn load_builtins() -> impl Iterator<Item = (String, String)> {
         .map(|(name, content)| (name.to_owned(), content.to_owned()))
 }
 
-fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
-    let txn = conn.open_transaction()?;
+fn compute_dependencies(conn: &mut Connection, templates: &[Row]) -> Result<()> {
+    let txn = conn.transaction()?;
 
     // Open and setup an in-memory database for use as our working space.
-    conn.execute(AUX_UP)?;
+    txn.execute_batch(AUX_UP)?;
 
     // Purge old template dependencies from the on-disk database.
     //
     // We *could* differentiate them based on revision, but that would
     // be pointless since we only care about the current one.
-    conn.execute("DELETE FROM dependencies WHERE relation = 1;")?;
+    txn.execute("DELETE FROM dependencies WHERE relation = 1;", [])?;
 
     // Prepare all the necessary statements for dependency mapping.
     let insert_template = "
@@ -116,9 +109,9 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
         FROM template_name, transitives;
     ";
 
-    let mut insert_template = conn.prepare(insert_template)?;
-    let mut insert_dependency = conn.prepare(insert_dependency)?;
-    let mut query_set = conn.prepare(query_set)?;
+    let mut insert_template = txn.prepare(insert_template)?;
+    let mut insert_dependency = txn.prepare(insert_dependency)?;
+    let mut query_set = txn.prepare(query_set)?;
 
     // For each template:
     // 1. Trim its path to be relative to SITE_TEMPLATE_PATH.
@@ -126,10 +119,9 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     for row in templates {
         let trimmed_path = row.path.trim_start_matches(SITE_TEMPLATE_PATH);
 
-        insert_template.reset()?;
-        insert_template.bind((1, trimmed_path))?;
-        insert_template.bind((2, row.id.as_str()))?;
-        poll!(insert_template)
+        insert_template.execute(
+            [trimmed_path, row.id.as_str()]
+        )?;
     }
 
     // For each template:
@@ -137,10 +129,9 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     // 2. Insert them into the map.dependencies table.
     for row in templates {
         for dependency in Dependency::parse_many(&row.contents)? {
-            insert_dependency.reset()?;
-            insert_dependency.bind((1, row.id.as_str()))?;
-            insert_dependency.bind((2, dependency))?;
-            poll!(insert_dependency)
+            insert_dependency.execute(
+                [row.id.as_str(), dependency]
+            )?;
         }
     }
 
@@ -148,14 +139,16 @@ fn compute_dependencies(conn: &Connection, templates: &[Row]) -> Result<()> {
     // over its transitive dependencies and insert them into the
     // on-disk templates table.
     for row in templates {
-        query_set.reset()?;
-        query_set.bind((1, row.id.as_str()))?;
-        poll!(query_set)
+        query_set.execute([row.id.as_str()])?;
     }
+
+    insert_template.finalize()?;
+    insert_dependency.finalize()?;
+    query_set.finalize()?;
 
     // Commit the above changes, then detatch/destroy the in-memory database.
     txn.commit()?;
-    conn.execute(AUX_DOWN)?;
+    conn.execute_batch(AUX_DOWN)?;
 
     Ok(())
 }
@@ -174,27 +167,18 @@ mod test {
         }
     }
 
-    #[derive(serde::Deserialize, Debug)]
-    struct Template {
-        pub name: String,
-        pub id: String,
-    }
-
-    impl Queryable for Template {
-        fn read_query(row: &Statement<'_>) -> Result<Self> {
-            Ok(Self {
-                name: row.read_string("name")?,
-                id: row.read_string("id")?,
-            })
-        }
+    record! {
+        Name => Template,
+        name => String,
+        id   => String
     }
 
     #[test]
     #[allow(clippy::needless_collect)]
     /// Imperative "sanity check" that ensures dependency mapping works as expected.
-    fn sanity_check() {
-        let conn = Connection::open(IN_MEMORY).unwrap();
-        conn.execute(PRIME_UP).unwrap();
+    fn sanity_check() -> Result<()> {
+        let mut conn = Connection::open(IN_MEMORY).unwrap();
+        conn.execute_batch(PRIME_UP).unwrap();
 
         let alpha_row = Row {
             id: "ALPHA_ID".to_string(),
@@ -221,17 +205,16 @@ mod test {
         };
 
         let rows = vec![alpha_row, beta_row, gamma_row, delta_row];
-        compute_dependencies(&conn, &rows).unwrap();
+        compute_dependencies(&mut conn, &rows).unwrap();
 
-        let query = "
+        let mut query = conn.prepare("
             SELECT parent AS name, child AS id FROM dependencies
             WHERE parent = ?1
             AND relation = 1
-        ";
+        ")?;
 
-        let alpha_deps: Vec<Template> = conn
-            .prepare_reader(query, Some((1, rows[0].path.as_str())))
-            .unwrap()
+        let alpha_deps: Vec<Template> = query
+            .query_and_then([rows[0].path.as_str()], Template::from_row)?
             .map(Result::unwrap)
             .collect();
 
@@ -242,9 +225,8 @@ mod test {
         assert_eq!(alpha_deps[2].id, "DELTA_ID");
         assert_eq!(alpha_deps[3].id, "GAMMA_ID");
 
-        let beta_deps: Vec<Template> = conn
-            .prepare_reader(query, Some((1, rows[1].path.as_str())))
-            .unwrap()
+        let beta_deps: Vec<Template> = query
+            .query_and_then([rows[1].path.as_str()], Template::from_row)?
             .map(Result::unwrap)
             .collect();
 
@@ -254,9 +236,8 @@ mod test {
         assert_eq!(beta_deps[1].id, "DELTA_ID");
         assert_eq!(beta_deps[2].id, "GAMMA_ID");
 
-        let gamma_deps: Vec<Template> = conn
-            .prepare_reader(query, Some((1, rows[2].path.as_str())))
-            .unwrap()
+        let gamma_deps: Vec<Template> = query
+            .query_and_then([rows[2].path.as_str()], Template::from_row)?
             .map(Result::unwrap)
             .collect();
 
@@ -264,14 +245,15 @@ mod test {
         assert_eq!(gamma_deps[0].id, "GAMMA_ID");
         assert_eq!(gamma_deps[0].name, "gamma.html");
 
-        let delta_deps: Vec<Template> = conn
-            .prepare_reader(query, Some((1, rows[3].path.as_str())))
-            .unwrap()
+        let delta_deps: Vec<Template> = query
+            .query_and_then([rows[3].path.as_str()], Template::from_row)?
             .map(Result::unwrap)
             .collect();
 
         assert_eq!(delta_deps.len(), 1);
         assert_eq!(delta_deps[0].id, "DELTA_ID");
         assert_eq!(delta_deps[0].name, "delta.html");
+
+        Ok(())
     }
 }

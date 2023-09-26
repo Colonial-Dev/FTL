@@ -14,7 +14,6 @@ use rayon::prelude::*;
 use template::Ticket;
 
 use crate::db::*;
-use crate::poll;
 use crate::prelude::*;
 
 pub use prepare::walk_src;
@@ -40,10 +39,14 @@ impl Renderer {
     }
 
     pub fn new_prepare(ctx: &Context) -> Result<Self> {        
-        Self::new(
-            ctx,
-            &prepare::prepare(ctx)?
-        )
+        let rev_id = prepare::prepare(ctx)?;
+
+        Ok(Self {
+            env: template::setup_environment(ctx, &rev_id)?,
+            ctx: ctx.clone(),
+            rev_id,
+            flag: AtomicBool::new(false),
+        })
     }
 
     pub fn render(&self) -> Result<()> {
@@ -83,7 +86,7 @@ impl Renderer {
     }
 
     fn get_tickets(&self, conn: &Connection) -> Result<Vec<Ticket>> {
-        let page_query = "
+        let mut get_pages = conn.prepare("
             SELECT pages.* FROM pages
             JOIN revision_files ON revision_files.id = pages.id
             WHERE revision_files.revision = ?1
@@ -100,34 +103,20 @@ impl Renderer {
                     WHERE revision = ?1
                 )
             )
-        ";
+        ")?;
 
-        let source_query = "
+        let mut get_source = conn.prepare("
             SELECT contents FROM input_files
             WHERE id = ?1
-        ";
+        ")?;
 
-        let params = (1, self.rev_id.as_ref()).into();
-
-        let mut source_query = conn.prepare(source_query)?;
-        
-        let mut get_source = move |id: &str| {
-            use sqlite::State;
-
-            source_query.reset()?;
-            source_query.bind((1, id))?;
-
-            match source_query.next()? {
-                State::Row => String::read_query(&source_query),
-                State::Done => bail!("Could not find source for page with ID {id}."),
-            }
-        };
-
-        let tickets: Vec<_> = conn
-            .prepare_reader(page_query, params)?
+        let tickets: Vec<_> = get_pages
+            .query_and_then([self.rev_id.as_ref()], Page::from_row)?
             // TODO filter out draft pages where applicable
             .map_ok(|page: Page| -> Result<_> {
-                let source = get_source(&page.id)?;
+                let source = get_source
+                    .query_row([&page.id], |row| row.get::<_, String>(0))?;
+
                 Ok(Ticket::new(&self.ctx, &self.rev_id, page, &source))
             })
             .flatten()
@@ -139,18 +128,13 @@ impl Renderer {
     fn finalize_revision(&self) -> Result<()> {
         let conn = self.ctx.db.get_rw()?;
 
-        let query = "
+        conn.prepare("
             UPDATE revisions
             SET time = datetime('now', 'localtime'),
                 stable = TRUE
             WHERE revisions.id = ?1
-        ";
-
-        let mut query = conn.prepare(query)?;
-
-        query.bind((1, self.rev_id.as_ref()))?;
-
-        poll!(query);
+        ")?
+        .execute([self.rev_id.as_ref()])?;
 
         self.flag.store(
             true,
@@ -161,45 +145,37 @@ impl Renderer {
     }
 }
 
-fn consumer_handler(conn: &Connection, rx: Receiver<(Ticket, String)>) -> Result<()> {
-    let txn = conn.open_transaction()?;
-    let mut insert_output = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-    let mut insert_dep = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
+fn consumer_handler(conn: &mut Connection, rx: Receiver<(Ticket, String)>) -> Result<()> {
+    let txn = conn.transaction()?;
 
-    let mut remove_deps = conn.prepare("
+    let mut remove_deps = txn.prepare("
         DELETE FROM dependencies
         WHERE parent = ?1
     ")?;
 
-    let mut remove_deps = move |id: &str| -> Result<_> {
-        remove_deps.reset()?;
-        remove_deps.bind((1, id))?;
-        poll!(remove_deps);
-        Ok(())
-    };
-
     for (ticket, output) in rx {
         let id = ticket.page.id;
         
-        remove_deps(&id)?;
+        remove_deps.execute([&id])?;
 
         for (relation, child) in ticket.dependencies.into_iter() {
-            insert_dep(&Dependency {
+            Dependency {
                 relation,
                 parent: id.clone(),
                 child,
-            })?
+            }.insert(&txn)?;
         }
 
         debug!("{output}");
         
-        insert_output(&Output {
+        Output {
             id: Some(id),
             kind: OutputKind::Page,
             content: output
-        })?;
+        }.insert_or_update(&txn)?;
     }
 
+    remove_deps.finalize()?;
     txn.commit()?;
     Ok(())
 }

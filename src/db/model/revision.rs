@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use sqlite::Statement;
 
 use super::*;
+
+use crate::{model, enum_sql};
 
 /// Represents a file discovered by FTL's walking algorithm.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -51,101 +52,85 @@ impl InputFile {
     }
 }
 
-impl Insertable for InputFile {
+impl Model for InputFile {
     const TABLE_NAME: &'static str = "input_files";
-    const COLUMN_NAMES: &'static [&'static str] =
+    const COLUMNS: &'static [&'static str] =
         &["id", "hash", "path", "extension", "contents", "inline"];
 
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_str()))?;
-        stmt.bind((":hash", self.hash.as_str()))?;
-        stmt.bind((":path", self.path.to_string_lossy().as_ref()))?;
-        stmt.bind((":extension", self.extension.as_deref()))?;
-        stmt.bind((":contents", self.contents.as_deref()))?;
-        stmt.bind((":inline", self.inline as i64))?;
+    fn execute_insert(&self, sql: &str, conn: &impl Deref<Target = Connection>) -> Result<()> {
+        conn
+            .prepare_cached(sql)?
+            .execute(rusqlite::named_params! {
+                ":id"        : self.id,
+                ":hash"      : self.hash,
+                // TODO this isn't free
+                ":path"      : self.path.to_string_lossy().as_ref(),
+                ":extension" : self.extension,
+                ":contents"  : self.contents,
+                ":inline"    : self.inline
+            })?;
 
         Ok(())
     }
-}
 
-impl Queryable for InputFile {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
+    fn from_row(row: &Row) -> Result<Self> {
         Ok(Self {
-            id: stmt.read_string("id")?,
-            hash: stmt.read_string("hash")?,
-            path: stmt.read_string("path").map(PathBuf::from)?,
-            extension: stmt.read_optional_str("extension")?,
-            contents: stmt.read_optional_str("contents")?,
-            inline: stmt.read_bool("inline")?,
+            id        : row.get("id")?,
+            hash      : row.get("hash")?,
+            path      : row.get::<_, String>("path")?.into(),
+            extension : row.get("extension")?,
+            contents  : row.get("contents")?,
+            inline    : row.get("inline")?
         })
     }
 }
 
-/// Represents metadata about a revision.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Revision {
-    pub id: String,
-    pub name: Option<String>,
-    pub time: Option<String>,
-    pub pinned: bool,
-    pub stable: bool,
+model! {
+    /// Represents metadata about a revision.
+    Name   => Revision,
+    Table  => "revisions",
+    id     => String,
+    name   => Option<String>,
+    time   => Option<String>,
+    pinned => bool,
+    stable => bool
 }
 
-impl Insertable for Revision {
-    const TABLE_NAME: &'static str = "revisions";
-    const COLUMN_NAMES: &'static [&'static str] = &["id", "name", "time", "pinned", "stable"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_str()))?;
-        stmt.bind((":name", self.name.as_deref()))?;
-        stmt.bind((":time", self.time.as_deref()))?;
-        stmt.bind((":pinned", self.pinned as i64))?;
-        stmt.bind((":stable", self.stable as i64))?;
-
-        Ok(())
-    }
-}
-
-impl Queryable for Revision {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            name: stmt.read_optional_str("name")?,
-            time: stmt.read_optional_str("time")?,
-            pinned: stmt.read_bool("pinned")?,
-            stable: stmt.read_bool("stable")?,
-        })
-    }
-}
-
-/// Represents a revision and file ID pair.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RevisionFile {
+model! {
+    /// Represents a revision and file ID pair.
+    Name     => RevisionFile,
+    Table    => "revision_files",
     /// The file's ID value.
-    pub id: String,
+    id       => String,
     /// The revision ID associated with the file.
-    pub revision: String,
+    revision => String
 }
 
-impl Insertable for RevisionFile {
-    const TABLE_NAME: &'static str = "revision_files";
-    const COLUMN_NAMES: &'static [&'static str] = &["id", "revision"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_str()))?;
-        stmt.bind((":revision", self.revision.as_str()))?;
-
-        Ok(())
-    }
+model! {
+    Name     => Hook,
+    Table    => "hooks",
+    id       => String,
+    revision => String,
+    paths    => String,
+    template => String,
+    headers  => String,
+    cache    => bool
 }
 
-impl Queryable for RevisionFile {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            revision: stmt.read_string("revision")?,
-        })
-    }
+model! {
+    /// Represents a URL route to a file.
+    Name     => Route,
+    Table    => "routes",
+    /// The ID of the file this route points to.
+    id       => String,
+    /// The ID of the revision this route is associated with.
+    revision => String,
+    /// The URL this route qualifies.
+    /// 
+    /// Example: `/img/banner.png`, which points to `assets/img/banner.png`.
+    route    => String,
+    /// What type of asset this route points to.
+    kind     => RouteKind
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,42 +159,4 @@ impl From<i64> for RouteKind {
     }
 }
 
-/// Represents a URL route to a file.
-/// Maps directly to and from rows in the `routes` table.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Route {
-    /// The ID of the file this route points to.
-    pub id: String,
-    /// The ID of the revision this route is associated with.
-    pub revision: String,
-    /// The URL this route qualifies.
-    /// Example: `/img/banner.png`, which points to `assets/img/banner.png`.
-    pub route: String,
-    /// What type of asset this route points to.
-    pub kind: RouteKind,
-}
-
-impl Insertable for Route {
-    const TABLE_NAME: &'static str = "routes";
-    const COLUMN_NAMES: &'static [&'static str] = &["id", "revision", "route", "kind"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", &*self.id))?;
-        stmt.bind((":revision", self.revision.as_str()))?;
-        stmt.bind((":route", self.route.as_str()))?;
-        stmt.bind((":kind", self.kind as i64))?;
-
-        Ok(())
-    }
-}
-
-impl Queryable for Route {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            revision: stmt.read_string("revision")?,
-            route: stmt.read_string("route")?,
-            kind: stmt.read_i64("kind").map(RouteKind::from)?,
-        })
-    }
-}
+enum_sql!(RouteKind);

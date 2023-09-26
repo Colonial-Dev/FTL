@@ -6,9 +6,8 @@ use ahash::AHashMap;
 use grass::{Fs, Options};
 use itertools::Itertools;
 
-use crate::db::{
-    Output, OutputKind, Queryable, Route, RouteKind, StatementExt, DEFAULT_QUERY, NO_PARAMS,
-};
+use crate::record;
+use crate::db::*;
 use crate::prelude::*;
 
 /// Filesystem override for [`grass`] that preloads all known stylesheets and their paths into a hashmap.
@@ -17,39 +16,28 @@ struct MapFs {
     map: AHashMap<PathBuf, Vec<u8>>,
 }
 
-#[derive(Debug)]
-struct Row {
-    path: PathBuf,
-    contents: String,
-}
-
-impl Queryable for Row {
-    fn read_query(stmt: &sqlite::Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            path: stmt.read_string("path").map(PathBuf::from)?,
-            contents: stmt.read_string("contents")?,
-        })
-    }
+record! {
+    path     => String,
+    contents => String
 }
 
 impl MapFs {
     pub fn load(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
         let conn = ctx.db.get_ro()?;
 
-        let query = "
+        let mut stmt = conn.prepare("
             SELECT path, contents FROM input_files
             JOIN revision_files ON revision_files.id = input_files.id
             WHERE revision_files.revision = ?1
             AND path LIKE 'assets/sass/%'
             AND extension IN ('sass', 'scss');
-        ";
-        let params = (1, rev_id.as_ref()).into();
+        ")?;
 
-        let map: AHashMap<_, _> = conn
-            .prepare_reader(query, params)?
-            .map_ok(|row: Row| {
+        let map: AHashMap<_, _> = stmt
+            .query_and_then([rev_id.as_ref()], Record::from_row)?
+            .map_ok(|row: Record| {
                 // Shave off the 'assets/sass/' component of the path.
-                let path: PathBuf = row.path.iter().skip(2).collect();
+                let path: PathBuf = Path::new(&row.path).iter().skip(2).collect();
                 let bytes = row.contents.into_bytes();
                 (path, bytes)
             })
@@ -87,24 +75,24 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     let hash = load_hash(ctx, rev_id)?;
     let route = format!("/static/style.css?v={hash}");
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Route {
+    Route {
         id: hash.clone(),
         revision: rev_id.to_string(),
         route,
         kind: RouteKind::Stylesheet,
-    })?;
+    }.insert_or_update(&conn)?;
 
-    let query = "
+    let mut query = conn.prepare("
         SELECT NULL FROM output
         WHERE id = ?1
-    ";
+    ")?;
 
-    let params = (1, hash.as_str()).into();
-
-    if conn.exists(query, params)? {
+    if query.exists([hash.as_str()])? {
         info!("Stylesheet output already exists, skipping rebuild.");
         return Ok(());
     }
+
+    query.finalize()?;
 
     let fs = MapFs::load(ctx, rev_id)?;
     let options = Options::default().fs(&fs);
@@ -119,11 +107,11 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     let output = grass::from_path(path, &options)?;
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Output {
+    Output {
         id: hash.into(),
         kind: OutputKind::Stylesheet,
         content: output,
-    })?;
+    }.insert_or_update(&conn)?;
 
     Ok(())
 }
@@ -131,18 +119,17 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
     let conn = ctx.db.get_ro()?;
 
-    let query = "
+    let mut query = conn.prepare("
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND path LIKE 'assets/sass/%'
         AND extension IN ('sass', 'scss')
         ORDER BY input_files.id
-    ";
-    let params = (1, rev_id.as_ref()).into();
+    ")?;
 
-    let hash = conn
-        .prepare_reader(query, params)?
+    let hash = query
+        .query_and_then([rev_id.as_ref()], |row| row.get::<_, String>(0))?
         .fold_ok(seahash::SeaHasher::new(), |mut hasher, id: String| {
             id.hash(&mut hasher);
             hasher
@@ -156,17 +143,16 @@ pub fn load_hash(ctx: &Context, rev_id: &RevisionID) -> Result<String> {
 pub fn load_all_ids(ctx: &Context, rev_id: &RevisionID) -> Result<Vec<String>> {
     let conn = ctx.db.get_ro()?;
 
-    let query = "
+    let mut query = conn.prepare("
         SELECT input_files.id FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND path LIKE 'assets/sass/%'
         AND extension IN ('sass', 'scss')
-    ";
-    let params = (1, rev_id.as_ref()).into();
+    ")?;
 
-    let ids = conn
-        .prepare_reader(query, params)?
+    let ids = query
+        .query_and_then([rev_id.as_ref()], |row| row.get::<_, String>(0))?
         .try_collect()?;
 
     Ok(ids)

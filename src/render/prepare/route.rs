@@ -5,60 +5,57 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::record;
 use crate::db::*;
 use crate::prelude::*;
 
-#[derive(Debug)]
-struct Row {
-    id: String,
-    path: String,
-}
-
-impl Queryable for Row {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            path: stmt.read_string("path")?,
-        })
-    }
+record! {
+    Name => Row,
+    id   => String,
+    path => String
 }
 
 pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
-    let conn = ctx.db.get_rw()?;
+    let mut conn = ctx.db.get_rw()?;
+    let txn = conn.transaction()?;
 
-    let query_static = "
+    let mut query_static = txn.prepare("
         SELECT input_files.id, path FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND input_files.inline = FALSE
-    ";
+    ")?;
 
-    let query_hooks = "
+    let mut query_cachebust = txn.prepare("
+        SELECT input_files.id, path FROM input_files
+        JOIN revision_files ON revision_files.id = input_files.id
+        WHERE revision_files.revision = ?1
+        AND input_files.inline = FALSE
+    ")?;
+
+    let mut query_hooks = txn.prepare("
         SELECT * FROM hooks
         JOIN revision_files ON revision_files.id = hooks.id
         WHERE revision_files.revision = ?1
-    ";
+    ")?;
 
-    let query_pages = "
+    let mut query_pages = txn.prepare("
         SELECT input_files.id, path FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND input_files.extension = 'md'
-    ";
+    ")?;
 
-    let query_alias = "
+    let mut query_alias = txn.prepare("
         SELECT attributes.id, property AS path FROM attributes
         JOIN revision_files ON revision_files.id = attributes.id
         WHERE revision_files.revision = ?1
         AND attributes.kind = 'aliases'
-    ";
+    ")?;
 
-    let params = (1, rev_id).into();
-
-    let static_routes = conn
-        .prepare_reader(query_static, params)?
-        .map(|row| -> Result<_> {
-            let row: Row = row?;
+    let static_routes = query_static
+        .query_and_then([rev_id.as_ref()], Row::from_row)?
+        .map_ok(|row| -> Result<_> {
             let route = row
                 .path
                 .trim_start_matches(SITE_ASSET_PATH)
@@ -70,12 +67,12 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 route: format!("/{route}"),
                 kind: RouteKind::Asset,
             })
-        });
+        })
+        .flatten();
 
-    let hook_routes = conn
-        .prepare_reader(query_hooks, params)?
-        .map(|hook| -> Result<_> {
-            let hook: Hook = hook?;
+    let hook_routes = query_hooks
+        .query_and_then([rev_id.as_ref()], Hook::from_row)?
+        .map_ok(|hook| -> Result<_> {
             let mut routes = Vec::new();
 
             for path in hook.paths.split('\n') {
@@ -89,13 +86,12 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
             Ok(routes)
         })
+        .flatten_ok()
         .flatten_ok();
     
-    let cachebust_routes = conn
-        .prepare_reader(query_static, params)?
-        .map(|row| -> Result<_> {
-            let row: Row = row?;
-
+    let cachebust_routes = query_cachebust
+        .query_and_then([rev_id.as_ref()], Row::from_row)?
+        .map_ok(|row| -> Result<_> {
             let filename = Path::new(&row.path)
                 .file_stem()
                 .map(OsStr::to_str)
@@ -118,49 +114,59 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 route,
                 kind: RouteKind::RedirectAsset,
             })
-        });
-
-    let page_routes = conn.prepare_reader(query_pages, params)?.map(|row| {
-        let row: Row = row?;
-
-        let route = to_route(&row.path);
-
-        let filename = Path::new(&route)
-            .file_stem()
-            .map(OsStr::to_str)
-            .map(Option::unwrap)
-            .unwrap_or_default();
-
-        let filepath = route.trim_end_matches(filename);
-
-        Ok(Route {
-            id: row.id,
-            revision: rev_id.to_string(),
-            route: format!("/{filepath}{}", slug::slugify(filename)),
-            kind: RouteKind::Page,
         })
-    });
+        .flatten();
 
-    let alias_routes = conn.prepare_reader(query_alias, params)?.map(|row| {
-        let row: Row = row?;
-        Ok(Route {
-            id: row.id,
-            revision: rev_id.to_string(),
-            route: row.path,
-            kind: RouteKind::RedirectPage,
+    let page_routes = query_pages
+        .query_and_then([rev_id.as_ref()], Row::from_row)?
+        .map_ok(|row| {
+            let route = to_route(&row.path);
+
+            let filename = Path::new(&route)
+                .file_stem()
+                .map(OsStr::to_str)
+                .map(Option::unwrap)
+                .unwrap_or_default();
+
+            let filepath = route.trim_end_matches(filename);
+
+            Ok(Route {
+                id: row.id,
+                revision: rev_id.to_string(),
+                route: format!("/{filepath}{}", slug::slugify(filename)),
+                kind: RouteKind::Page,
+            })
         })
-    });
+        .flatten();
 
-    let txn = conn.open_transaction()?;
-    let mut insert_route = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
+    let alias_routes = query_alias
+        .query_and_then([rev_id.as_ref()], Row::from_row)?
+        .map_ok(|row| {
+            Ok(Route {
+                id: row.id,
+                revision: rev_id.to_string(),
+                route: row.path,
+                kind: RouteKind::RedirectPage,
+            })
+        })
+        .flatten();
 
     static_routes
         .chain(cachebust_routes)
         .chain(hook_routes)
         .chain(page_routes)
         .chain(alias_routes)
-        .try_for_each(|route| insert_route(&route?))?;
-
+        .try_for_each(|route| {
+            route?.insert_or_ignore(&txn)
+        })?;
+    
+    
+    query_static.finalize()?;
+    query_cachebust.finalize()?;
+    query_hooks.finalize()?;
+    query_pages.finalize()?;
+    query_alias.finalize()?;
+    
     txn.commit()?;
     info!("Done computing routes.");
     Ok(())

@@ -2,6 +2,7 @@
 //!
 //! This module includes:
 //! - The [`Database`] type, a shareable top-level portal for acquiring connections and managing write contention.
+// TODO update me
 //! - The [`Insertable`] and [`Queryable`] traits, as well as their associated "model types" (such as [`InputFile`]) that map to and from tables in the database.
 
 mod model;
@@ -12,7 +13,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 pub use model::*;
 pub use pool::{Pool, PoolConnection as Connection};
-pub use sqlite::{OpenFlags, Statement};
+
+pub use rusqlite::{
+    OpenFlags,
+    Statement,
+    params,
+    named_params
+};
 
 use crate::prelude::*;
 
@@ -24,9 +31,6 @@ pub const PRIME_UP: &str = include_str!("sql/prime_up.sql");
 
 #[cfg(test)]
 pub const IN_MEMORY: &str = ":memory:";
-
-pub const NO_PARAMS: Option<&[()]> = None;
-pub const DEFAULT_QUERY: Option<&str> = None;
 
 #[derive(Debug)]
 pub struct Database {
@@ -42,7 +46,7 @@ impl Database {
             true => bail!("Cannot initialize database - path already exists."),
             false => {
                 let conn = Connection::open(path)?;
-                conn.execute(PRIME_UP)?;
+                conn.execute_batch(PRIME_UP)?;
                 Ok(conn)
             }
         }
@@ -54,13 +58,13 @@ impl Database {
         let rw_pool = Pool::open(
             &path, 
             *THREADS as usize, 
-            OpenFlags::new().set_read_write()
+            OpenFlags::SQLITE_OPEN_READ_WRITE
         );
 
         let ro_pool = Pool::open(
             &path,
             BLOCKING_THREADS as usize,
-            OpenFlags::new().set_read_only(),
+            OpenFlags::SQLITE_OPEN_READ_ONLY,
         );
 
         Self {
@@ -75,20 +79,22 @@ impl Database {
         let _guard = self.write_lock();
         let conn = self.get_rw()?;
 
-        conn.execute("
-            DELETE FROM revisions
+        conn.execute(
+            "DELETE FROM revisions
             WHERE pinned = FALSE
             AND time NOT IN (
                 SELECT MAX(time) FROM revisions
-            )
-        ")?;
+            )",
+            []
+        )?;
 
-        conn.execute("
-            DELETE FROM input_files
+        conn.execute(
+            "DELETE FROM input_files
             WHERE id NOT IN (
                 SELECT id FROM revision_files
-            )
-        ")?;
+            )",
+            []
+        )?;
 
         // TODO delete all cache files that aren't in revision_files.
         // Algo:
@@ -97,8 +103,8 @@ impl Database {
         // - Iterate over the cache directory, removing any files that aren't found in the set.
         // Not the most efficient, but this is a user-invoked function, so runtime isn't too important.
 
-        conn.execute("VACUUM;")?;
-        conn.execute("PRAGMA wal_checkpoint(FULL);")?;
+        conn.execute("VACUUM;", [])?;
+        conn.execute("PRAGMA wal_checkpoint(FULL);", [])?;
 
         Ok(())
     }
@@ -107,9 +113,9 @@ impl Database {
         let _guard = self.write_lock();
         let conn = self.get_rw()?;
 
-        conn.execute(PRIME_DOWN)?;
-        conn.execute(PRIME_UP)?;
-        conn.execute("VACUUM;")?;
+        conn.execute_batch(PRIME_DOWN)?;
+        conn.execute_batch(PRIME_UP)?;
+        conn.execute("VACUUM;", [])?;
 
         std::fs::remove_dir_all(SITE_CACHE_PATH)?;
         std::fs::create_dir_all(SITE_CACHE_PATH)?;
@@ -145,7 +151,7 @@ mod test {
     fn migrations() {
         Database::create(IN_MEMORY)
             .unwrap()
-            .execute(PRIME_DOWN)
+            .execute_batch(PRIME_DOWN)
             .unwrap();
     }
 }

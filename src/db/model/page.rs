@@ -1,8 +1,9 @@
 use ahash::AHashMap;
 use serde::{Deserialize, Serialize};
-use sqlite::Statement;
 
 use super::*;
+
+use crate::model;
 
 /// A high-speed map of strings and TOML values.
 pub type TomlMap = AHashMap<String, toml::Value>;
@@ -49,9 +50,9 @@ impl Page {
     }
 }
 
-impl Insertable for Page {
+impl Model for Page {
     const TABLE_NAME: &'static str = "pages";
-    const COLUMN_NAMES: &'static [&'static str] = &[
+    const COLUMNS: &'static [&'static str] = &[
         "id",
         "path",
         "template",
@@ -61,69 +62,39 @@ impl Insertable for Page {
         "extra",
     ];
 
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_str()))?;
-        stmt.bind((":path", self.path.as_str()))?;
-        stmt.bind((":template", self.template.as_deref()))?;
-        stmt.bind((":offset", self.offset))?;
-        stmt.bind((":draft", self.draft as i64))?;
-
-        let attributes = serde_cbor::to_vec(&self.attributes)?;
-        let extra = serde_cbor::to_vec(&self.extra)?;
-
-        stmt.bind((":attributes", &attributes[..]))?;
-        stmt.bind((":extra", &extra[..]))?;
-
+    fn execute_insert(&self, sql: &str, conn: &impl Deref<Target = Connection>) -> Result<()> {
+        conn
+            .prepare_cached(sql)?
+            .execute(rusqlite::named_params! {
+                ":id"            : self.id,
+                ":path"          : self.path,
+                ":template"      : self.template,
+                ":offset"        : self.offset,
+                ":draft"         : self.draft,
+                ":attributes"    : serde_cbor::to_vec(&self.attributes)?,
+                ":extra"         : serde_cbor::to_vec(&self.extra)?
+            })?;
+        
         Ok(())
     }
-}
 
-impl Queryable for Page {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
+    fn from_row(row: &Row) -> Result<Self> {
         Ok(Self {
-            id: stmt.read_string("id")?,
-            path: stmt.read_string("path")?,
-            template: stmt.read_optional_str("template")?,
-            offset: stmt.read_i64("offset")?,
-            draft: stmt.read_bool("draft")?,
-            attributes: {
-                let bytes = stmt.read_bytes("attributes")?;
-                serde_cbor::from_slice(&bytes)
-            }?,
-            extra: {
-                let bytes = stmt.read_bytes("extra")?;
-                serde_cbor::from_slice(&bytes)
-            }?,
+            id         : row.get("id")?,
+            path       : row.get("path")?,
+            template   : row.get("template")?,
+            offset     : row.get("offset")?,
+            draft      : row.get("draft")?,
+            attributes : row.get("attributes").map(|b: Vec<u8>| serde_cbor::from_slice(&b))??,
+            extra      : row.get("extra").map(|b: Vec<u8>| serde_cbor::from_slice(&b))??
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Attribute {
-    pub id: String,
-    pub kind: String,
-    pub property: String,
-}
-
-impl Insertable for Attribute {
-    const TABLE_NAME: &'static str = "attributes";
-    const COLUMN_NAMES: &'static [&'static str] = &["id", "kind", "property"];
-
-    fn bind_query(&self, stmt: &mut Statement<'_>) -> Result<()> {
-        stmt.bind((":id", self.id.as_str()))?;
-        stmt.bind((":kind", self.kind.as_str()))?;
-        stmt.bind((":property", self.property.as_str()))?;
-
-        Ok(())
-    }
-}
-
-impl Queryable for Attribute {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            kind: stmt.read_string("kind")?,
-            property: stmt.read_string("property")?,
-        })
-    }
+model! {
+    Name     => Attribute,
+    Table    => "attributes",
+    id       => String,
+    kind     => String,
+    property => String
 }

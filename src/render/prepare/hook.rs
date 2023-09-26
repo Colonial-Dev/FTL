@@ -1,5 +1,7 @@
+use itertools::Itertools;
 use serde::Deserialize;
 
+use crate::record;
 use crate::db::*;
 use crate::prelude::*;
 
@@ -12,45 +14,32 @@ struct TomlHook {
     cache: bool
 }
 
-#[derive(Debug)]
-struct Row {
-    id: String,
-    contents: String,
-}
-
-impl Queryable for Row {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        Ok(Self {
-            id: stmt.read_string("id")?,
-            contents: stmt.read_string("contents")?,
-        })
-    }
+record! {
+    Name     => Row,
+    id       => String,
+    contents => String
 }
 
 pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
-    let conn = ctx.db.get_rw()?;
+    let mut conn = ctx.db.get_rw()?;
+    let txn = conn.transaction()?;
 
-    let query_reader = "
+    let mut get_hooks = txn.prepare("
         SELECT input_files.id, contents FROM input_files
         JOIN revision_files ON revision_files.id = input_files.id
         WHERE revision_files.revision = ?1
         AND input_files.path LIKE 'hooks/%'
         AND input_files.extension = 'toml'
-    ";
-
-    let params_reader = (1, rev_id).into();
+    ")?;
     
-    let mut insert_hook = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-
-    conn.prepare_reader(query_reader, params_reader)?
-        .map(|row| -> Result<_> {
-            let row: Row = row?;
-
+    get_hooks.query_and_then([rev_id.as_ref()], Row::from_row)?
+        .map_ok(|row| -> Result<_> {
             let id = row.id;
             let hook: TomlHook = toml::from_str(&row.contents)?;
 
             Ok((id, hook))
         })
+        .flatten()
         .try_for_each(|hook| -> Result<_> {
             let (id, hook) = hook?;
 
@@ -76,17 +65,19 @@ pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 headers.truncate(headers.len() - 1);
             }
 
-            insert_hook(&Hook {
+            Hook {
                 id,
                 paths,
                 revision: rev_id.to_string(),
                 template: hook.template,
                 headers,
                 cache: hook.cache,
-            })?;
+            }.insert_or_ignore(&txn)?;
 
             Ok(())
         })?;
 
+    get_hooks.finalize()?;
+    txn.commit()?;
     Ok(())
 }

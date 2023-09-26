@@ -241,6 +241,8 @@ impl Ticket {
         {   
             let element_content_handlers = vec![
                 element!("img", |el| {
+                    let conn = self.ctx.db.get_ro()?;
+
                     let src = el.get_attribute("src")
                         .context("Tried to cachebust an img element without a src attribute")?;
                     
@@ -251,26 +253,25 @@ impl Ticket {
                         src.to_owned(),
                     ];
 
-                    let query = "
+                    let mut query = conn.prepare("
                         SELECT input_files.* FROM input_files
                         JOIN revision_files ON revision_files.id = input_files.id
                         WHERE revision_files.revision = ?1
                         AND input_files.path IN (?2, ?3, ?4, ?5)
-                    ";
+                    ")?;
 
                     let parameters = [
-                        (1, self.rev_id.as_ref()),
-                        (2, &*lookup_targets[0]),
-                        (3, &*lookup_targets[1]),
-                        (4, &*lookup_targets[2]),
-                        (5, &*lookup_targets[3]),
+                        self.rev_id.as_ref(),
+                        &*lookup_targets[0],
+                        &*lookup_targets[1],
+                        &*lookup_targets[2],
+                        &*lookup_targets[3],
                     ];
 
-                    let conn = self.ctx.db.get_ro()?;
-
-                    let mut reader = conn.prepare_reader(query, parameters.as_slice().into())?;
-
-                    match reader.next() {
+                    match query
+                        .query_and_then(parameters, InputFile::from_row)?
+                        .next() 
+                    {
                         Some(file) => {
                             let file: InputFile = file?;
                     
@@ -344,17 +345,16 @@ impl Ticket {
 
             let conn = self.ctx.db.get_ro()?;
 
-            let query = "
+            let mut query = conn.prepare_cached("
                 SELECT child FROM dependencies
                 WHERE parent = ?1
                 AND relation = 1
-            ";
-            let params = (1, &*child).into();
+            ")?;
 
-            conn.prepare_reader(query, params)?
+            query
+                .query_and_then([&*child], |row| row.get(0))?
                 .try_for_each(|child| -> Result<_> {
                     self.dependencies.push((relation, child?));
-
                     Ok(())
                 })?;
         } 

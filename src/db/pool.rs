@@ -1,13 +1,12 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::thread::JoinHandle;
 
 use crossbeam::channel::{Receiver, Sender};
 use crossbeam::queue::ArrayQueue;
-use sqlite::{Bindable, Connection, OpenFlags, State};
+use rusqlite::{Connection, OpenFlags};
 
-use super::{Insertable, Queryable};
 use crate::prelude::*;
 
 /// A shareable, threadsafe SQLite connection pool.
@@ -48,7 +47,7 @@ impl Pool {
 
     fn make_new(&self) -> Result<Connection> {
         let new = Connection::open_with_flags(&self.path, self.flags)?;
-        new.execute(super::PRAGMAS)?;
+        new.query_row(super::PRAGMAS, [], |_| Ok(()))?;
         Ok(new)
     }
 
@@ -67,22 +66,14 @@ impl Drop for Pool {
         while let Some(conn) = self.queue.pop() {
             // SQLite recommends calling the optimize PRAGMA immediately before
             // closing database connections.
-            let _ = conn.execute("PRAGMA optimize;");
+            let _ = conn.execute("PRAGMA optimize;", []);
 
             // If this is the last connection, make a best-effort attempt to flush the WAL logs.
             if self.queue.is_empty() {
-               let _ = conn.execute("PRAGMA wal_checkpoint(FULL);");
+               let _ = conn.execute("PRAGMA wal_checkpoint(FULL);", []);
             }
         }
     }
-}
-
-#[macro_export]
-/// Polls an SQLite statement to completion.
-macro_rules! poll {
-    ($stmt:ident) => {
-        while let sqlite::State::Row = $stmt.next()? {}
-    };
 }
 
 /// Smart wrapper for an [`sqlite::Connection`]. Typically (although not always) handed out by a [`Pool`].
@@ -108,7 +99,7 @@ impl PoolConnection {
         P: AsRef<Path>,
     {
         let connection = Connection::open(path)?;
-        connection.execute(super::PRAGMAS)?;
+        connection.execute(super::PRAGMAS, [])?;
 
         Ok(Self {
             parent: Weak::new(),
@@ -126,7 +117,7 @@ impl PoolConnection {
         P: AsRef<Path>,
     {
         let connection = Connection::open_with_flags(path, flags)?;
-        connection.execute(super::PRAGMAS)?;
+        connection.execute(super::PRAGMAS, [])?;
 
         Ok(Self {
             parent: Weak::new(),
@@ -134,108 +125,21 @@ impl PoolConnection {
         })
     }
 
-    /// Creates a "reader" - an iterator that lazily deserializes instances of a [`Queryable`] type
-    /// from the results of a database query.
-    pub fn prepare_reader<T, Q, P>(
-        &self,
-        query: Q,
-        parameters: Option<P>,
-    ) -> Result<impl Iterator<Item = Result<T>> + '_>
-    where
-        T: Queryable,
-        Q: AsRef<str>,
-        P: Bindable,
-    {
-        let mut stmt = self.prepare(query)?;
-
-        if let Some(parameters) = parameters {
-            stmt.bind(parameters)?;
-        }
-
-        let iterator = std::iter::from_fn(move || {
-            use sqlite::State::*;
-            match stmt.next().map_err(Report::from) {
-                Ok(Row) => Some(T::read_query(&stmt)),
-                Ok(Done) => None,
-                Err(err) => Err(err).into(),
-            }
-        });
-
-        Ok(iterator)
-    }
-
-    /// Creates a "writer" - a closure that inserts instances of an [`Insertable`] type into the database,
-    /// using either the type's default insertion query or a caller-provided substitute.
-    pub fn prepare_writer<T, Q, P>(
-        &self,
-        query: Option<Q>,
-        parameters: Option<P>,
-    ) -> Result<impl FnMut(&T) -> Result<()> + '_>
-    where
-        T: Insertable,
-        Q: AsRef<str>,
-        P: Bindable,
-    {
-        let mut stmt = match query {
-            Some(sub) => self.prepare(sub)?,
-            None => self.prepare(T::default_query())?,
-        };
-
-        if let Some(parameters) = parameters {
-            stmt.bind(parameters)?;
-        }
-
-        let closure = move |item: &T| {
-            stmt.reset()?;
-            item.bind_query(&mut stmt)?;
-            poll!(stmt);
-            Ok(())
-        };
-
-        Ok(closure)
-    }
-
     /// Prepares a "consumer" - a thread and MPSC pair for safely handling concurrent writes to the database.
     ///
-    /// Unlike writers and readers, the caller is responsible for providing a handler closure that implements
+    /// The caller is responsible for providing a handler closure that implements
     /// the desired behavior from scratch.
-    pub fn prepare_consumer<M, R, F>(self, handler: F) -> (JoinHandle<R>, Sender<M>)
+    pub fn prepare_consumer<M, R, F>(mut self, handler: F) -> (JoinHandle<R>, Sender<M>)
     where
         M: Send + 'static,
         R: Send + 'static,
-        F: FnOnce(&Self, Receiver<M>) -> R + Send + 'static,
+        F: FnOnce(&mut Self, Receiver<M>) -> R + Send + 'static,
     {
         let (tx, rx) = crossbeam::channel::unbounded();
 
-        let handle = std::thread::spawn(move || handler(&self, rx));
+        let handle = std::thread::spawn(move || handler(&mut self, rx));
 
         (handle, tx)
-    }
-
-    /// Given a query and an optional set of parameters, returns `true` if it returns
-    /// one or more rows.
-    pub fn exists<Q, P>(&self, query: Q, parameters: Option<P>) -> Result<bool>
-    where
-        Q: AsRef<str>,
-        P: Bindable,
-    {
-        let mut stmt = self.prepare(query)?;
-
-        if let Some(parameters) = parameters {
-            stmt.bind(parameters)?;
-        }
-
-        if let State::Row = stmt.next()? {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
-    /// Open a new transaction on the connection, yielding a [`Transaction`] token
-    /// that can be used to commit any changes made or auto-rollback on drop.
-    pub fn open_transaction(&self) -> Result<Transaction<'_>> {
-        Transaction::new(self)
     }
 }
 
@@ -244,6 +148,12 @@ impl Deref for PoolConnection {
 
     fn deref(&self) -> &Self::Target {
         self.connection.as_ref().unwrap()
+    }
+}
+
+impl DerefMut for PoolConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.connection.as_mut().unwrap()
     }
 }
 
@@ -256,46 +166,7 @@ impl Drop for PoolConnection {
             warn!(
                 "Attempted to put back a pooled connection, but its parent pool no longer exists."
             );
-            let _ = self.execute("PRAGMA optimize;");
-        }
-    }
-}
-
-pub struct Transaction<'a> {
-    parent: &'a PoolConnection,
-    complete: bool,
-}
-
-impl<'a> Transaction<'a> {
-    fn new(parent: &'a PoolConnection) -> Result<Self> {
-        parent.execute("BEGIN TRANSACTION;")?;
-
-        Ok(Self {
-            parent,
-            complete: false,
-        })
-    }
-
-    pub fn commit(mut self) -> Result<()> {
-        self.parent.execute("COMMIT;")?;
-        self.complete = true;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub fn rollback(mut self) -> Result<()> {
-        self.parent.execute("ROLLBACK;")?;
-        self.complete = true;
-        Ok(())
-    }
-}
-
-impl Drop for Transaction<'_> {
-    fn drop(&mut self) {
-        if !self.complete {
-            // We have no way to report a rollback error during drop, so we just
-            // ignore the possibility.
-            let _ = self.parent.execute("ROLLBACK;");
+            let _ = self.execute("PRAGMA optimize;", []);
         }
     }
 }

@@ -1,7 +1,7 @@
 use minijinja::value::*;
 
 use super::*;
-use crate::db::{InputFile, Insertable};
+use crate::db::*;
 use crate::prelude::*;
 
 /// A resource known to FTL, such as an image or page. Acquired inside the engine
@@ -21,27 +21,24 @@ impl Resource {
     fn route(&self) -> Result<Value> {
         let conn = self.ctx.db.get_ro()?;
 
-        let query = "
+        let mut query = conn.prepare_cached("
             SELECT route FROM routes
             WHERE id = ?1
             AND revision = ?2
             AND kind IN (1, 3, 4)
-        ";
+        ")?;
 
-        let parameters = &[
-            (1_usize, &*self.base.id),
-            (2_usize, self.rev_id.as_inner()),
-        ];
-
-        let mut query = conn.prepare_reader::<String, _, _>(
-            query,
-            parameters.as_slice().into()
-        )?;
-
-        Ok(match query.next() {
-            Some(route) => Value::from(route?),
-            None => Value::from(())
-        })
+        let route = match query
+            .query_and_then([&*self.base.id, self.rev_id.as_ref()], |row| row.get::<_, String>(0))?
+            .next()
+        {
+            Some(route) => Ok(Value::from(route?)),
+            None => Ok(Value::from(()))
+        };
+        
+        // Necessary because lifetime bullshit
+        #[allow(clippy::let_and_return)]
+        route
     }
 
     fn cachebusted(&self) -> MJResult {
@@ -137,6 +134,6 @@ impl StructObject for Resource {
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
-        Some(InputFile::COLUMN_NAMES)
+        Some(InputFile::COLUMNS)
     }
 }

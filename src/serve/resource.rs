@@ -81,11 +81,11 @@ impl Resource {
         let conn = server.ctx.db.get_ro()?;
         let rev_id = server.rev_id.load();
     
-        let query = "
+        let mut query = conn.prepare("
             SELECT * FROM routes
             WHERE route IN (?1, ?2)
             AND revision = ?3
-        ";
+        ")?;
         
         // We trim any leading slashes, just in case the user accidentally adds one.
         let path = match uri.path() {
@@ -104,20 +104,22 @@ impl Resource {
         // We need to check the path both with and without the query,
         // in order to work with both versioned assets and hooks.
         let parameters = [
-            (1, path),
-            (2, path_and_query),
-            (3, rev_id.as_ref())
+            path,
+            path_and_query,
+            rev_id.as_ref()
         ];
-
-        let mut get_route = conn.prepare_reader(
-            query, 
-            parameters.as_slice().into()
-        )?;
     
-        match get_route.next() {
+        let route = match query
+            .query_and_then(parameters, Route::from_row)?
+            .next() 
+        {
             Some(route) => Ok(Some(route?)),
             None => Ok(None)
-        }
+        };
+
+        // Necessary because lifetime bullshit
+        #[allow(clippy::let_and_return)]
+        route
     }
 
     #[inline]
@@ -137,17 +139,16 @@ impl Resource {
         let conn = server.ctx.db.get_ro()?;
         let id = &*route.id;
 
-        let query = "
+        let mut query = conn.prepare_cached("
             SELECT * FROM output
             WHERE id = ?1
-        ";
+        ")?;
 
-        let mut get_output = conn.prepare_reader(
-            query, 
-            (1, id).into()
-        )?;
 
-        match get_output.next() {
+        let resource = match query
+            .query_and_then([id], Output::from_row)?
+            .next()
+        {
             Some(output) => {
                 let output: Output = output?;
                 let content = output.content;
@@ -155,7 +156,11 @@ impl Resource {
                 Ok(Self::Text(content, route.kind))
             }
             None => panic!("Could not find output for page with ID {id}!")
-        }
+        };
+
+        // Necessary because lifetime bullshit
+        #[allow(clippy::let_and_return)]
+        resource    
     }
 
     #[inline]
@@ -164,23 +169,17 @@ impl Resource {
         let rev_id = server.rev_id.load();
         let id = &*route.id;
 
-        let query = "
+        let mut query = conn.prepare("
             SELECT * FROM hooks
             WHERE id = ?1
             AND revision = ?2
-        ";
+        ")?;
 
-        let parameters = [
-            (1, id),
-            (2, rev_id.as_ref())
-        ];
-
-        let mut get_hook = conn.prepare_reader(
-            query, 
-            parameters.as_slice().into()
-        )?;
-
-        let Some(hook) = get_hook.next() else {
+        let Some(hook) = query
+            .query_and_then([id, rev_id.as_ref()], Hook::from_row)? 
+            .next()
+        else {
+            // TODO fixme
             todo!()
         };
 

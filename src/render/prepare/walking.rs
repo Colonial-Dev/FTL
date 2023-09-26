@@ -6,7 +6,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::db::{Connection, InputFile, Revision, RevisionFile, DEFAULT_QUERY, NO_PARAMS};
+use crate::db::{Connection, InputFile, Revision, RevisionFile, Model};
 use crate::prelude::*;
 
 /// Walks the site directory for all valid content files.
@@ -102,16 +102,15 @@ fn process_entry(entry: DirEntry) -> Result<(InputFile, u64)> {
     Ok((file, int_id))
 }
 
-fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result<RevisionID> {
-    let txn = conn.open_transaction()?;
+fn consumer_handler(conn: &mut Connection, rx: Receiver<(InputFile, u64)>) -> Result<RevisionID> {
+    let txn = conn.transaction()?;
 
-    let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
     let mut ids = Vec::new();
     let mut hash = 0_u64;
 
     for message in rx.into_iter() {
         let (file, id) = message;
-        insert_file(&file)?;
+        file.insert_or_ignore(&txn)?;
 
         if !file.inline {
             let destination = PathBuf::from(format!("{SITE_CACHE_PATH}{}", &file.id));
@@ -136,21 +135,19 @@ fn consumer_handler(conn: &Connection, rx: Receiver<(InputFile, u64)>) -> Result
 
     info!("Computed revision ID {rev_id}.");
 
-    conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?(&Revision {
+    Revision {
         id: rev_id.to_string(),
         name: None,
         time: None,
         pinned: false,
         stable: false,
-    })?;
-
-    let mut insert_file = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
+    }.insert_or_ignore(&txn)?;
 
     for id in ids {
-        insert_file(&RevisionFile {
+        RevisionFile {
             id,
             revision: rev_id.to_string(),
-        })?;
+        }.insert_or_ignore(&txn)?;
     }
 
     txn.commit()?;

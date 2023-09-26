@@ -1,6 +1,8 @@
 //! Types, functions, constants and other items that are globally relevant throughout the FTL codebase.
 #![allow(dead_code)]
 
+pub mod const_fmt;
+
 mod args;
 mod cli;
 mod config;
@@ -80,15 +82,5 @@ where
 impl AsRef<str> for RevisionID {
     fn as_ref(&self) -> &str {
         &self.0
-    }
-}
-
-impl sqlite::BindableWithIndex for &RevisionID {
-    fn bind<T: sqlite::ParameterIndex>(
-        self,
-        stmt: &mut sqlite::Statement,
-        index: T,
-    ) -> sqlite::Result<()> {
-        stmt.bind((index, self.0.as_str()))
     }
 }
