@@ -63,7 +63,7 @@ impl Model for InputFile {
             .execute(rusqlite::named_params! {
                 ":id"        : self.id,
                 ":hash"      : self.hash,
-                // TODO this isn't free
+                // TODO this isn't free - camino?
                 ":path"      : self.path.to_string_lossy().as_ref(),
                 ":extension" : self.extension,
                 ":contents"  : self.contents,

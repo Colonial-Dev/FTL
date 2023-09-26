@@ -164,32 +164,33 @@ macro_rules! enum_sql {
     };
 }
 
-// TODO fixme
-/*#[cfg(test)]
+#[cfg(test)]
 mod test_roundtrip {
     use std::fmt::Debug;
     use std::path::PathBuf;
 
     use super::*;
-    use crate::db::{Connection, DEFAULT_QUERY, NO_PARAMS};
+    use crate::db::Connection;
 
     fn test_insert<T>(conn: &Connection, data: T) -> Result<()>
     where
-        T: Insertable,
+        T: Model,
     {
-        let mut insert_data = conn.prepare_writer(DEFAULT_QUERY, NO_PARAMS)?;
-        insert_data(&data)?;
+        data.insert(conn)?;
         Ok(())
     }
 
     fn test_query<T>(conn: &Connection, data: T) -> Result<()>
     where
-        T: Insertable + Queryable + Eq + Debug,
+        T: Model + PartialEq + Debug,
     {
-        let mut query_data =
-            conn.prepare_reader(format!("SELECT * FROM {}", T::TABLE_NAME), NO_PARAMS)?;
+        let mut query_data = conn
+            .prepare(&format!("SELECT * FROM {}", T::TABLE_NAME))?;
 
-        let queried = query_data.next().unwrap()?;
+        let queried = query_data
+            .query_and_then([], T::from_row)?
+            .next()
+            .unwrap()?;
 
         assert_eq!(data, queried);
 
@@ -204,8 +205,8 @@ mod test_roundtrip {
                     use crate::db::{IN_MEMORY, PRIME_UP};
 
                     let conn = Connection::open(IN_MEMORY).unwrap();
-                    conn.execute("PRAGMA foreign_keys = OFF;").unwrap();
-                    conn.execute(PRIME_UP).unwrap();
+                    conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+                    conn.execute_batch(PRIME_UP).unwrap();
 
                     test_insert(&conn, { $data }).unwrap();
                     test_query(&conn, { $data }).unwrap();
@@ -268,6 +269,27 @@ mod test_roundtrip {
     );
 
     // TODO figure out how to apply this to Page and Attribute (TomlMap doesn't implement Eq)
+    derive_test!(
+        page,
+        Page {
+            id: format!("{:016x}", 0xF),
+            path: String::from("a path"),
+            template: String::from("foo").into(),
+            offset: 16,
+            draft: true,
+            attributes: ahash::AHashMap::default(),
+            extra: ahash::AHashMap::default(),
+        }
+    );
+
+    derive_test!(
+        attribute,
+        Attribute {
+            id: "foo".to_owned(),
+            kind: "bar".to_owned(),
+            property: "qux".to_owned(),
+        }
+    );
 
     derive_test!(
         dependency,
@@ -286,4 +308,4 @@ mod test_roundtrip {
             content: String::from("content")
         }
     );
-}*/
+}

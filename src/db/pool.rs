@@ -47,7 +47,7 @@ impl Pool {
 
     fn make_new(&self) -> Result<Connection> {
         let new = Connection::open_with_flags(&self.path, self.flags)?;
-        new.query_row(super::PRAGMAS, [], |_| Ok(()))?;
+        new.execute_batch(super::PRAGMAS)?;
         Ok(new)
     }
 
@@ -99,7 +99,7 @@ impl PoolConnection {
         P: AsRef<Path>,
     {
         let connection = Connection::open(path)?;
-        connection.execute(super::PRAGMAS, [])?;
+        connection.execute_batch(super::PRAGMAS)?;
 
         Ok(Self {
             parent: Weak::new(),
@@ -117,7 +117,7 @@ impl PoolConnection {
         P: AsRef<Path>,
     {
         let connection = Connection::open_with_flags(path, flags)?;
-        connection.execute(super::PRAGMAS, [])?;
+        connection.execute_batch(super::PRAGMAS)?;
 
         Ok(Self {
             parent: Weak::new(),

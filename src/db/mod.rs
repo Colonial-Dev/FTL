@@ -2,8 +2,8 @@
 //!
 //! This module includes:
 //! - The [`Database`] type, a shareable top-level portal for acquiring connections and managing write contention.
-// TODO update me
-//! - The [`Insertable`] and [`Queryable`] traits, as well as their associated "model types" (such as [`InputFile`]) that map to and from tables in the database.
+//! - The [`Model`] trait, as well as their associated "model types" (such as [`InputFile`]) that map to and from tables in the database.
+//! - Macros ([`model`](crate::model) and [`record`](crate::record)) for creating model and record types.
 
 mod model;
 mod pool;

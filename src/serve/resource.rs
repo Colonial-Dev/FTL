@@ -179,8 +179,15 @@ impl Resource {
             .query_and_then([id, rev_id.as_ref()], Hook::from_row)? 
             .next()
         else {
-            // TODO fixme
-            todo!()
+            let error_page = server.render_error_page(
+                StatusCode::NOT_FOUND,
+                uri,
+                None
+            )?;
+
+            return Ok(
+                Self::Error(error_page, StatusCode::NOT_FOUND)
+            )
         };
 
         let hook: Hook = hook?;
