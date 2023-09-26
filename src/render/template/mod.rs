@@ -95,6 +95,16 @@ fn timefmt(input: String, format: String) -> MJResult {
     Ok(Value::from(formatted))
 }
 
+// emojify
+// getenv
+// markdown
+// hashing
+// b64 encode/decode
+// now (time)
+// log/debug/info/warn/error
+// shellout (Very Cursed and Problematic)
+// regex?
+
 /// Attempts to fetch the "page" variable from the engine state and downcast it into
 /// a [`Ticket`].
 ///

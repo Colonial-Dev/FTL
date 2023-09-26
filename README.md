@@ -24,7 +24,7 @@ FTL is a static site generator (and server) with a twist: instead of being a lar
 - Flexible frontmatter format. You decide what attributes are available, and what they mean.
 - A powerful templating system based on the [MiniJinja](https://github.com/mitsuhiko/minijinja) engine.
   - Use shortcodes with parameters directly in your Markdown source.
-  - Includes a number of useful built-in filters and functions for tasks like time formatting.
+  - Includes a number of useful built-in filters and functions, ranging from the mundane (time formatting, Base64 manipulation) to Very Cursed and Problematic™ (executing arbitrary shell code.)
   - Query the site database from within your templates - the sky's the limit when it comes to custom behavior!
 - A built-in webserver for both development and production, using [`axum`](https://crates.io/crates/axum).
   - Supports automatic live-reloading. Simply alter the source files and watch your changes go live!

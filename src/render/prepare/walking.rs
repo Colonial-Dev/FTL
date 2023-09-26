@@ -13,6 +13,7 @@ use crate::prelude::*;
 pub fn walk_src(ctx: &Context) -> Result<RevisionID> {
     info!("Starting source directory walk...");
 
+    let _spinner = Cli::source_walk();
     let (handle, tx) = ctx.db.get_rw()?.prepare_consumer(consumer_handler);
 
     WalkDir::new(".")
@@ -31,7 +32,7 @@ pub fn walk_src(ctx: &Context) -> Result<RevisionID> {
             let _ = tx.send(entry?);
             Ok(())
         })?;
-
+    
     // Deadlocking is generally regarded as undesirable.
     drop(tx);
 

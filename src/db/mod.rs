@@ -8,6 +8,7 @@
 mod model;
 mod pool;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -21,6 +22,7 @@ pub use rusqlite::{
     named_params
 };
 
+use crate::record;
 use crate::prelude::*;
 
 pub const AUX_UP: &str = include_str!("sql/aux_up.sql");
@@ -96,12 +98,30 @@ impl Database {
             []
         )?;
 
-        // TODO delete all cache files that aren't in revision_files.
-        // Algo:
-        // - Query all IDs.
-        // - Fold into a HashSet.
-        // - Iterate over the cache directory, removing any files that aren't found in the set.
-        // Not the most efficient, but this is a user-invoked function, so runtime isn't too important.
+        record! {
+            id => String
+        }
+        
+        let mut all_ids = conn.prepare("
+            SELECT id FROM input_files;
+        ")?;
+
+        let set = all_ids
+            .query_and_then([], Record::from_row)?
+            .try_fold(HashSet::new(), |mut acc, row| -> Result<_> {
+                acc.insert(
+                    PathBuf::from(row?.id)
+                );
+                Ok(acc)
+            })?;
+        
+        for entry in std::fs::read_dir(SITE_CACHE_PATH)? {
+            let path = entry?.path();
+
+            if !set.contains(&path) {
+                std::fs::remove_file(&path)?;
+            }
+        }
 
         conn.execute("VACUUM;", [])?;
         conn.execute("PRAGMA wal_checkpoint(FULL);", [])?;

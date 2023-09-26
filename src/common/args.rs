@@ -17,6 +17,15 @@ pub struct Arguments {
     pub verbose: u8,
 }
 
+impl Arguments {
+    pub fn drafts_enabled(&self) -> bool {
+        match self.command {
+            Command::Build { drafts, ..} => drafts,
+            _ => false
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Interactively create a new FTL site.

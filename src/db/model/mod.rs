@@ -39,17 +39,6 @@ pub trait Model: Sized {
     }
 
     fn from_row(row: &Row) -> Result<Self>;
-
-    // const TABLE_NAME and COLUMN_NAMES remain
-    // new consts: QUERY, QUERY_IGNORE, QUERY_REPLACE (ConstStr)
-    //
-    // Default methods:
-    // query_template (generates INSERT $MODE INTO ... string in const fn and stores as a ConstStr)
-    //
-    // Un-impl'd methods:
-    // insert - takes &self and &mut Connection, and inserts self into the database
-    // insert_or - allows the caller to specify e.g. OR IGNORE INTO/OR REPLACE INTO on an insert call.
-    // from_row - takes an &Row and attempts to extract an instance of Self from it.
 }
 
 // Rust doesn't seem to consider invocations in associated constants a "use".
@@ -268,7 +257,6 @@ mod test_roundtrip {
         }
     );
 
-    // TODO figure out how to apply this to Page and Attribute (TomlMap doesn't implement Eq)
     derive_test!(
         page,
         Page {

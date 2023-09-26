@@ -120,6 +120,8 @@ impl Ticket {
                             let Ok(template) = state.env().get_template(name) else {
                                 bail!("Could not find specified codeblock template \"{name}\".");
                             };
+                            
+                            self.register_dependency(Relation::PageTemplate, name)?;
 
                             return Ok(template.render(context! {
                                 code => code,
@@ -169,6 +171,8 @@ impl Ticket {
                         let Ok(template) = state.env().get_template(name) else {
                             bail!("Could not find specified anchor template \"{name}\".");
                         };
+                        
+                        self.register_dependency(Relation::PageTemplate, name)?;
 
                         buffer += &template.render(context! {
                             level => header.level,
@@ -396,7 +400,6 @@ impl StructObject for Ticket {
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
-        // TODO - is this out of sync?
-        Some(&["source", "id", "template", "draft", "attributes", "extra"])
+        Some(&["id", "path", "template", "draft", "attributes", "extra", "source"])
     }
 }

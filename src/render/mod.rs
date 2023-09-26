@@ -50,8 +50,11 @@ impl Renderer {
     }
 
     pub fn render(&self) -> Result<()> {
-        // TODO implement atomic flag check
-
+        if self.flag.load(Ordering::SeqCst) {
+            warn!("Tried to call render twice - skipping!");
+            return Ok(())
+        }
+ 
         info!("Starting render for revision {}...", self.rev_id);
 
         stylesheet::compile(&self.ctx, &self.rev_id)?;
@@ -112,8 +115,14 @@ impl Renderer {
 
         let tickets: Vec<_> = get_pages
             .query_and_then([self.rev_id.as_ref()], Page::from_row)?
-            // TODO filter out draft pages where applicable
-            .map_ok(|page: Page| -> Result<_> {
+            .filter_ok(|page| {
+                if self.ctx.args.drafts_enabled() {
+                    true
+                } else {
+                    !page.draft
+                }
+            })
+            .map_ok(|page| -> Result<_> {
                 let source = get_source
                     .query_row([&page.id], |row| row.get::<_, String>(0))?;
 
