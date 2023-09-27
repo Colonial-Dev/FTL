@@ -30,6 +30,11 @@ pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         WHERE revision_files.revision = ?1
         AND input_files.path LIKE 'hooks/%'
         AND input_files.extension = 'toml'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM hooks
+            WHERE hooks.id = input_files.id
+        )
     ")?;
     
     get_hooks.query_and_then([rev_id.as_ref()], Row::from_row)?

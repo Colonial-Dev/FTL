@@ -27,20 +27,9 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(ctx: &Context, rev_id: &RevisionID) -> Result<Self> {
-        prepare::prepare_with_id(ctx, rev_id)?;
+    pub fn new(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<Self> {
+        let rev_id = prepare::prepare(ctx, rev_id)?;
         
-        Ok(Self {
-            env: template::setup_environment(ctx, rev_id)?,
-            ctx: ctx.clone(),
-            rev_id: rev_id.clone(),
-            flag: AtomicBool::new(false),
-        })
-    }
-
-    pub fn new_prepare(ctx: &Context) -> Result<Self> {        
-        let rev_id = prepare::prepare(ctx)?;
-
         Ok(Self {
             env: template::setup_environment(ctx, &rev_id)?,
             ctx: ctx.clone(),

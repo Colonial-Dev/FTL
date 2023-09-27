@@ -67,7 +67,7 @@ fn main() -> Result<()> {
                 ctx.db.clear()?; 
             }
 
-            Renderer::new_prepare(&ctx)?
+            Renderer::new(&ctx, None)?
                 .render()?;
 
             if *serve {
@@ -79,7 +79,7 @@ fn main() -> Result<()> {
             }
         },
         Serve => {
-            let renderer = Renderer::new_prepare(&ctx)?;
+            let renderer = Renderer::new(&ctx, None)?;
             
             renderer.render()?;
 

@@ -139,7 +139,7 @@ impl InnerServer {
     fn migrate_revision(&self, rev_id: RevisionID) -> Result<()> {
         info!("Migrating to revision {rev_id}...");
 
-        let renderer = Renderer::new(&self.ctx, &rev_id)?;
+        let renderer = Renderer::new(&self.ctx, Some(&rev_id))?;
         renderer.render()?;
 
         self.renderer.swap(renderer.into());

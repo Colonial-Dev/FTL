@@ -30,13 +30,13 @@ FTL is a static site generator (and server) with a twist: instead of being a lar
   - Supports automatic live-reloading. Simply alter the source files and watch your changes go live!
   - Define arbitrary "hook" templates to enable dynamic behavior, such as site search.
   - Configurable caching system - set TTI/TTL and maximum size to best fit your needs.
+- Written 100% by human hand - no hallucination machines involved.
 
 ## Installation
 Some notes:
 - FTL is developed on and primarily targets Linux. As such, I can't promise that it will work on other platforms.
 - I've strived to avoid making FTL a "bespoke" website solution. Anyone should be able to use it, and I do encourage you give it a try if you find it attractive. 
   - *However,* please keep in mind that this is a hobby project, not a professional-grade tool like Hugo or Zola. I can't promise the same level of features or support as those projects.
-  - (That said, I'm still happy to entertain issues or PRs.)
 
 Dependencies:
 - The most recent stable [Rust toolchain](https://rustup.rs/).

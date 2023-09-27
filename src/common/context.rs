@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,38 @@ pub struct InnerContext {
 impl InnerContext {
     pub fn init() -> Result<Context> {
         let args = Arguments::parse();
-        // TODO handle init subcommand case
+
+        if let Command::Init { root_url } = &args.command {
+            let cfg = Config {
+                root_url: root_url.to_owned(),
+                build: Build::default(),
+                serve: Serve::default(),
+                extra: HashMap::new()
+            };
+
+            std::fs::create_dir_all(SITE_SASS_PATH)?;
+            std::fs::create_dir_all(SITE_HOOKS_PATH)?;
+            std::fs::create_dir_all(SITE_CONTENT_PATH)?;
+            std::fs::create_dir_all(SITE_TEMPLATE_PATH)?;
+            std::fs::create_dir_all(SITE_CACHE_PATH)?;
+
+            Database::create(SITE_DB_PATH)?;
+
+            std::fs::write(
+                CONFIG_FILENAME,
+                toml::to_string(&cfg)?
+            )?;
+
+            // TODO ask user for their opinions on stuff like SASS, highlighting and smart punctuation.
+
+            println!(
+                "New site {}",
+                console::style("created.").green().bold().bright()
+            );
+
+            std::process::exit(0);
+        }
+
         let dir = validate_env()?;
 
         let config = dir.join(CONFIG_FILENAME);
