@@ -2,8 +2,9 @@ mod error;
 mod loading;
 mod objects;
 
+use base64::engine::general_purpose;
 use error::WrappedReport as Wrap;
-use minijinja::value::Value;
+use minijinja::value::{Value, ValueKind};
 use minijinja::{context, Environment, State};
 
 pub use error::*;
@@ -57,9 +58,21 @@ pub fn register_routines(
         Ok(path.to_owned())
     });
 
+    env.add_function("dbg", dbg);
+    env.add_function("info", info);
+    env.add_function("warn", warn);
+    env.add_function("emojify", emojify);
+    env.add_function("getenv", getenv);
+    env.add_function("shell", shell);
+    env.add_function("base64_enc", base64_enc);
+    env.add_function("base64_dec", base64_dec);
+
     env.add_filter("eval", eval);
     env.add_filter("timefmt", timefmt);
     env.add_filter("slug", slug::slugify::<String>);
+    env.add_filter("emojify", emojify);
+    env.add_filter("base64_enc", base64_enc);
+    env.add_filter("base64_dec", base64_dec);
 
     let db = DbHandle::new(ctx, rev_id);
     env.add_filter("query", move |sql, params| db.query(sql, params));
@@ -95,14 +108,108 @@ fn timefmt(input: String, format: String) -> MJResult {
     Ok(Value::from(formatted))
 }
 
-// emojify
-// getenv
+// Attempt to convert a given emoji shortcode (such as :smile:) into the corresponding Unicode character.
+//
+// Returns the shortcode unchanged if no match was found.
+fn emojify(input: String) -> String {
+    let code = input
+        .trim_start_matches(':')
+        .trim_end_matches(':');
+
+    match gh_emoji::get(code) {
+        Some(emoji) => emoji.to_owned(),
+        None => input
+    }
+}
+
+// Attempt to look up the specified environment variable.
+//
+// Returns an empty string if the variable is not found.
+fn getenv(key: String) -> String {
+    std::env::var(key).unwrap_or_else(|e| {
+        warn!("Failed to get environment variable - {e:?}");
+        String::new()
+    })
+}
+
+fn dbg(state: &State, msg: String) {
+    debug!(
+        "<{}> {}",
+        state.name(),
+        msg
+    )
+}
+
+fn info(state: &State, msg: String) {
+    info!(
+        "<{}> {}",
+        state.name(),
+        msg
+    )
+}
+
+fn warn(state: &State, msg: String) {
+    warn!(
+        "<{}> {}",
+        state.name(),
+        msg
+    )
+}
+
+fn shell(script: String) -> MJResult {
+    use std::process::Command;
+
+    #[cfg(target_family = "windows")]
+    const SH_NAME: &str = "cmd";
+    #[cfg(target_family = "windows")]
+    const SH_ARG: &str = "/C";
+    #[cfg(target_family = "unix")]
+    const SH_NAME: &str = "sh";
+    #[cfg(target_family = "unix")]
+    const SH_ARG: &str = "-c";
+
+    let output = Command::new(SH_NAME)
+        .args([SH_ARG, &script])
+        .output()
+        .map_err(Wrap::wrap)?;
+
+    String::from_utf8(output.stdout)
+        .map(Value::from)
+        .map_err(Wrap::wrap)
+}
+
+fn base64_enc(input: Value) -> MJResult {
+    use base64::Engine;
+
+    let engine = general_purpose::STANDARD_NO_PAD;
+
+    match input.kind() {
+        ValueKind::String => Ok(Value::from(
+            engine.encode(input.as_str().unwrap())
+        )),
+        ValueKind::Bytes => Ok(Value::from(
+            engine.encode(input.as_bytes().unwrap())
+        )),
+        _ => Err(MJError::new(
+            MJErrorKind::InvalidOperation,
+            format!("Base64 encoding can only accept strings and bytes (got {})", input.kind())
+        ))
+    }
+}
+
+fn base64_dec(input: String) -> MJResult {
+    use base64::Engine;
+
+    let engine = general_purpose::STANDARD_NO_PAD;
+
+    engine.decode(input)
+        .map(Value::from)
+        .map_err(Wrap::wrap)
+}
+
 // markdown
 // hashing
-// b64 encode/decode
 // now (time)
-// log/debug/info/warn/error
-// shellout (Very Cursed and Problematic)
 // regex?
 
 /// Attempts to fetch the "page" variable from the engine state and downcast it into

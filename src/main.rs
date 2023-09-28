@@ -67,15 +67,21 @@ fn main() -> Result<()> {
                 ctx.db.clear()?; 
             }
 
-            Renderer::new(&ctx, None)?
-                .render()?;
+            let renderer = Renderer::new(&ctx, None)?;
+
+            renderer.render()?;
 
             if *serve {
-
+                InnerServer::new(&ctx, renderer).serve()?;
             }
             
             if *watch {
+                let (_debouncer, mut rx) = watch::init_watcher(&ctx)?;
 
+                while let Ok(rev_id) = rx.blocking_recv() {
+                    Renderer::new(&ctx,Some(&rev_id))?
+                        .render()?;
+                } 
             }
         },
         Serve => {
@@ -85,7 +91,7 @@ fn main() -> Result<()> {
 
             InnerServer::new(&ctx, renderer).serve()?;
         }
-        Revision(subcommand) => todo!(),
+        Revision(_subcommand) => todo!(),
         Db(subcommand) => match subcommand {
             Stat => todo!(),
             Compress => ctx.db.compress()?,

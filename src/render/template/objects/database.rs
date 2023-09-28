@@ -267,23 +267,3 @@ impl StructObject for ValueMap {
             .collect::<Vec<_>>()
     }
 }
-
-/*impl Queryable for ValueMap {
-    fn read_query(stmt: &Statement<'_>) -> Result<Self> {
-        let mut map = HashMap::with_capacity(stmt.column_count());
-
-        for column in stmt.column_names() {
-            let value = match stmt.read_value(column)? {
-                SQLValue::Binary(bytes) => Value::from(bytes),
-                SQLValue::Float(float) => Value::from(float),
-                SQLValue::Integer(int) => Value::from(int),
-                SQLValue::Null => Value::from(()),
-                SQLValue::String(str) => Value::from(str),
-            };
-
-            map.insert(column.to_owned(), value);
-        }
-
-        Ok(Self(map))
-    }
-}*/
