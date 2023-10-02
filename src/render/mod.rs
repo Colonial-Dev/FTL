@@ -1,4 +1,3 @@
-mod prepare;
 mod stylesheet;
 mod template;
 
@@ -15,8 +14,7 @@ use template::Ticket;
 
 use crate::db::*;
 use crate::prelude::*;
-
-pub use prepare::walk_src;
+use crate::prepare;
 
 #[derive(Debug)]
 pub struct Renderer {

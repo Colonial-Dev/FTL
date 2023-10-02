@@ -250,7 +250,6 @@ mod test_roundtrip {
         Hook {
             id: format!("{:016x}", 0xF),
             paths: String::from("a path"),
-            revision: format!("{:016x}", 0xF),
             template: String::from("a template"),
             headers: String::from("some headers"),
             cache: true

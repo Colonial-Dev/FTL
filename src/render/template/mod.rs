@@ -34,9 +34,6 @@ pub fn register_routines(
     rev_id: &RevisionID,
     env: &mut Environment<'_>,
 ) -> Result<()> {
-    env.add_function("eval", eval);
-    env.add_function("raise", raise);
-
     let ids = stylesheet::load_all_ids(ctx, rev_id)?;
     let path = format!(
         "/static/style.css?v={}",
@@ -57,7 +54,9 @@ pub fn register_routines(
 
         Ok(path.to_owned())
     });
-
+    
+    env.add_function("eval", eval);
+    env.add_function("raise", raise);
     env.add_function("dbg", dbg);
     env.add_function("info", info);
     env.add_function("warn", warn);
@@ -66,6 +65,8 @@ pub fn register_routines(
     env.add_function("shell", shell);
     env.add_function("base64_enc", base64_enc);
     env.add_function("base64_dec", base64_dec);
+    env.add_function("url_enc", url_enc);
+    env.add_function("url_dec", url_dec);
 
     env.add_filter("eval", eval);
     env.add_filter("timefmt", timefmt);
@@ -73,6 +74,8 @@ pub fn register_routines(
     env.add_filter("emojify", emojify);
     env.add_filter("base64_enc", base64_enc);
     env.add_filter("base64_dec", base64_dec);
+    env.add_filter("url_enc", url_enc);
+    env.add_filter("url_dec", url_dec);
 
     let db = DbHandle::new(ctx, rev_id);
     env.add_filter("query", move |sql, params| db.query(sql, params));
@@ -108,9 +111,9 @@ fn timefmt(input: String, format: String) -> MJResult {
     Ok(Value::from(formatted))
 }
 
-// Attempt to convert a given emoji shortcode (such as :smile:) into the corresponding Unicode character.
-//
-// Returns the shortcode unchanged if no match was found.
+/// Attempt to convert a given emoji shortcode (such as :smile:) into the corresponding Unicode character.
+///
+/// Returns the shortcode unchanged if no match was found.
 fn emojify(input: String) -> String {
     let code = input
         .trim_start_matches(':')
@@ -122,9 +125,9 @@ fn emojify(input: String) -> String {
     }
 }
 
-// Attempt to look up the specified environment variable.
-//
-// Returns an empty string if the variable is not found.
+/// Attempt to look up the specified environment variable.
+///
+/// Returns an empty string if the variable is not found.
 fn getenv(key: String) -> String {
     std::env::var(key).unwrap_or_else(|e| {
         warn!("Failed to get environment variable - {e:?}");
@@ -132,6 +135,7 @@ fn getenv(key: String) -> String {
     })
 }
 
+/// File a [`tracing`] debug event, with the format `<caller_name> <message>`.
 fn dbg(state: &State, msg: String) {
     debug!(
         "<{}> {}",
@@ -140,6 +144,7 @@ fn dbg(state: &State, msg: String) {
     )
 }
 
+/// File a [`tracing`] info event, with the format `<caller_name> <message>`.
 fn info(state: &State, msg: String) {
     info!(
         "<{}> {}",
@@ -148,6 +153,7 @@ fn info(state: &State, msg: String) {
     )
 }
 
+/// File a [`tracing`] warning event, with the format `<caller_name> <message>`.
 fn warn(state: &State, msg: String) {
     warn!(
         "<{}> {}",
@@ -156,6 +162,13 @@ fn warn(state: &State, msg: String) {
     )
 }
 
+/// Execute arbitrary shellcode (using `sh -c` on Unix and `cmd /C` on Windows.)
+/// 
+/// Returns a value with the following fields:
+/// - `stdout`
+/// - `stderr`
+/// - `sucessful` (whether or not the shellcode executed successfully)
+/// - `code` (the exit code)
 fn shell(script: String) -> MJResult {
     use std::process::Command;
 
@@ -173,11 +186,15 @@ fn shell(script: String) -> MJResult {
         .output()
         .map_err(Wrap::wrap)?;
 
-    String::from_utf8(output.stdout)
-        .map(Value::from)
-        .map_err(Wrap::wrap)
+    Ok(context! {
+        stdout     => String::from_utf8_lossy(&output.stdout),
+        stderr     => String::from_utf8_lossy(&output.stderr),
+        successful => output.status.success(),
+        code       => output.status.code(),
+    })
 }
 
+/// Base64 encodes a string or bytes.
 fn base64_enc(input: Value) -> MJResult {
     use base64::Engine;
 
@@ -197,6 +214,7 @@ fn base64_enc(input: Value) -> MJResult {
     }
 }
 
+/// Decodes a Base64 string to bytes.
 fn base64_dec(input: String) -> MJResult {
     use base64::Engine;
 
@@ -205,6 +223,24 @@ fn base64_dec(input: String) -> MJResult {
     engine.decode(input)
         .map(Value::from)
         .map_err(Wrap::wrap)
+}
+
+/// URL encode a string.
+fn url_enc(input: String) -> Value {
+    urlencoding::encode(&input).into()
+}
+
+/// URL decode a string.
+fn url_dec(input: String) -> Value {
+    use std::borrow::Cow;
+
+    urlencoding::decode(&input)
+        .map(Cow::into_owned)
+        .unwrap_or_else(|err| {
+            let bytes = err.as_bytes();
+            String::from_utf8_lossy(bytes).into_owned()
+        })
+        .into()
 }
 
 // markdown

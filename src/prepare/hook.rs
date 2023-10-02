@@ -73,7 +73,6 @@ pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
             Hook {
                 id,
                 paths,
-                revision: rev_id.to_string(),
                 template: hook.template,
                 headers,
                 cache: hook.cache,

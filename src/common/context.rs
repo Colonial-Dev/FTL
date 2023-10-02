@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::Parser;
+use dialoguer::Confirm;
 
 use super::{Arguments, Config};
 use crate::db::Database;
@@ -27,7 +28,7 @@ impl InnerContext {
         let args = Arguments::parse();
 
         if let Command::Init { root_url } = &args.command {
-            let cfg = Config {
+            let mut cfg = Config {
                 root_url: root_url.to_owned(),
                 build: Build::default(),
                 serve: Serve::default(),
@@ -41,13 +42,31 @@ impl InnerContext {
             std::fs::create_dir_all(SITE_CACHE_PATH)?;
 
             Database::create(SITE_DB_PATH)?;
+            
+            cfg.build.highlight_code = Confirm::new()
+                .with_prompt("Enable codeblock syntax highlighting?")
+                .default(true)
+                .interact()?;
+            
+            cfg.build.compile_sass = Confirm::new()
+                .with_prompt("Enable SASS compilation?")
+                .default(true)
+                .interact()?;
+
+            cfg.build.smart_punctuation = Confirm::new()
+                .with_prompt("Enable smart punctuation?")
+                .default(false)
+                .interact()?;
+
+            cfg.build.render_emoji = Confirm::new()
+                .with_prompt("Enable emoji shortcodes?")
+                .default(true)
+                .interact()?;
 
             std::fs::write(
                 CONFIG_FILENAME,
                 toml::to_string(&cfg)?
             )?;
-
-            // TODO ask user for their opinions on stuff like SASS, highlighting and smart punctuation.
 
             println!(
                 "New site {}",

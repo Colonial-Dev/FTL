@@ -1,3 +1,4 @@
+use std::string::FromUtf8Error;
 use std::sync::Arc;
 
 use axum::body::Bytes;
@@ -144,7 +145,6 @@ impl Resource {
             WHERE id = ?1
         ")?;
 
-
         let resource = match query
             .query_and_then([id], Output::from_row)?
             .next()
@@ -166,17 +166,15 @@ impl Resource {
     #[inline]
     fn from_hook(server: &Server, uri: &Uri, route: &Route) -> Result<Self> {
         let conn = server.ctx.db.get_ro()?;
-        let rev_id = server.rev_id.load();
         let id = &*route.id;
 
         let mut query = conn.prepare("
             SELECT * FROM hooks
             WHERE id = ?1
-            AND revision = ?2
         ")?;
-
+        
         let Some(hook) = query
-            .query_and_then([id, rev_id.as_ref()], Hook::from_row)? 
+            .query_and_then([id], Hook::from_row)? 
             .next()
         else {
             let error_page = server.render_error_page(
@@ -217,6 +215,25 @@ impl Resource {
                     (Some(k), Some(v)) => Some((k, v)),
                     _ => None
                 }
+            })
+            .map(|(k, v)| {
+                use std::borrow::Cow;
+                use urlencoding::decode;
+                
+                let lossy = |err: FromUtf8Error| {
+                    String::from_utf8_lossy(
+                        err.as_bytes()
+                    ).into_owned()
+                };
+
+                (
+                    decode(k)
+                        .map(Cow::into_owned)
+                        .unwrap_or_else(lossy),
+                    decode(v)
+                        .map(Cow::into_owned)
+                        .unwrap_or_else(lossy)
+                )
             });
         
         let output = template.render(context! {

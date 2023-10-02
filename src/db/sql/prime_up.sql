@@ -115,9 +115,7 @@ CREATE INDEX idx_attributes_cfk ON attributes(id);
 -- Records all known hooks (dynamic rendering triggers.)
 CREATE TABLE hooks (
     -- The ID of the hook.
-    id TEXT,
-    -- The revision of the hook.
-    revision TEXT,
+    id TEXT PRIMARY KEY,
     -- The paths associated with the hook, newline-separated.
     paths TEXT,
     -- The template associated with the hook.
@@ -128,11 +126,11 @@ CREATE TABLE hooks (
     -- Whether or not the output of the hook should be cached in-memory.
     cache BOOLEAN,
 
-    FOREIGN KEY (revision)
-    REFERENCES revisions (id)
-        ON DELETE CASCADE
+    FOREIGN KEY (id)
+    REFERENCES input_files (id)
+        ON DELETE CASCADE,
 
-    UNIQUE(id, revision)
+    UNIQUE(id, paths)
 );
 
 -- Query optimization index.

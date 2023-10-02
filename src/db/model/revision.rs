@@ -110,7 +110,6 @@ model! {
     Name     => Hook,
     Table    => "hooks",
     id       => String,
-    revision => String,
     paths    => String,
     template => String,
     headers  => String,

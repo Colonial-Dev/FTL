@@ -10,7 +10,7 @@ use notify_debouncer_full::{
 use tokio::sync::broadcast::*;
 
 use crate::prelude::*;
-use crate::render;
+use crate::prepare;
 
 pub fn init_watcher(ctx: &Context) -> Result<(Debouncer<impl Watcher, impl FileIdCache>, Receiver<RevisionID>)> {
     let ctx = ctx.clone();
@@ -36,7 +36,7 @@ pub fn init_watcher(ctx: &Context) -> Result<(Debouncer<impl Watcher, impl FileI
                         return;
                     }
 
-                    match render::walk_src(&ctx) {
+                    match prepare::walk_src(&ctx) {
                         Ok(id) => {
                             let _ = tx.send(id);
                         }

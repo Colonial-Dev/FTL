@@ -24,6 +24,10 @@ impl Arguments {
             _ => false
         }
     }
+
+    pub fn pretty_output(&self) -> bool {
+        !self.quiet && self.verbose == 0
+    }
 }
 
 #[derive(Debug, Subcommand)]
