@@ -1,11 +1,6 @@
 mod stylesheet;
 mod template;
 
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering
-};
-
 use crossbeam::channel::Receiver;
 use itertools::Itertools;
 use minijinja::Environment;
@@ -21,27 +16,26 @@ pub struct Renderer {
     pub env: Environment<'static>,
     pub ctx: Context,
     pub rev_id: RevisionID,
-    flag: AtomicBool,
 }
 
 impl Renderer {
     pub fn new(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<Self> {
         let rev_id = prepare::prepare(ctx, rev_id)?;
+        let env = template::setup_environment(ctx, &rev_id)?;
+        let ctx = ctx.clone();
         
-        Ok(Self {
-            env: template::setup_environment(ctx, &rev_id)?,
-            ctx: ctx.clone(),
+        let new = Self {
+            env,
+            ctx,
             rev_id,
-            flag: AtomicBool::new(false),
-        })
+        };
+
+        new.render()?;
+
+        Ok(new)
     }
 
-    pub fn render(&self) -> Result<()> {
-        if self.flag.load(Ordering::SeqCst) {
-            warn!("Tried to call render twice - skipping!");
-            return Ok(())
-        }
- 
+    fn render(&self) -> Result<()> {
         info!("Starting render for revision {}...", self.rev_id);
 
         stylesheet::compile(&self.ctx, &self.rev_id)?;
@@ -103,7 +97,7 @@ impl Renderer {
         let tickets: Vec<_> = get_pages
             .query_and_then([self.rev_id.as_ref()], Page::from_row)?
             .filter_ok(|page| {
-                if self.ctx.args.drafts_enabled() {
+                if self.ctx.drafts_enabled() {
                     true
                 } else {
                     !page.draft
@@ -131,11 +125,6 @@ impl Renderer {
             WHERE revisions.id = ?1
         ")?
         .execute([self.rev_id.as_ref()])?;
-
-        self.flag.store(
-            true,
-            Ordering::SeqCst
-        );
 
         Ok(())
     }

@@ -25,6 +25,8 @@ pub use rusqlite::{
 use crate::record;
 use crate::prelude::*;
 
+pub const SCHEMA_VERSION: i64 = 1;
+
 pub const AUX_UP: &str = include_str!("sql/aux_up.sql");
 pub const AUX_DOWN: &str = "DETACH DATABASE map;";
 pub const PRAGMAS: &str = include_str!("sql/pragmas.sql");
@@ -49,12 +51,13 @@ impl Database {
             false => {
                 let conn = Connection::open(path)?;
                 conn.execute_batch(PRIME_UP)?;
+                conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
                 Ok(conn)
             }
         }
     }
 
-    pub fn open(path: impl Into<PathBuf>) -> Self {
+    pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         let path = path.into();
 
         let rw_pool = Pool::open(
@@ -69,12 +72,26 @@ impl Database {
             OpenFlags::SQLITE_OPEN_READ_ONLY,
         );
 
-        Self {
+        let version = ro_pool.get()?.pragma_query_value(
+            None,
+            "user_version",
+            |row| row.get::<_, i64>(0)
+        )?;
+
+        if version != SCHEMA_VERSION {
+            let err = eyre!("Database schema is not compatible with this version of FTL.")
+                .note("Expected version {SCHEMA_VERSION}, got {version}.")
+                .suggestion("You may need to run `db clear` to update the schema.");
+
+            bail!(err);
+        }
+
+        Ok(Self {
             path,
             rw_pool,
             ro_pool,
             write_lock: Mutex::new(()),
-        }
+        })
     }
 
     pub fn compress(&self) -> Result<()> {
@@ -141,6 +158,10 @@ impl Database {
         std::fs::create_dir_all(SITE_CACHE_PATH)?;
 
         Ok(())
+    }
+
+    pub fn stat(&self) -> Result<()> {
+        todo!()
     }
 
     /// Acquire a read-write connection from the underlying pool, creating a new one

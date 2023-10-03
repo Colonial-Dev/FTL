@@ -1,65 +1,94 @@
-use std::sync::Mutex;
 use std::time::Duration;
-use std::time::Instant;
+use std::ops::Range;
 
-use console::{Emoji, style};
+use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 
-static MAGNIFYING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
-static CABINET: Emoji<'_, '_> = Emoji("🗃️ ", "");
-static COMPASS: Emoji<'_, '_> = Emoji("🧭 ", "");
-static PRINTER: Emoji<'_, '_> = Emoji("🖨️ ", "");
+// static MAGNIFYING_GLASS: Emoji<'_, '_> = Emoji("🔍 ", "");
+// static CABINET: Emoji<'_, '_> = Emoji("🗃️ ", "");
+// static COMPASS: Emoji<'_, '_> = Emoji("🧭 ", "");
+// static PRINTER: Emoji<'_, '_> = Emoji("🖨️ ", "");
 
 const TICK_DURATION: Duration = Duration::from_millis(100);
 
-pub struct ProgressHandle {
-    bar: ProgressBar,
-    msg: String,
+pub enum Progressor {
+    Real {
+        bar: ProgressBar,
+        msg: String,
+        ok: bool,
+    },
+    Dummy
 }
 
-impl Drop for ProgressHandle {
-    fn drop(&mut self) {
-        self.bar.finish_and_clear();
+impl Progressor {
+    pub fn new(msg: impl AsRef<str>, step: Range<usize>, dummy: bool) -> Self {
+        if dummy {
+            return Self::Dummy;
+        }
+        
+        let bar = Self::new_spinner();
+
+        let step = format!(
+            "[{}/{}]",
+            step.start,
+            step.end
+        );
+
+        let msg = format!(
+            "{} {:40}",
+            style(step).bold().dim(),
+            msg.as_ref()
+        );
+
+        bar.set_message(msg.clone());
+        bar.enable_steady_tick(TICK_DURATION);
+
+        Self::Real {
+            bar,
+            msg,
+            ok: false
+        }
+    }
+
+    pub fn finish(mut self) {
+        let Self::Real { bar, msg, ok } = &mut self else {
+            return;
+        };
+
+        bar.finish_and_clear();
+
         println!(
             "{} {}",
-            self.msg,
-            style("[OK]").green().bright().bold()
+            msg,
+            style("[OK]").green().bright().bold(),
+        );
+
+        *ok = true;
+    }
+
+    fn new_spinner() -> ProgressBar {
+        ProgressBar::new_spinner().with_style(
+            ProgressStyle::with_template("{msg} {spinner:.green} [{elapsed_precise}]").unwrap()
         )
     }
 }
 
-pub struct Cli {
-    start: Mutex<Instant>,
-    end: Mutex<Instant>,
-}
-
-impl Cli {
-    pub fn start_render(&self) {
+impl Drop for Progressor {
+    fn drop(&mut self) {
+        let Self::Real { bar, msg, ok } = self else {
+            return;
+        };
         
-    }
-
-    pub fn source_walk() -> ProgressHandle {
-        let style = ProgressStyle::with_template("{msg} {spinner:.green} [{elapsed_precise}]").unwrap();
-
-        let msg = format!(
-            "{} {}Walking source directory...",
-            console::style("[1/4]").bold().dim(),
-            MAGNIFYING_GLASS
-        );
-
-        let bar = ProgressBar::new_spinner()
-            .with_style(style)
-            .with_message(msg.clone());
-
-        bar.enable_steady_tick(TICK_DURATION);
-
-        ProgressHandle {
-            bar,
-            msg,
+        if *ok {
+            return;
         }
-    }
 
-    pub fn finish_render(&self) {
+        bar.finish_and_clear();
 
+        println!(
+            "{} {}",
+            msg,
+            style("[FAIL]").red().bright().bold()
+        )
     }
 }

@@ -56,6 +56,7 @@ fn main() -> Result<()> {
     }
     
     install_logging();
+
     info!("FTL v{VERSION} by {AUTHORS}");
     info!("This program is licensed under the GNU Affero General Public License, version 3.");
     info!("See {REPOSITORY} for more information.");
@@ -70,8 +71,6 @@ fn main() -> Result<()> {
 
             let renderer = Renderer::new(&ctx, None)?;
 
-            renderer.render()?;
-
             if *serve {
                 InnerServer::new(&ctx, renderer).serve()?;
             }
@@ -80,24 +79,24 @@ fn main() -> Result<()> {
                 let (_debouncer, mut rx) = watch::init_watcher(&ctx)?;
 
                 while let Ok(rev_id) = rx.blocking_recv() {
-                    Renderer::new(&ctx,Some(&rev_id))?
-                        .render()?;
+                    Renderer::new(&ctx,Some(&rev_id))?;
                 } 
             }
         },
-        Serve => {
-            let renderer = Renderer::new(&ctx, None)?;
-            
-            renderer.render()?;
-
-            InnerServer::new(&ctx, renderer).serve()?;
+        Serve => {            
+            InnerServer::new(
+                &ctx,
+                Renderer::new(&ctx, None)?
+            ).serve()?;
         }
         Revision(_subcommand) => todo!(),
         Db(subcommand) => match subcommand {
-            Stat => todo!(),
+            Stat => ctx.db.stat()?,
             Compress => ctx.db.compress()?,
             Clear => ctx.db.clear()?,
         },
+        // If the command is init, the program branches in InnerContext::init
+        // to do site setup before calling std::process::exit().
         Init { .. } => unreachable!()
     }
 
@@ -114,6 +113,8 @@ fn install_logging() {
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
+
+    // TODO add logfiles
 
     tracing_subscriber::registry()
         .with(filter_layer)

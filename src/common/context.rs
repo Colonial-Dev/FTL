@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::env;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -20,7 +20,6 @@ pub struct InnerContext {
     pub args: Arguments,
     pub config: Config,
     pub db: Database,
-    // TODO command line output (indicatif)
 }
 
 impl InnerContext {
@@ -82,11 +81,30 @@ impl InnerContext {
         let config = Config::from_path(&config)?;
 
         let db = dir.join(SITE_DB_PATH);
-        let db = Database::open(db);
+        let db = Database::open(db)?;
 
         let ctx = InnerContext { config, args, db };
 
         Ok(Arc::new(ctx))
+    }
+
+    pub fn progressor(&self, msg: impl AsRef<str>, step: Range<usize>) -> Progressor {
+        Progressor::new(
+            msg,
+            step,
+            !self.pretty_output()
+        )
+    }
+
+    pub fn drafts_enabled(&self) -> bool {
+        match self.args.command {
+            Command::Build { drafts, ..} => drafts,
+            _ => false
+        }
+    }
+
+    pub fn pretty_output(&self) -> bool {
+        !self.args.quiet && self.args.verbose == 0
     }
 }
 
@@ -114,8 +132,7 @@ fn validate_env() -> Result<PathBuf> {
     }
 
     match try_locate_config(&current_dir) {
-        Some(mut path) => {
-            path.pop();
+        Some(path) => {
             env::set_current_dir(&path)?;
             Ok(path)
         }
@@ -131,6 +148,7 @@ fn try_locate_config(start: &Path) -> Option<PathBuf> {
         path.push(target);
 
         if path.is_file() {
+            path.pop();
             break Some(path);
         }
 
