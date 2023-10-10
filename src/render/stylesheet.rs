@@ -6,7 +6,6 @@ use ahash::AHashMap;
 use grass::{Fs, Options};
 use itertools::Itertools;
 
-use crate::record;
 use crate::db::*;
 use crate::prelude::*;
 
@@ -80,7 +79,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         revision: rev_id.to_string(),
         route,
         kind: RouteKind::Stylesheet,
-    }.insert_or_update(&conn)?;
+    }.insert_or(&conn, OnConflict::Replace)?;
 
     let mut query = conn.prepare("
         SELECT NULL FROM output
@@ -111,7 +110,7 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         id: hash.into(),
         kind: OutputKind::Stylesheet,
         content: output,
-    }.insert_or_update(&conn)?;
+    }.insert_or(&conn, OnConflict::Replace)?;
 
     Ok(())
 }

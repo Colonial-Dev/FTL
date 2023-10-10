@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use serde::Deserialize;
 
-use crate::record;
 use crate::db::*;
 use crate::prelude::*;
 
@@ -76,7 +75,7 @@ pub fn create_hooks(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
                 template: hook.template,
                 headers,
                 cache: hook.cache,
-            }.insert_or_ignore(&txn)?;
+            }.insert_or(&txn, OnConflict::Ignore)?;
 
             Ok(())
         })?;

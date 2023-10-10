@@ -157,7 +157,7 @@ fn consumer_handler(conn: &mut Connection, rx: Receiver<(Ticket, String)>) -> Re
             id: Some(id),
             kind: OutputKind::Page,
             content: output
-        }.insert_or_update(&txn)?;
+        }.insert_or(&txn, OnConflict::Replace)?;
     }
 
     remove_deps.finalize()?;

@@ -134,6 +134,8 @@ impl StructObject for Resource {
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
-        Some(InputFile::COLUMNS)
+        Some(
+            InputFile::metadata().columns
+        )
     }
 }

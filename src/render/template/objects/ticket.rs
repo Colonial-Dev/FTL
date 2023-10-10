@@ -25,6 +25,15 @@ pub struct Ticket {
     inner: Value,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Header {
+    pub level: u8,
+    pub slug: String,
+    pub name: String,
+    pub link: String,
+    pub kids: Vec<Header>
+}
+
 #[derive(Serialize)]
 struct SerTicket<'a> {
     source: &'a str,
@@ -102,6 +111,7 @@ impl Ticket {
         let mut buffer = String::new();
 
         for fragment in Content::parse_many(&self.source)? {
+            // TODO respect user configuration wrt emojis/highlighting/etc
             match fragment {
                 Plaintext(text) => buffer += text,
                 Emojicode(code) => match gh_emoji::get(code) {

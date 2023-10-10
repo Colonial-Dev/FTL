@@ -1,8 +1,6 @@
 //! Types, functions, constants and other items that are globally relevant throughout the FTL codebase.
 #![allow(dead_code)]
 
-pub mod const_fmt;
-
 mod args;
 mod cli;
 mod config;

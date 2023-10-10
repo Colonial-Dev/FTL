@@ -5,7 +5,6 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::record;
 use crate::db::*;
 use crate::prelude::*;
 
@@ -55,7 +54,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     let static_routes = query_static
         .query_and_then([rev_id.as_ref()], Row::from_row)?
-        .map_ok(|row| -> Result<_> {
+        .map_ok(|row| {
             let route = row
                 .path
                 .trim_start_matches(SITE_ASSET_PATH)
@@ -72,7 +71,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     let hook_routes = query_hooks
         .query_and_then([rev_id.as_ref()], Hook::from_row)?
-        .map_ok(|hook| -> Result<_> {
+        .map_ok(|hook| -> rusqlite::Result<_> {
             let mut routes = Vec::new();
 
             for path in hook.paths.split('\n') {
@@ -91,7 +90,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
     
     let cachebust_routes = query_cachebust
         .query_and_then([rev_id.as_ref()], Row::from_row)?
-        .map_ok(|row| -> Result<_> {
+        .map_ok(|row| {
             let filename = Path::new(&row.path)
                 .file_stem()
                 .map(OsStr::to_str)
@@ -157,7 +156,7 @@ pub fn create_routes(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
         .chain(page_routes)
         .chain(alias_routes)
         .try_for_each(|route| {
-            route?.insert_or_ignore(&txn)
+            route?.insert_or(&txn, OnConflict::Ignore)
         })?;
     
     

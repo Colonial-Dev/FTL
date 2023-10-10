@@ -3,8 +3,7 @@
 use itertools::Itertools;
 use minijinja::Environment;
 
-use crate::record;
-use crate::db::{Connection, AUX_DOWN, AUX_UP};
+use crate::db::*;
 use crate::parse::Dependency;
 use crate::prelude::*;
 

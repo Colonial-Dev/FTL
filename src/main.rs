@@ -89,7 +89,23 @@ fn main() -> Result<()> {
                 Renderer::new(&ctx, None)?
             ).serve()?;
         }
-        Revision(_subcommand) => todo!(),
+        Revision(subcommand) => match subcommand {
+            List => {
+                
+            },
+            Inspect { id } => {
+
+            },
+            Name { id, name } => {
+
+            },
+            Pin { id } => {
+
+            },
+            Unpin { id } => {
+
+            }
+        },
         Db(subcommand) => match subcommand {
             Stat => ctx.db.stat()?,
             Compress => ctx.db.compress()?,

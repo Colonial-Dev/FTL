@@ -15,6 +15,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub use model::*;
 pub use pool::{Pool, PoolConnection as Connection};
 
+pub use exemplar::{
+    Model,
+    record,
+    OnConflict
+};
+
 pub use rusqlite::{
     OpenFlags,
     Statement,
@@ -22,7 +28,6 @@ pub use rusqlite::{
     named_params
 };
 
-use crate::record;
 use crate::prelude::*;
 
 pub const SCHEMA_VERSION: i64 = 1;

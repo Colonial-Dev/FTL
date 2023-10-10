@@ -6,7 +6,7 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::db::{Connection, InputFile, Revision, RevisionFile, Model};
+use crate::db::*;
 use crate::prelude::*;
 
 /// Walks the site directory for all valid content files.
@@ -110,7 +110,7 @@ fn consumer_handler(conn: &mut Connection, rx: Receiver<(InputFile, u64)>) -> Re
 
     for message in rx.into_iter() {
         let (file, id) = message;
-        file.insert_or_ignore(&txn)?;
+        file.insert_or(&txn, OnConflict::Ignore)?;
 
         if !file.inline {
             let destination = PathBuf::from(format!("{SITE_CACHE_PATH}{}", &file.id));
@@ -141,13 +141,13 @@ fn consumer_handler(conn: &mut Connection, rx: Receiver<(InputFile, u64)>) -> Re
         time: None,
         pinned: false,
         stable: false,
-    }.insert_or_ignore(&txn)?;
+    }.insert_or(&txn, OnConflict::Ignore)?;
 
     for id in ids {
         RevisionFile {
             id,
             revision: rev_id.to_string(),
-        }.insert_or_ignore(&txn)?;
+        }.insert_or(&txn, OnConflict::Ignore)?;
     }
 
     txn.commit()?;

@@ -37,6 +37,7 @@ walkdir = "2"
 
 # Database
 rusqlite = { version = "0.29.0", features = ["bundled"] }
+exemplar = { version = "0.5.6" }
 
 # Serde cinematic universe
 serde = { version = "1.0", features = ["derive"] }
@@ -52,7 +53,7 @@ pulldown-cmark = { version = "0.9.3", default-features = false, features = ["sim
 minijinja = { version = "1", features = ["loader", "speedups", "unicode"] }
 minijinja-stack-ref = "1.0.5"
 gh-emoji = "1.0.7"
-inkjet = "0.9.1"
+inkjet = "0.10.0"
 grass = "0.13.1"
 lol_html = "1.1.1"
 slug = "0.1.4"
@@ -72,6 +73,3 @@ chrono = "0.4.23"
 ansi-to-html = "0.1.3"
 notify-debouncer-full = "0.3.1"
 urlencoding = "2.1.3"
-
-[dev-dependencies]
-paste = "1.0.14"

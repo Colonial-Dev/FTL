@@ -68,7 +68,7 @@ impl InnerContext {
             )?;
 
             println!(
-                "New site {}",
+                "\nNew site {}",
                 console::style("created.").green().bold().bright()
             );
 
