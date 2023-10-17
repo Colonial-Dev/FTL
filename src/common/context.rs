@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env;
-use std::ops::{Deref, Range};
+use std::fmt::Arguments as FmtArgs;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -88,12 +89,14 @@ impl InnerContext {
         Ok(Arc::new(ctx))
     }
 
-    pub fn progressor(&self, msg: impl AsRef<str>, step: Range<usize>) -> Progressor {
-        Progressor::new(
-            msg,
-            step,
-            !self.pretty_output()
-        )
+    pub fn progressor(&self, msg: Message) -> Progressor {
+        Progressor::new(msg)
+    }
+
+    pub fn try_println(&self, msg: FmtArgs) {
+        if self.pretty_output() {
+            println!("{}", msg);
+        }
     }
 
     pub fn drafts_enabled(&self) -> bool {

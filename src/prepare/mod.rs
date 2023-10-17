@@ -10,20 +10,12 @@ use crate::prelude::*;
 pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID> {
     let rev_id = match rev_id {
         Some(id) => {
-            println!(
-                "{} {:30} {}",
-                console::style("[1/4]").bold().dim(),
-                "🔍 Walking source directory...",
-                console::style("[SKIPPED]").yellow().bold().bright()
-            );
+            println!("{}", Message::WalkSkipped);
 
             id.clone()
         },
         None => {
-            let progress = ctx.progressor(
-                "🔍 Walking source directory...",
-                1..4
-            );
+            let progress = ctx.progressor(Message::Walk);
 
             let rev_id = walk_src(ctx)?;
 
@@ -33,10 +25,7 @@ pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID>
     };
 
     {
-        let progress = ctx.progressor(
-            "📑 Parsing frontmattters and hooks...",
-            2..4
-        );
+        let progress = ctx.progressor(Message::Parsing);
     
         frontmatter::parse_frontmatters(ctx, &rev_id)?;
         hook::create_hooks(ctx, &rev_id)?;
@@ -45,16 +34,12 @@ pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID>
     }
 
     {
-        let progress = ctx.progressor(
-            "🧭 Computing routes...",
-            3..4
-        );
+        let progress = ctx.progressor(Message::Routing);
 
         route::create_routes(ctx, &rev_id)?;
 
         progress.finish();
     }
-
 
     Ok(rev_id)
 }

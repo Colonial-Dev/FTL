@@ -139,6 +139,7 @@ impl InnerServer {
     fn migrate_revision(&self, rev_id: RevisionID) -> Result<()> {
         info!("Migrating to revision {rev_id}...");
 
+        // TODO properly print error when this fails
         let renderer = Renderer::new(&self.ctx, Some(&rev_id))?;
 
         self.renderer.swap(renderer.into());

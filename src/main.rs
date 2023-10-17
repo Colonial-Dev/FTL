@@ -93,16 +93,16 @@ fn main() -> Result<()> {
             List => {
                 
             },
-            Inspect { id } => {
+            Inspect { id: _ } => {
 
             },
-            Name { id, name } => {
+            Name { id: _, name: _ } => {
 
             },
-            Pin { id } => {
+            Pin { id: _ } => {
 
             },
-            Unpin { id } => {
+            Unpin { id: _ } => {
 
             }
         },

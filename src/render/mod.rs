@@ -38,6 +38,8 @@ impl Renderer {
     fn render(&self) -> Result<()> {
         info!("Starting render for revision {}...", self.rev_id);
 
+        let progressor = self.ctx.progressor(Message::Rendering);
+
         stylesheet::compile(&self.ctx, &self.rev_id)?;
 
         let conn = self.ctx.db.get_rw()?;
@@ -66,6 +68,13 @@ impl Renderer {
         self.finalize_revision()?;
 
         info!("Finished rendering revison {}.", self.rev_id);
+        progressor.finish();
+
+        self.ctx.try_println(format_args!(
+            "{}",
+            Message::BuildOK
+        ));
+
         Ok(())
     }
 
