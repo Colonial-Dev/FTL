@@ -1,0 +1,11 @@
+
+<script>
+    const evtSource = new EventSource("ftl_livereload");
+    
+    console.log("Connected to livereload endpoint.");
+
+    evtSource.onmessage = (event) => {
+        console.log("Receive live reload notification.");
+        history.go(0);
+    };
+</script>

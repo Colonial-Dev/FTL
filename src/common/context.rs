@@ -106,6 +106,14 @@ impl InnerContext {
         }
     }
 
+    pub fn devel_mode(&self) -> bool {
+        match self.args.command {
+            Command::Serve { development } => development,
+            Command::Build { serve, .. } => serve,
+            _ => false
+        }
+    }
+
     pub fn pretty_output(&self) -> bool {
         !self.args.quiet && self.args.verbose == 0
     }

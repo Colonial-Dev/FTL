@@ -40,7 +40,11 @@ pub enum Command {
         drafts: bool,
     },
     /// Start the FTL webserver in production mode. Configured in `ftl.toml`.
-    Serve,
+    Serve {
+        /// Run in development mode. Pages will auto-reload when a new revision is built.
+        #[arg(short, long)]
+        development: bool,
+    },
     /// Inspect and manipulate site revisions.
     #[command(subcommand)]
     Revision(RevisionSubcommand),

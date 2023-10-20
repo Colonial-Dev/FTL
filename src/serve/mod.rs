@@ -5,24 +5,35 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap as Swap;
+
 use axum::extract::State;
 use axum::http::{StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
+use axum::response::sse::*;
 use axum::routing::get;
 use axum::Router;
+
+use futures_util::stream::{Stream, StreamExt};
+
 use moka::future::Cache;
-use resource::*;
+
+use tokio::sync::Notify;
 
 use crate::prelude::*;
+use crate::db::*;
 use crate::render::Renderer;
 use crate::watch::init_watcher;
 
+use self::resource::*;
+
 type Server = Arc<InnerServer>;
+type SseEvent = Result<Event, std::convert::Infallible>;
 
 pub struct InnerServer {
     pub renderer: Swap<Renderer>,
     pub rev_id: Swap<String>,
     pub cache: Cache<Uri, Resource>,
+    pub notif: Notify,
     pub ctx: Context,
 }
 
@@ -47,6 +58,7 @@ impl InnerServer {
             renderer: Swap::new(renderer),
             rev_id: Swap::new(rev_id.into_inner()),
             cache,
+            notif: Notify::new(),
             ctx: ctx.clone(),
         })
     }
@@ -71,14 +83,19 @@ impl InnerServer {
 
             while let Ok(id) = rx.recv().await {
                 server.migrate_revision(id)
-                    .unwrap_or_else(|err| error!("Failed to migrate revision - {err:?}"))
+                    .unwrap_or_else(|err| error!("Failed to migrate revision - {err:?}"));
+
+                server.notif.notify_waiters();
             }
 
             error!("Watch receiver closed - this shouldn't happen!");
         });
 
+        // TODO handle SSE reloading in development mode
+
         let app = Router::new()
             .route("/", get(fetch_resource))
+            .route("/ftl_livereload", get(live_reload))
             .route("/*path", get(fetch_resource))
             .with_state(self.clone());
 
@@ -159,10 +176,16 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
         return cached.into_response();
     }
 
-    let resource = Resource::from_uri(
+    let mut resource = Resource::from_uri(
         &server,
         uri.clone()
     ).await;
+
+    if server.ctx.devel_mode() {
+        if let Resource::Text(ref mut text, RouteKind::Page) = resource {
+            *text += include_str!("live_reload.html");
+        };
+    }
 
     if resource.should_cache() {
         debug!("Caching {uri:?}");
@@ -173,4 +196,28 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
     }
 
     resource.into_response()
+}
+
+async fn live_reload(State(server): State<Server>) -> Sse<impl Stream<Item = SseEvent>> {
+    use tokio::sync::mpsc;
+    use tokio_stream::wrappers::*;
+
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    // Cursed hack to wrap the notify, because apparently
+    // there's no way to "just repeat a future."
+    tokio::task::spawn(async move {
+        while !tx.is_closed() {
+            server.notif.notified().await;
+            debug!("Dispatching live reload notification...");
+            let _ = tx.send(());
+        }
+    });
+    
+    let stream = UnboundedReceiverStream::new(rx)
+        .map(|_| Event::default().data("Live reload!"))
+        .map(Ok);
+
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
 }
