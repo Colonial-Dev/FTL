@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use std::fs::{self, File};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -34,11 +35,15 @@ impl InnerContext {
                 extra: HashMap::new()
             };
 
-            std::fs::create_dir_all(SITE_SASS_PATH)?;
-            std::fs::create_dir_all(SITE_HOOKS_PATH)?;
-            std::fs::create_dir_all(SITE_CONTENT_PATH)?;
-            std::fs::create_dir_all(SITE_TEMPLATE_PATH)?;
-            std::fs::create_dir_all(SITE_CACHE_PATH)?;
+            fs::create_dir_all(SITE_SASS_PATH)?;
+            fs::create_dir_all(SITE_HOOKS_PATH)?;
+            fs::create_dir_all(SITE_CONTENT_PATH)?;
+            fs::create_dir_all(SITE_TEMPLATE_PATH)?;
+            fs::create_dir_all(SITE_CACHE_PATH)?;
+
+            File::create(
+                format!("{SITE_SASS_PATH}/style.scss")
+            )?;
 
             Database::create(SITE_DB_PATH)?;
             
@@ -102,7 +107,6 @@ impl InnerContext {
     pub fn devel_mode(&self) -> bool {
         match self.args.command {
             Command::Serve { development } => development,
-            Command::Build { serve, .. } => serve,
             _ => false
         }
     }

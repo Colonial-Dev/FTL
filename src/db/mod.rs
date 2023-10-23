@@ -63,6 +63,24 @@ impl Database {
     }
 
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
+        use std::ffi::c_int;
+        use std::sync::Once;
+        
+        static LOGGING_INIT: Once = Once::new();
+
+        fn sqlite_trace_callback(code: c_int, msg: &str) {
+            error!("Logged SQLite error: [{code}] {msg}");
+        }
+
+        // SAFETY: open should only be called *once* during program initialization,
+        // before we begin using the database "for real."
+        //
+        // Therefore, it should be safe to install the logging hook.
+        LOGGING_INIT.call_once(|| unsafe {
+            rusqlite::trace::config_log(Some(sqlite_trace_callback))
+                .expect("Failed to install SQLite error logging callback.");
+        });
+    
         let path = path.into();
 
         let rw_pool = Pool::open(

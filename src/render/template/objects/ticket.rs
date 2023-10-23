@@ -17,15 +17,15 @@ use crate::prelude::*;
 /// in a well-typed manner.
 #[derive(Debug)]
 pub struct Ticket {
-    pub dependencies: SegQueue<(Relation, String)>,
-    pub rev_id: RevisionID,
-    pub source: String,
-    pub ctx: Context,
-    pub page: Page,
-    inner: Value,
+    pub dependencies : SegQueue<(Relation, String)>,
+    pub rev_id       : RevisionID,
+    pub source       : String,
+    pub ctx          : Context,
+    pub page         : Page,
+    inner            : Value,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Header {
     pub level: u8,
     pub slug: String,
@@ -97,18 +97,55 @@ impl Ticket {
         Ok(Value::from_safe_string(buffer))
     }
 
-    // TODO parse TOCs
     fn toc(&self) -> Result<Value> {
+        fn try_insert(parent: Option<&mut Header>, child: &Header) -> bool {
+            let Some(parent) = parent else {
+                return false;
+            };
+
+            if child.level <= parent.level {
+                // Heading is the same level or higher, so don't insert.
+                return false;
+            }
+
+            if child.level + 1 == parent.level {
+                // Direct child of the parent.
+                parent.children.push(child.clone());
+                return true;
+            }
+
+            if !try_insert(parent.children.last_mut(), child) {
+                parent.children.push(child.clone());
+            }
+
+            true
+        }
+        
         let mut headers: Vec<Header> = Vec::new();
 
-        for fragment in Content::parse_many(&self.source)?
+        Content::parse_many(&self.source)?
             .into_iter()
-            .filter(|f| {
-                matches!(f, Content::Header(_))
+            .filter_map(|f| match f {
+                Content::Header(header) => Some(header),
+                _ => None
             })
-        {
+            .map(|h| {
+                let anchor = h.ident.unwrap_or(h.title);
+                let anchor = slug::slugify(anchor);
 
-        }
+                Header {
+                    level: h.level,
+                    name: h.title.to_owned(),
+                    link: format!("#{anchor}"),
+                    slug: anchor,
+                    children: Vec::new()
+                }
+            })
+            .for_each(|h| {
+                if headers.is_empty() || !try_insert(headers.last_mut(), &h) {
+                    headers.push(h)
+                }
+            });
         
         Ok(Value::from_serializable(&headers))
     }

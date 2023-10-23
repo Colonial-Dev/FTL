@@ -31,9 +31,6 @@ pub enum Command {
         /// Stay resident and trigger a new build whenever changes to the site source are detected.
         #[arg(short, long)]
         watch: bool,
-        /// Build and serve the site locally, in debug mode. Implicitly enables `--watch`.
-        #[arg(short, long)]
-        serve: bool,
         /// Rebuild the entire site from scratch. Implicitly invokes `ftl db clear`.
         #[arg(short, long)]
         full: bool,
