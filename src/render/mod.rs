@@ -38,9 +38,11 @@ impl Renderer {
     fn render(&self) -> Result<()> {
         info!("Starting render for revision {}...", self.rev_id);
 
-        let progressor = self.ctx.progressor(Message::Rendering);
+        let progressor = Progressor::new(Message::Rendering);
 
-        stylesheet::compile(&self.ctx, &self.rev_id)?;
+        if self.ctx.build.compile_sass {
+            stylesheet::compile(&self.ctx, &self.rev_id)?;
+        }
 
         let conn = self.ctx.db.get_rw()?;
         let tickets = self.get_tickets(&conn)?;
@@ -59,6 +61,8 @@ impl Renderer {
                 Ok(())
             })?;
 
+        // TODO handle the possibility of multiple errors occurring during rendering.
+
         drop(tx);
 
         handle
@@ -70,10 +74,7 @@ impl Renderer {
         info!("Finished rendering revison {}.", self.rev_id);
         progressor.finish();
 
-        self.ctx.try_println(format_args!(
-            "{}",
-            Message::BuildOK
-        ));
+        Message::BuildOK.print();
 
         Ok(())
     }

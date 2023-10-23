@@ -10,12 +10,12 @@ use crate::prelude::*;
 pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID> {
     let rev_id = match rev_id {
         Some(id) => {
-            println!("{}", Message::WalkSkipped);
+            Message::WalkSkipped.print();
 
             id.clone()
         },
         None => {
-            let progress = ctx.progressor(Message::Walk);
+            let progress = Progressor::new(Message::Walk);
 
             let rev_id = walk_src(ctx)?;
 
@@ -25,7 +25,7 @@ pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID>
     };
 
     {
-        let progress = ctx.progressor(Message::Parsing);
+        let progress = Progressor::new(Message::Parsing);
     
         frontmatter::parse_frontmatters(ctx, &rev_id)?;
         hook::create_hooks(ctx, &rev_id)?;
@@ -34,7 +34,7 @@ pub fn prepare(ctx: &Context, rev_id: Option<&RevisionID>) -> Result<RevisionID>
     }
 
     {
-        let progress = ctx.progressor(Message::Routing);
+        let progress = Progressor::new(Message::Routing);
 
         route::create_routes(ctx, &rev_id)?;
 

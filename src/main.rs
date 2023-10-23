@@ -64,6 +64,9 @@ fn main() -> Result<()> {
     ctx.db.clear()?;
 
     match &ctx.args.command {
+        Status => {
+            todo!()
+        },
         Build { watch, serve, full, .. } => {
             if *full {
                 ctx.db.clear()?; 
@@ -91,19 +94,19 @@ fn main() -> Result<()> {
         }
         Revision(subcommand) => match subcommand {
             List => {
-                
+                todo!()
             },
             Inspect { id: _ } => {
-
+                todo!()
             },
             Name { id: _, name: _ } => {
-
+                todo!()
             },
             Pin { id: _ } => {
-
+                todo!()
             },
             Unpin { id: _ } => {
-
+                todo!()
             }
         },
         Db(subcommand) => match subcommand {
@@ -120,17 +123,41 @@ fn main() -> Result<()> {
 }
 
 fn install_logging() {
+    use std::ffi::c_int;
+    use std::sync::Once;
+
     use color_eyre::config::HookBuilder;
     use tracing_error::ErrorLayer;
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
+    static LOGGING_INIT: Once = Once::new();
+
+    fn sqlite_trace_callback(code: c_int, msg: &str) {
+        error!("Logged SQLite error: [{code}] {msg}");
+    }
+
+    if LOGGING_INIT.is_completed() {
+        // Because we unsafely insert hooks into SQLite, this function
+        // being called more than once is likely asking for trouble.
+        panic!("Tried to initialize logging more than once!");
+    }
+
+    LOGGING_INIT.call_once(|| ());
+
+    // SAFETY: install_logging should only be called *once* during program initialization,
+    // before we begin using the database "for real."
+    //
+    // Therefore, it should be safe to install the logging hook.
+    unsafe {
+        rusqlite::trace::config_log(Some(sqlite_trace_callback))
+            .expect("Failed to install SQLite error logging callback.");
+    }
+
     let fmt_layer = fmt::layer().with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
-
-    // TODO add logfiles
 
     tracing_subscriber::registry()
         .with(filter_layer)

@@ -25,19 +25,17 @@ pub struct Ticket {
     inner: Value,
 }
 
-/// TODO parse TOCs
 #[derive(Debug, Serialize)]
 pub struct Header {
     pub level: u8,
     pub slug: String,
     pub name: String,
     pub link: String,
-    pub kids: Vec<Header>
+    pub children: Vec<Header>
 }
 
 #[derive(Serialize)]
 struct SerTicket<'a> {
-    source: &'a str,
     #[serde(flatten)]
     page: &'a Page,
 }
@@ -46,8 +44,8 @@ impl Ticket {
     pub fn new(ctx: &Context, rev_id: &RevisionID, page: Page, source: &str) -> Self {
         // Slice off the page's frontmatter.
         let source = source[page.offset as usize..].to_owned();
+
         let inner = Value::from_serializable(&SerTicket {
-            source: &source,
             page: &page,
         });
 
@@ -99,6 +97,22 @@ impl Ticket {
         Ok(Value::from_safe_string(buffer))
     }
 
+    // TODO parse TOCs
+    fn toc(&self) -> Result<Value> {
+        let mut headers: Vec<Header> = Vec::new();
+
+        for fragment in Content::parse_many(&self.source)?
+            .into_iter()
+            .filter(|f| {
+                matches!(f, Content::Header(_))
+            })
+        {
+
+        }
+        
+        Ok(Value::from_serializable(&headers))
+    }
+
     #[inline(always)]
     fn preprocess(&self, state: &State) -> Result<String> {
         use std::cell::RefCell;
@@ -112,20 +126,43 @@ impl Ticket {
         let mut buffer = String::new();
 
         for fragment in Content::parse_many(&self.source)? {
-            // TODO respect user configuration wrt emojis/highlighting/etc
+            // Behold: the match to end all matches
             match fragment {
                 Plaintext(text) => buffer += text,
-                Emojicode(code) => match gh_emoji::get(code) {
-                    Some(emoji) => buffer += emoji,
-                    None => {
-                        warn!("Encountered an invalid emoji shortcode ('{code}').");
+                Emojicode(code) => {
+                    if !self.ctx.build.render_emoji {
                         buffer += ":";
                         buffer += code;
                         buffer += ":";
+                        
+                        continue;
+                    }
+
+                    match gh_emoji::get(code) {
+                        Some(emoji) => buffer += emoji,
+                        None => {
+                            warn!("Encountered an invalid emoji shortcode ('{code}').");
+                            buffer += ":";
+                            buffer += code;
+                            buffer += ":";
+                        }
                     }
                 },
                 Shortcode(code) => buffer += &self.eval_shortcode(state, code)?,
                 Codeblock(block) => {                    
+                    if !self.ctx.build.highlight_code {
+                        buffer += "```";
+                        buffer += block.token.unwrap_or("");
+                        buffer += "\n";
+
+                        buffer += block.body;
+
+                        buffer += "```";
+                        buffer += "\n";
+
+                        continue;
+                    }
+                    
                     let format = |code| {
                         if let Some(name) = &self.ctx.build.code_template {
                             let Ok(template) = state.env().get_template(name) else {
@@ -191,7 +228,8 @@ impl Ticket {
                             ident => header.ident,
                             classes => header.classes
                         })?;
-                    } else {
+                    } 
+                    else {
                         let level = header.level;
                         let classes = {
                             let mut buffer = String::new();
@@ -299,6 +337,44 @@ impl Ticket {
                     }
 
                     Ok(())
+                }),
+                element!("a", |el| {
+                    const NO_OPENER: &str = "noopener ";
+                    const NO_FOLLOW: &str = "nofollow ";
+                    const NO_REFERRER: &str = "noreferrer";
+                                        
+                    let target = el.get_attribute("href")
+                        .context("No target (href) found when trying to update hyperlink rel attribute.")
+                        .suggestion("Do you have a typo or missing link?")?;
+
+                    if !target.starts_with("http:") && !target.starts_with("https:") {
+                        // Not an external link, skip.
+                        return Ok(());
+                    }
+
+                    let mut rel_attribute = String::new();
+
+                    if self.ctx.build.external_links_new_tab {
+                        el.set_attribute("target", "_blank").unwrap();
+                        rel_attribute += NO_OPENER;
+                    }
+
+                    if self.ctx.build.external_links_no_follow {
+                        rel_attribute += NO_FOLLOW;
+                    }
+
+                    if self.ctx.build.external_links_no_referrer {
+                        rel_attribute += NO_REFERRER;
+                    }
+
+                    if !rel_attribute.is_empty() {
+                        el.set_attribute(
+                            "rel",
+                            rel_attribute.trim()
+                        ).unwrap()
+                    }
+
+                    Ok(())
                 })
             ];
 
@@ -395,6 +471,7 @@ impl Object for Ticket {
     fn call_method(&self, state: &State, name: &str, _args: &[Value]) -> MJResult {
         match name {
             "render" => self.render(state),
+            "toc" => self.toc(),
             _ => Err(eyre!("object has no method named {name}")),
         }
         .map_err(Wrap::wrap)
@@ -411,6 +488,6 @@ impl StructObject for Ticket {
     }
 
     fn static_fields(&self) -> Option<&'static [&'static str]> {
-        Some(&["id", "path", "template", "draft", "attributes", "extra", "source"])
+        Some(&["id", "path", "template", "draft", "attributes", "extra"])
     }
 }

@@ -20,7 +20,6 @@ use moka::future::Cache;
 use tokio::sync::Notify;
 
 use crate::prelude::*;
-use crate::db::*;
 use crate::render::Renderer;
 use crate::watch::init_watcher;
 
@@ -82,22 +81,20 @@ impl InnerServer {
                 .expect("Failed to create watcher");
 
             while let Ok(id) = rx.recv().await {
-                server.migrate_revision(id)
-                    .unwrap_or_else(|err| error!("Failed to migrate revision - {err:?}"));
-
+                server.migrate_revision(id);
                 server.notif.notify_waiters();
             }
 
             error!("Watch receiver closed - this shouldn't happen!");
         });
 
-        // TODO handle SSE reloading in development mode
-
-        let app = Router::new()
+        let mut app = Router::new()
             .route("/", get(fetch_resource))
-            .route("/ftl_livereload", get(live_reload))
-            .route("/*path", get(fetch_resource))
-            .with_state(self.clone());
+            .route("/*path", get(fetch_resource));
+
+        if self.ctx.devel_mode() {
+            app = app.route("/ftl_livereload", get(live_reload));
+        }
 
         info!("Starting webserver.");
 
@@ -112,7 +109,10 @@ impl InnerServer {
         );
 
         axum::Server::bind(&addr)
-            .serve(app.into_make_service())
+            .serve(app
+                .with_state(self.clone())
+                .into_make_service()
+            )
             .await?;
 
         info!("Webserver terminated successfully.");
@@ -153,18 +153,26 @@ impl InnerServer {
         }
     }
 
-    fn migrate_revision(&self, rev_id: RevisionID) -> Result<()> {
+    fn migrate_revision(&self, rev_id: RevisionID) {
         info!("Migrating to revision {rev_id}...");
 
-        // TODO properly print error when this fails
-        let renderer = Renderer::new(&self.ctx, Some(&rev_id))?;
+        let renderer = Renderer::new(
+            &self.ctx,
+            Some(&rev_id)
+        );
 
-        self.renderer.swap(renderer.into());
-        self.rev_id.swap(rev_id.into_inner());
-        self.cache.invalidate_all();
-
-        info!("Successfully migrated to revision {rev_id}.");
-        Ok(())
+        match renderer {
+            Ok(renderer) => {
+                self.renderer.swap(renderer.into());
+                self.rev_id.swap(rev_id.into_inner());
+                self.cache.invalidate_all();
+        
+                info!("Successfully migrated to revision {rev_id}.");
+            }
+            Err(err) => {
+                error!("Failed to migrate revision - {err:?}")
+            }
+        }
     }
 }
 
@@ -176,16 +184,10 @@ async fn fetch_resource(State(server): State<Server>, uri: Uri) -> Response {
         return cached.into_response();
     }
 
-    let mut resource = Resource::from_uri(
+    let resource = Resource::from_uri(
         &server,
         uri.clone()
     ).await;
-
-    if server.ctx.devel_mode() {
-        if let Resource::Text(ref mut text, RouteKind::Page) = resource {
-            *text += include_str!("live_reload.html");
-        };
-    }
 
     if resource.should_cache() {
         debug!("Caching {uri:?}");
@@ -205,7 +207,7 @@ async fn live_reload(State(server): State<Server>) -> Sse<impl Stream<Item = Sse
     let (tx, rx) = mpsc::unbounded_channel();
 
     // Cursed hack to wrap the notify, because apparently
-    // there's no way to "just repeat a future."
+    // there's no way to "just repeat a future as a stream."
     tokio::task::spawn(async move {
         while !tx.is_closed() {
             server.notif.notified().await;

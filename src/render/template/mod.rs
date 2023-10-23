@@ -34,26 +34,29 @@ pub fn register_routines(
     rev_id: &RevisionID,
     env: &mut Environment<'_>,
 ) -> Result<()> {
-    let ids = stylesheet::load_all_ids(ctx, rev_id)?;
-    let path = format!(
-        "/static/style.css?v={}",
-        stylesheet::load_hash(ctx, rev_id)?
-    );
-
-    env.add_function("stylesheet_path", move |state: &State| {
-        try_with_ticket(state, |page| {
-            for id in &ids {
-                // Unwrap justification: register_dependency can only fail
-                // if you're registering a template dependency
-                page.register_dependency(
-                    Relation::PageAsset,
-                    id.to_owned()
-                ).unwrap();
-            }
+    
+    if ctx.build.compile_sass {
+        let ids = stylesheet::load_all_ids(ctx, rev_id)?;
+        let path = format!(
+            "/static/style.css?v={}",
+            stylesheet::load_hash(ctx, rev_id)?
+        );
+    
+        env.add_function("stylesheet_path", move |state: &State| {
+            try_with_ticket(state, |page| {
+                for id in &ids {
+                    // Unwrap justification: register_dependency can only fail
+                    // if you're registering a template dependency
+                    page.register_dependency(
+                        Relation::PageAsset,
+                        id.to_owned()
+                    ).unwrap();
+                }
+            });
+    
+            Ok(path.to_owned())
         });
-
-        Ok(path.to_owned())
-    });
+    }
     
     env.add_function("eval", eval);
     env.add_function("raise", raise);

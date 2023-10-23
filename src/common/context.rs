@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::env;
-use std::fmt::Arguments as FmtArgs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -68,7 +67,7 @@ impl InnerContext {
                 toml::to_string(&cfg)?
             )?;
 
-            println!(
+            eprintln!(
                 "\nNew site {}",
                 console::style("created.").green().bold().bright()
             );
@@ -86,17 +85,11 @@ impl InnerContext {
 
         let ctx = InnerContext { config, args, db };
 
-        Ok(Arc::new(ctx))
-    }
-
-    pub fn progressor(&self, msg: Message) -> Progressor {
-        Progressor::new(msg)
-    }
-
-    pub fn try_println(&self, msg: FmtArgs) {
-        if self.pretty_output() {
-            println!("{}", msg);
+        if !ctx.pretty_output() {
+            Progressor::set_dummy(true);
         }
+
+        Ok(Arc::new(ctx))
     }
 
     pub fn drafts_enabled(&self) -> bool {

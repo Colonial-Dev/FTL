@@ -151,7 +151,12 @@ impl Resource {
         {
             Some(output) => {
                 let output: Output = output?;
-                let content = output.content;
+                let mut content = output.content;
+
+                // If we're in development mode, append the live reload script to the HTML.
+                if server.ctx.devel_mode() {
+                    content += include_str!("live_reload.html");
+                }
 
                 Ok(Self::Text(content, route.kind))
             }

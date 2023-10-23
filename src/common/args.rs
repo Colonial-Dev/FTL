@@ -24,6 +24,8 @@ pub enum Command {
         /// The root URL for the new site (e.g. `https://example.com`)
         root_url: String,
     },
+    /// Display basic status information about an FTL site.
+    Status,
     /// Invoke the FTL build pipeline.
     Build {
         /// Stay resident and trigger a new build whenever changes to the site source are detected.
@@ -79,7 +81,6 @@ pub enum RevisionSubcommand {
         /// The ID or user-provided name of the revision to unpin.
         id: String
     },
-    // TODO dumping?
 }
 
 #[derive(Debug, Subcommand)]

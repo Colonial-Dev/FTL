@@ -76,11 +76,12 @@ impl Drop for Pool {
     }
 }
 
-/// Smart wrapper for an [`sqlite::Connection`]. Typically (although not always) handed out by a [`Pool`].
+/// Smart wrapper for an [`rusqlite::Connection`]. Typically (although not always) handed out by a [`Pool`].
 pub struct PoolConnection {
     /// The [`Pool`] the connection was obtained from, if any.
     parent: Weak<Pool>,
-    /// The inner [`sqlite::Connection`].
+    /// The inner [`rusqlite::Connection`].]
+    /// 
     /// Wrapped in an [`Option`] so it can be taken during drop and returned to its parent pool.
     ///
     /// This field should *never* observably contain [`None`], as the implementation of [`Deref`]

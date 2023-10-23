@@ -147,7 +147,11 @@ impl<'i> Literal<'i> {
     /// This parser is quite strict - it only accepts the (case-insensitive)
     /// literal strings "true" and "false".
     fn parse_boolean(input: Input<'i>) -> Result<Self> {
-        alt((tag_no_case("true"), tag_no_case("false")))(input).map(|(i, o)| {
+        alt((
+            tag_no_case("true"),
+            tag_no_case("false")
+        ))(input)
+        .map(|(i, o)| {
             let boolean = o
                 .parse::<bool>()
                 .map(Self::Boolean)

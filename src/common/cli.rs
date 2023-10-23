@@ -15,6 +15,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 // static COMPASS: Emoji<'_, '_> = Emoji("🧭 ", "");
 // static PRINTER: Emoji<'_, '_> = Emoji("🖨️ ", "");
 
+#[derive(Debug, Clone, Copy)]
 pub enum Message {
     Walk,
     WalkSkipped,
@@ -23,6 +24,16 @@ pub enum Message {
     Rendering,
     BuildOK,
     BuildFail
+}
+
+impl Message {
+    pub fn print(self) {
+        if ENABLE_DUMMY.load(Ordering::Relaxed) {
+            return;
+        }
+
+        eprintln!("{self}")
+    }
 }
 
 impl Display for Message {
@@ -101,12 +112,11 @@ impl Progressor {
     }
 
     pub fn new(msg: Message) -> Self {
-        if ENABLE_DUMMY.load(Ordering::SeqCst) {
+        if ENABLE_DUMMY.load(Ordering::Relaxed) {
             return Self::Dummy;
         }
         
         let bar = Self::new_spinner();
-
         let msg = format!("{msg}");
 
         bar.set_message(msg.clone());
@@ -126,7 +136,7 @@ impl Progressor {
 
         bar.finish_and_clear();
 
-        println!(
+        eprintln!(
             "{} {}",
             msg,
             style("[OK]").green().bright().bold(),
@@ -154,7 +164,7 @@ impl Drop for Progressor {
 
         bar.finish_and_clear();
 
-        println!(
+        eprintln!(
             "{} {}",
             msg,
             style("[FAIL]").red().bright().bold()
