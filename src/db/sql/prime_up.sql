@@ -165,11 +165,27 @@ CREATE TABLE dependencies (
     UNIQUE(relation, parent, child)
 );
 
-CREATE TABLE output (
+-- "Hot" output table used to store the results of the most recent revision.
+CREATE TABLE output_hot (
     id TEXT PRIMARY KEY,
     kind INTEGER,
     content TEXT
 );
 
+-- "Cold" output table used for long-term, self-contained storage of revisions.
+-- When a revision is stabilized, we copy it (in full) from the output_hot table into here.
+CREATE TABLE output (
+    id TEXT,
+    revision TEXT,
+    kind INTEGER,
+    content TEXT,
+
+    FOREIGN KEY (revision)
+    REFERENCES revisions (id)
+        ON DELETE CASCADE
+);
+
 -- SQLite-recommended child key index.
-CREATE INDEX idx_output_cfk ON output(id);
+CREATE INDEX idx_output_cfk ON output(revision);
+-- Index over the ID and revision columns, to ensure maximum query speed when serving.
+CREATE INDEX idx_output_search ON output(id, revision);

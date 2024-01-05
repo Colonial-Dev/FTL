@@ -79,7 +79,7 @@ impl Display for Message {
                 "📥 Rendering...",
                 4..4
             ),
-            BuildOK => write!(
+            BuildOK => writeln!(
                 f,
                 "\n Build {}",
                 console::style("complete.").bold().bright().green()

@@ -40,6 +40,8 @@ SELECT * FROM input_files WHERE extension = ?1
 {% for row in rows %}
 - File at path {{ row.path }} has id {{ row.id }}
 {% endfor %}
+
+You can also fetch information about resources like images.
 {% set java = DB.get_resource("image.png") %}
 {{ java }}
 </code>

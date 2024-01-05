@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 mod args;
-mod cli;
+mod output;
 mod config;
 mod context;
 
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 
 pub use args::*;
-pub use cli::*;
+pub use output::*;
 pub use config::*;
 pub use context::*;
 

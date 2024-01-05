@@ -61,7 +61,7 @@ fn main() -> Result<()> {
     info!("This program is licensed under the GNU Affero General Public License, version 3.");
     info!("See {REPOSITORY} for more information.");
     
-    ctx.db.clear()?;
+    //ctx.db.clear()?;
 
     match &ctx.args.command {
         Status => {

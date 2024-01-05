@@ -97,6 +97,7 @@ fn raise(message: String) -> MJResult {
     Err(MJError::new(MJErrorKind::InvalidOperation, message))
 }
 
+
 fn timefmt(input: String, format: String) -> MJResult {
     use chrono::DateTime;
 

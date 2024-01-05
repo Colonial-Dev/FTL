@@ -127,11 +127,7 @@ impl Deref for InnerContext {
 
 /// Performs environment validation and setup - essentially, ensuring that everything is where and how it should be
 /// before the program executes any further. If nothing is amiss, it returns the path of the current directory.
-///
-/// In no particular order, this function:
-/// -
 fn validate_env() -> Result<PathBuf> {
-    // TODO extend this
     let mut current_dir = env::current_dir()?;
 
     if env::var("FTL_TEST_MODE").is_ok() {

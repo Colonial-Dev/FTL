@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS attributes;
 DROP TABLE IF EXISTS routes;
 DROP TABLE IF EXISTS dependencies;
 DROP TABLE IF EXISTS output;
+DROP TABLE IF EXISTS output_hot;
 
 -- Tables with columns referenced by foreign key constraints
 -- need to be dropped *last*, or cryptic "table does not exist" 

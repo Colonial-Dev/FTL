@@ -98,6 +98,7 @@ impl Ticket {
     }
 
     fn toc(&self) -> Result<Value> {
+        // Credit to Zola for this algorithm.
         fn try_insert(parent: Option<&mut Header>, child: &Header) -> bool {
             let Some(parent) = parent else {
                 return false;
@@ -252,6 +253,9 @@ impl Ticket {
                     }
                 },
                 Header(header) => {
+                    let anchor = header.ident.unwrap_or(header.title);
+                    let anchor = slug::slugify(anchor);
+
                     if let Some(name) = &self.ctx.build.anchor_template {
                         let Ok(template) = state.env().get_template(name) else {
                             bail!("Could not find specified anchor template \"{name}\".");
@@ -262,7 +266,7 @@ impl Ticket {
                         buffer += &template.render(context! {
                             level => header.level,
                             title => header.title,
-                            ident => header.ident,
+                            anchor => anchor,
                             classes => header.classes
                         })?;
                     } 
@@ -284,8 +288,6 @@ impl Ticket {
                             buffer
                         };
                         
-                        let anchor = header.ident.unwrap_or(header.title);
-                        let anchor = slug::slugify(anchor);
                         let anchor = indoc::formatdoc!("
                             <h{level} class=\"{classes}\">
                                 <a id=\"{anchor}\" class=\"anchor\" href=\"#{anchor}\">

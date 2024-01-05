@@ -136,6 +136,16 @@ impl Renderer {
         ")?
         .execute([self.rev_id.as_ref()])?;
 
+        conn.prepare("
+            INSERT INTO output (id, revision, kind content)
+            SELECT id, ?1, kind, content FROM output_hot
+            JOIN revision_files ON revision_files.id = output_hot.id
+            WHERE revision_files.revision = ?1 
+        ")?
+        .execute([self.rev_id.as_ref()])?;
+
+        // TODO copy into "cold" output table
+
         Ok(())
     }
 }
@@ -163,6 +173,7 @@ fn consumer_handler(conn: &mut Connection, rx: Receiver<(Ticket, String)>) -> Re
 
         debug!("{output}");
         
+        // TODO: insert into "hot" output table
         Output {
             id: Some(id),
             kind: OutputKind::Page,

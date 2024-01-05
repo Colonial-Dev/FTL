@@ -37,7 +37,7 @@ walkdir = "2"
 
 # Database
 rusqlite = { version = "0.29.0", features = ["bundled", "trace"] }
-exemplar = { version = "0.7" }
+exemplar = { version = "0.8" }
 
 # Serde cinematic universe
 serde = { version = "1.0", features = ["derive"] }

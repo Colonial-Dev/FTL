@@ -184,7 +184,42 @@ impl Database {
     }
 
     pub fn stat(&self) -> Result<()> {
-        todo!()
+        use indicatif::HumanBytes;
+        use walkdir::WalkDir;
+
+        record! {
+            size => u64
+        }
+
+        let conn = self.get_ro()?;
+
+        let cache_size = WalkDir::new(SITE_CACHE_PATH)
+            .into_iter()
+            .map(|e| -> Result<_> {
+                Ok(e?.metadata()?.len())
+            })
+            .try_fold(0_u64, |acc, len| -> Result<_> {
+                Ok(acc + len?)
+            })?;
+
+        let db_size = conn.query_row(
+            "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();",
+            [],
+            Record::from_row
+        )?.size;
+
+        let total = HumanBytes(cache_size + db_size);
+        let cache_size = HumanBytes(cache_size);
+        let db_size = HumanBytes(db_size);
+        
+        eprintln!(
+            "Database:    {}\nAsset cache: {}\nTotal:       {}",
+            db_size,
+            cache_size,
+            total,        
+        );
+
+        Ok(())
     }
 
     /// Acquire a read-write connection from the underlying pool, creating a new one

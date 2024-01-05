@@ -11,7 +11,9 @@ pub struct Arguments {
     /// Enable debug logging. 
     /// 
     /// - Level 1 enables ERROR, WARN and INFO.
+    /// 
     /// - Level 2 enables DEBUG.
+    /// 
     /// - Level 3 and up enables TRACE.
     #[clap(short, long, action = ArgAction::Count)]
     pub verbose: u8,
