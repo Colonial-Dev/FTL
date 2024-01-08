@@ -1,6 +1,7 @@
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
+use arc_swap::access::Access;
 use axum::body::Bytes;
 use axum::http::{StatusCode, Uri, HeaderName, HeaderValue, HeaderMap};
 use axum::response::{IntoResponse, Response};
@@ -143,10 +144,11 @@ impl Resource {
         let mut query = conn.prepare_cached("
             SELECT * FROM output
             WHERE id = ?1
+            AND revision = ?2
         ")?;
 
         let resource = match query
-            .query_and_then([id], Output::from_row)?
+            .query_and_then([id, server.rev_id.load().as_ref()], Output::from_row)?
             .next()
         {
             Some(output) => {

@@ -106,6 +106,11 @@ pub fn compile(ctx: &Context, rev_id: &RevisionID) -> Result<()> {
 
     let output = grass::from_path(path, &options)?;
 
+    RevisionFile {
+        id: hash.clone(),
+        revision: rev_id.to_string()
+    }.insert_or(&conn, OnConflict::Ignore)?;
+
     Output {
         id: hash.into(),
         kind: OutputKind::Stylesheet,

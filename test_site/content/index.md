@@ -8,3 +8,8 @@ summary = "Welcome!"
 # FTL Site Root
 
 Look ma, no `index.html`!
+
+Here are some example pages:
+- [Feature demo](/example)
+- [Real-world article](/silverblue)
+- [Dynamic hook](/hook-example?name=Jane)

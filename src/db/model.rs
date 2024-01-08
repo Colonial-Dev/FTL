@@ -207,7 +207,7 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, Model)]
-#[table("output")]
+#[table("output_hot")]
 #[check("sql/prime_up.sql")]
 pub struct Output {
     pub id      : Option<String>,

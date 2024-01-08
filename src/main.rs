@@ -48,11 +48,14 @@ fn main() -> Result<()> {
     
     let ctx = InnerContext::init()?;
 
-    match ctx.args.verbose {
-        0 => std::env::set_var("RUST_LOG", "none"),
-        1 => std::env::set_var("RUST_LOG", "info"),
-        2 => std::env::set_var("RUST_LOG", "debug"),
-        _ => std::env::set_var("RUST_LOG", "trace"),
+    // Only use the verbosity flag if RUST_LOG isn't already set.
+    if std::env::var("RUST_LOG").is_err() {
+        match ctx.args.verbose {
+            0 => std::env::set_var("RUST_LOG", "none"),
+            1 => std::env::set_var("RUST_LOG", "info"),
+            2 => std::env::set_var("RUST_LOG", "debug"),
+            _ => std::env::set_var("RUST_LOG", "trace"),
+        }
     }
     
     install_logging();
@@ -61,8 +64,6 @@ fn main() -> Result<()> {
     info!("This program is licensed under the GNU Affero General Public License, version 3.");
     info!("See {REPOSITORY} for more information.");
     
-    //ctx.db.clear()?;
-
     match &ctx.args.command {
         Status => {
             todo!()
